@@ -127,8 +127,12 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 "Audio architecture").
 
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
-Suggested order for the rest — 1.8 chaff next, then 1.11 ship window if
-Brian wants it before Phase 2.
+Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below.
+Suggested order for the rest — 1.12 sound options first (Brian needs the
+beacons-off switch for his own listening, and it makes Claude's machine
+tests silent for him), then 1.13–1.15 (small, one commit each), then 1.8
+chaff, then 1.11 ship window if Brian wants it before Phase 2. **DECIDE**:
+that order (Part C).
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -351,6 +355,111 @@ already precedented for the run log (see CLAUDE.md).
 - Veteran/Ace enemies may launch a second missile while the first coasts;
   Rookie never does.
 
+#### 1.12 Sound options: beacons off, a level per category (ideas3)
+
+Brian's ask: a main-menu option to turn the POI sounds off — while Claude
+tests with a point targeted, its beacon keeps sounding through his
+speakers and interferes with him listening to other audio, and veteran
+pilots may not want the beacons at all. Plus in-game sound options
+generally (labels and categories: Claude's judgement, adjust later).
+
+- A **Sound** item on the mission menu opens a small list (same shell as
+  the station menu; Escape returns): one line per category, Left/Right
+  cycle **Off / Quiet / Full** — three levels, not a percentage, which is
+  a lot of arrow presses by ear **(accepted by default)** — spoken as
+  "Beacons: off." Saved in the profile (`profile.sound`), applied at boot
+  and the moment a line changes. Speech is never touched (it's the screen
+  reader's).
+- Categories:
+  - **Beacons** — the four POI voices in the sector (`buildPoiVoice`,
+    `poiGain`). The specific ask. Off = silent; Tab, T, Q, and the lock
+    tick still find every point. **DECIDE**: at Off, does the SELECTED nav
+    target's beacon stay audible (the homing case), or is Off all four?
+  - **World** — everything HRTF: ship engines, rocks and dust, enemy
+    chirps/beams/missiles, explosions at a position. Needs one engine
+    change: a `worldBus` gain in `audio_engine.js` between the panners
+    and `masterGain` (panners connect straight to `masterGain` today,
+    `makePanner`); Beacons sit inside World, so both scale them.
+  - **Cockpit** — the UI bus (`uiBus`): lock tick, thrusters and
+    stabilizers, tools, shield hum, overheat hiss, docking instruments.
+  - **Effects** — the discrete cue registry (`SIM.cues`): menu clicks,
+    chimes, warnings, explosions, the fanfare. A gain multiplier inside
+    `SIM.cues.play`, so it stacks with whichever bus the cue lands on.
+- Testing rule (now in CLAUDE.md): every machine-test script sets Beacons
+  off first thing after boot, live and unsaved (`__sim.poke({ sound: {
+  beacons: 0 } })`), so a leftover targeted point never sounds on Brian's
+  side. `poke` never calls `saveProfile`.
+
+#### 1.13 Warp core: spoken charge alerts, no regen hiss (ideas3)
+
+- Remove the core-cooling hiss (`warpCoreSound`: bandpass noise on the UI
+  bus, breathing, thinning as the tank fills). Brian: "remove the ticking
+  sound of the warp core recharging."
+- In its place, speech as the charge crosses `warpAlertPcts` [50, 75, 100]
+  while regenerating in open flight: "Warp core 50 percent." / "Warp core
+  75 percent." / "Warp core cooled. Tank full." (the existing line, keeps
+  its chime). Speech only for now (Brian: "audio TTS for now"); a chime
+  per step is a later ear decision. Each threshold speaks once per fill —
+  a jump that drops the charge back under a threshold re-arms it. Open
+  sector flight only: encounter exits and the station already say "Warp
+  tank filled", no double announcement. `I` keeps reading the exact charge.
+
+#### 1.14 Laser switching takes time, timed by the switch recordings (ideas3)
+
+- Six recordings, `audio/weapons/lasers/laser_switch1–6.wav`, measured
+  from their WAV headers 2026-09-04: 1 = 2.023 s, 2 = 2.666 s, 3 = 2.164 s,
+  4 = 2.027 s, 5 = 2.297 s, 6 = 2.023 s. Light → heavy by length: 1 ≈ 4 ≈
+  6 (2.02), 3 (2.16), 5 (2.30), 2 (2.67). Brian: the shortest clip is the
+  lightest laser and switches fastest; the variance is too small, so the
+  lightest laser's delay goes SHORTER than its clip and the heaviest
+  LONGER, for a better spread.
+- Each `LASERS` entry gets `switchAsset` (which of the six) and `switchS`
+  (the delay). Proposal: `switchS` from the clip length stretched about
+  the middle — `mid + (clipLen − mid) × CFG.laserSwitchStretch`, stretch 3
+  puts the lightest near 1.4 s and the heaviest near 3.3 s — or hand-set
+  per laser once Brian has heard them. Either way the number lives in the
+  table, not inline.
+- Pressing 1–6 starts the switch: the clip plays on the UI bus (a cockpit
+  sound), "Slot 2, mining laser two, switching." Space during the switch
+  is refused like a cooldown: "Switching lasers, 2 seconds." At the end:
+  a ready cue and "Mining laser two ready." Delay shorter than the clip:
+  the clip fades out at the delay **(accepted by default)**. Delay longer:
+  the clip plays, then silence until ready — **DECIDE** whether to
+  time-stretch the clip to fit instead (which pitches it).
+- Re-selecting the current slot: no switch, no delay. Switching mid-burst:
+  refused, the burst can't be stopped (1.9). Switching to an empty slot:
+  today's refusal, no delay. The `I` status reads "switching, N seconds."
+- The six wavs get decoded into `audio_assets.js` (mono 96k MP3 like the
+  rest, ~25 KB each). **DECIDE**: which clip goes with which of the 16
+  lasers (8 Mining, 8 Rapid-pulse) — only `mining1`/`mining2` need one
+  for the demo.
+
+#### 1.15 Keys: R = range, Shift+T cycles back, Shift+W auto-thrust (ideas3)
+
+- **R reads the range to the current target**: "Range 430, closing." —
+  the distance and whether it's closing or opening (the sign of the range
+  rate; a docking and tow instrument later). No target: "No target
+  selected. Tab cycles targets." R today is the radar sweep (every
+  target, nearest first, `radarPing`). **DECIDE** where the sweep goes —
+  proposal Shift+R.
+- **Shift+T cycles targets backward** (Tab forward). Shift+Tab does the
+  same **(accepted by default)** — the convention, and free.
+  Implementation: `lname` is lowercased, so 'T' and 't' look alike; read
+  `e.shiftKey` in `onKeyDown` the way `helpKey` already does. NVDA's
+  pause-on-Shift only fires on a bare Shift press, not a chord.
+- **Shift+W toggles auto-thrust**: "Auto-thrust on." — the ship thrusts
+  forward as if W were held (thruster sound on, no stabilizer puffs, the
+  speed cap applies) until Shift+W again, any W or S press **(accepted by
+  default: any manual thrust input cancels, S included)**, a warp jump,
+  docking success, leaving the mode, or losing the ship — each ending
+  speaks "Auto-thrust off." Pause freezes it and it resumes. It stays
+  engaged into a docking corridor on purpose — the corridor's own too-fast
+  abort is the consequence. Gotcha: Shift+W arrives as `lname` 'w' and
+  would land in `keysDown` via the `HELD` branch; check `e.shiftKey`
+  before it.
+- F12 explore, F1 help, KEY_DESCRIPTIONS, README, and CLAUDE.md's key map
+  updated for all three.
+
 ### Phase 2 — a living sector, smarter enemies, the second resource
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)
@@ -487,13 +596,26 @@ demo** and screens like it go on **function keys**; hydrogen gates
 quadrants; modules have mass; **lasers are built first**; the single-file
 demo is gone for good.
 
+Decided (Brian, ideas3, 2026-09-04): a main-menu switch for the POI
+beacons plus per-category sound levels (1.12); no warp-core regen hiss —
+spoken 50/75/100 % alerts instead (1.13); laser switching takes time, set
+by the switch recordings' lengths with the variance stretched (1.14); R
+reads range; Shift+T cycles back; Shift+W is auto-thrust (1.15).
+
 Accepted by default (say otherwise): shields as a damage pool; credits and
 modules persist across sessions; chaff on `D`; `G` refused during a
-laser burst; slow warp regen in open flight so a dry tank never strands.
+laser burst; slow warp regen in open flight so a dry tank never strands;
+three sound levels per category (Off / Quiet / Full); Shift+Tab alongside
+Shift+T; any W or S press cancels auto-thrust; a switch clip fades at the
+delay when the delay is shorter than the clip.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
-ships placeholders.
+ships placeholders. From ideas3: the radar sweep's new key (Shift+R?);
+which switch clip goes with which laser, and the stretched delay range;
+pad-with-silence vs time-stretch when the delay is longer than the clip;
+whether the selected nav target's beacon stays audible at Beacons off;
+and the build order — 1.12–1.15 before chaff (1.8)?
 
 ## Deferred (Brian: "not yet")
 

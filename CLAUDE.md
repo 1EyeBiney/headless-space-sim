@@ -35,7 +35,9 @@ expands.
   (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
   `audio/ships/warp/` = a warp-drama candidate recording; `audio/weapons/
   missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
-  = 16 new unintegrated laser candidates; `audio/Explosions/` = 8 new
+  = 16 laser candidates (Mining ×8, Rapid-pulse ×8; `mining1`/`mining2`
+  embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, SPEC
+  1.14 — the switch delay is timed off their lengths); `audio/Explosions/` = 8 new
   unintegrated hull-breach/explosion candidates. Everything under
   `audio/mining/` and `audio/weapons/missiles/` (the embedded ones) is
   already wired in by key name; everything else Brian is auditioning is
@@ -412,6 +414,14 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
 - Test silently: boot via JS `.click()` (suspended context = no sound) and
   ALWAYS close every browser-pane tab + kill the local server when done —
   leftover audio fights Brian's screen reader.
+- Beacons off while testing (Brian, ideas3, 2026-09-04): the `.click()`
+  boot is NOT actually silent once synthetic key events resume the
+  context — a POI left targeted keeps its beacon sounding through Brian's
+  speakers for the whole test and interferes with his own listening. Once
+  SPEC 1.12 lands, every test script sets Beacons off first thing after
+  boot, live and unsaved: `__sim.poke({ sound: { beacons: 0 } })`. Until
+  then, don't leave a point targeted in the sector longer than the step
+  needs, and never leave a tab open between steps.
 - Hidden-tab gotcha (confirmed Round 11, calibrated at 0 simulated seconds
   over 10 real seconds): a backgrounded/hidden browser pane (`document.hidden`
   true) fully suspends `requestAnimationFrame`, not just throttles it — the
@@ -464,8 +474,15 @@ delivery-run handover path, and a repeat visit past the influence
 threshold — exercised end to end with no console errors), not yet heard by
 Brian. Next audio step, per Brian: a sound-lab tester (this project's own
 `.soundtester`-style page) for auditioning new synth ideas AND the new
-unintegrated recordings side by side — not built yet. Per SPEC.md's
-suggested order, 1.8 (chaff) is next.
+unintegrated recordings side by side — not built yet.
+
+Brian's ideas3 notes (2026-09-04, `ideas3.txt`, untracked like ideas1/2)
+are folded into SPEC.md as 1.12 sound options (beacons off + a level per
+category), 1.13 warp-core spoken alerts replacing the regen hiss, 1.14
+laser switching timed by the six switch recordings, and 1.15 R = range /
+Shift+T cycles back / Shift+W auto-thrust — with the open questions in
+Part C (DECIDE). Proposed order: 1.12–1.15 before 1.8 chaff, pending his
+answers. Nothing from ideas3 is built yet.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
