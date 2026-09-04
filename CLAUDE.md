@@ -669,6 +669,88 @@ static once tiers exist.
   chime. A manual drop (`G` while up, pool not empty) skips disrepair
   entirely — whatever charge is left just regenerates at `shieldRegenPerS`
   3/s like any other down-and-not-full shield.
+  **Escort and defend missions (Round 15, SPEC 2.17)**: offered from a
+  station's hail menu (`HAIL_ITEMS` gained "Missions", a nested submenu —
+  `hailMenu.submenu`, `MISSIONS`, `missionsKey` — same shape as the
+  station menu's Modules list). Accepting one snapshots `sectorHome`
+  (same as any combat/mining entry) and calls `newGame('combat', spec)` —
+  `mode` stays `'combat'` the whole time; a `mission` object layers the
+  objective on top, the same relationship `demo` already has to
+  `'combat'`/`'mining'`, rather than mission becoming its own `mode`
+  value (which would need threading through `updateEnemies`/
+  `statusReport`/`tugCandidate`/the map's win-gate, all of which key off
+  the literal string `'combat'`). `makeMissionRoster(mission)` builds ONE
+  `kind: 'friendly'` target (Freighter hull 200, reusing the training
+  roster's own Freighter voice/engine loop; or Miner hull 150, oscillator
+  only) — `buildVoice()` needed no changes, already generic enough.
+  `selectNearest`/`cycleTarget` gained a `kind === 'friendly'` exclusion
+  so it's never Tab-cycled. Raiders arrive in scripted waves
+  (`spawnMissionWave`, `CFG.missionEscortWaveTimes` [15,45,75] / size 2,
+  `CFG.missionDefendWaveTimes` [10,45] / size 3), always named plainly
+  `'Raider'` (not numbered) so SHIP_CLASS/SALVAGE/laser-matchup — all
+  keyed by exact ship name — resolve correctly; the trade-off is that Tab
+  can't distinguish two at once by name, only bearing/distance.
+  **The provoke/victim mechanic (the one deliberate simplification)**:
+  spec wants raiders to "target the freighter unless the pilot hits them
+  first." The full version would mean threading a victim parameter
+  through `startEnemyLaser`/`startEnemyMissile`/`stepThreat` — the exact
+  machinery every OTHER combat scenario (drills, the sector's Contested
+  Zone, the delivery run) already depends on and is heavily tested;
+  touching it risked regressing all of them for one feature that doesn't
+  need it. Built instead as a side-channel: `provoke(t)` (runs on every
+  `damageTarget` hit regardless of mode) now unconditionally sets
+  `t.provoked = true` before its existing hostile-latch logic — inert
+  outside a mission. `updateEnemies`'s candidate pool, which every
+  mission raider is otherwise eligible for (they spawn `hostile: true`
+  from the start, per spec), checks `mission ? t.provoked : t.hostile` —
+  so only a raider the PLAYER has hit ever joins the real telegraph/beam/
+  missile fight, using every one of those systems completely unchanged.
+  Every still-unprovoked raider instead gets picked on a
+  `missionStrikeGapMinS`–`MaxS` (6–10s) timer by `missionStrike(t)` in
+  `updateMission(dt)`: a one-shot tone plus `CFG.missionStrikeDmg` (15)
+  off the friendly's hp, one combined `say()` ("Raider hits the
+  Freighter. Freighter hull N percent."). Confirmed in testing that both
+  systems run correctly side by side: hitting one raider with a missile
+  (survived) made it immediately start telegraphing/firing at the
+  player through the untouched vanilla system, while its still-
+  unprovoked wave-mates kept hitting the friendly on their own schedule.
+  `destroyTarget`'s generic "all targets destroyed = victory" check is
+  skipped entirely when `mission` is set (the friendly stays alive the
+  whole mission, so it would never fire for escort and would fire too
+  early — after any single wave — for defend); win/loss instead comes
+  from `updateMission` (escort: the `CFG.missionEscortLegS` 90s leg
+  timer with the friendly still alive; defend: both waves sent and every
+  non-friendly target dead) and `missionStrike` (the friendly's hp
+  reaching 0). `missionEnd(success)` sets `won = true` for BOTH outcomes
+  (never `lost` — the player's own ship isn't destroyed by a mission
+  failure, only the friendly is) and pays `CFG.missionCredits` 300 plus
+  one influence point only on success. Enter is refused after either
+  outcome (a mission doesn't replay in place — it's cooldown-gated from
+  the hail menu, not farmable) with the generic retry path (which would
+  have run `combatIntro()` and said something nonsensical) now gated to
+  skip entirely whenever `mission` is set. **Cooldown** needed an actual
+  game-time clock outside the delivery run (the only other one,
+  `demo.elapsed`, only exists mid-delivery-run): added `simClock`, a
+  plain session counter advanced in `simTick` on the same gate as
+  everything else, NOT persisted across a reload (same as `demo.elapsed`
+  isn't) — `missionCooldownUntil = {escort, defend}` are simClock
+  timestamps, checked by `missionAvailable(kind)`. **Interaction with
+  the SPEC 2.16 tug, left untouched on purpose**: a mission always sets
+  `sectorHome` like any sector encounter, so the player's own ship dying
+  mid-mission routes through the ordinary tug path with zero
+  mission-specific code, confirmed in testing (`mission` cleanly cleared
+  to null by the time the tug docked, via the same `clearMission()` the
+  tug's own arrival already calls). Machine-tested end to end (hail →
+  Missions → accept → wave spawns → provoke-and-redirect → a raider kill
+  → the full leg → success/reward/Enter-refusal/X-cleanup, then Defend →
+  a forced failure → the "no reward" message, then both kinds correctly
+  refused on cooldown, then a mid-mission player death correctly routed
+  to the 2.16 tug) plus a full regression pass on the untouched
+  standalone Combat training drill (all five destroyed still says
+  "Victory", Enter still restarts it byte-for-byte as before). Zero
+  console errors throughout. Not yet heard by Brian — every sound this
+  round touches (the strike tone, the wave-inbound line, the
+  mission-complete fanfare) is new.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
   `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)` — as of SPEC
   1.14 a switch to ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2
@@ -984,10 +1066,27 @@ cadence, the arrival service, and the delivery run's clock confirmed
 still advancing through the wait with the `demo` object surviving
 intact) with zero console errors; not yet heard by Brian.
 
-2.10 through 2.16, 2.18, and 2.19 are all DONE now. 2.17 (escort and
-defend missions) is next — the last Phase 2 item before the Sunday
-2026-09-06 demo target. Nothing from Rounds 10-15 has been heard or
-flown by Brian yet.
+Round 15 also built **SPEC 2.17** (escort and defend missions — see the
+"Escort and defend missions" bullet in the Combat section above for the
+full shape): offered from a station's hail menu, reusing the untouched
+telegraph/beam/missile combat system for a raider once the player hits
+it and a simpler side-channel strike timer for raiders still harassing
+the friendly beforehand, wave spawning, a leg-timer win for escort and
+an all-raiders-dead win for defend, a credit-and-influence reward on
+success and nothing on failure, a session-scoped cooldown, and correct
+hand-off to the SPEC 2.16 tug if the player's own ship dies mid-mission.
+Machine-tested end to end (both mission kinds, both outcomes, the
+provoke/redirect mechanic, the cooldown gate, the tug hand-off) plus a
+full regression pass confirming the untouched standalone Combat
+training drill's win/retry path still works exactly as before. Zero
+console errors; not yet heard by Brian.
+
+2.10 through 2.19 are all DONE now — **Phase 2 (the Sunday 2026-09-06
+demo target) is complete**. Nothing from Rounds 10-15 has been heard or
+flown by Brian yet; every item shipped this session is machine-tested
+only. Phase 3 (the moving world, SPEC.md's 3.10-3.17) is the next block
+of work whenever Brian is ready to start it, but nothing there has been
+scoped into per-round detail yet the way Phase 2 was.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

@@ -142,6 +142,24 @@ var CFG_DEFAULTS = {
     // Economy (SPEC 1.7): placeholder prices, all in CFG so Brian can retune.
     oreCreditRate: 10,        // 1 credit per this many ore
     influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
+
+    // Escort and defend missions (SPEC 2.17), offered from a station's hail
+    // menu. Raiders spawn hostile from the start (they're already attacking
+    // the friendly) but only actually fight the PLAYER once provoked — see
+    // `t.provoked` in TARGETING/WEAPONS.
+    missionCredits: 300,       // reward on success; failure pays nothing
+    missionCooldownS: 600,    // per mission kind, per station, in session game time (simClock)
+    missionEscortHull: 200,
+    missionMinerHull: 150,
+    missionEscortSpeed: 40,   // u/s, the freighter's own drift toward the planet
+    missionEscortLegS: 90,    // the leg's duration — surviving it is the win condition
+    missionEscortWaveTimes: [15, 45, 75],  // game-seconds into the mission each wave arrives
+    missionDefendWaveTimes: [10, 45],
+    missionEscortWaveSize: 2, // raiders per wave
+    missionDefendWaveSize: 3,
+    missionStrikeGapMinS: 6,  // how often an unprovoked raider hits the friendly
+    missionStrikeGapMaxS: 10,
+    missionStrikeDmg: 15,
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
     warpMinDist: 1200,       // closer than this: just fly it
     // Warp drama (SPEC 1.17): a jump takes real time and flies the ship
@@ -594,6 +612,133 @@ function makeRoster() {
     return list;
 }
 
+// ---- escort/defend missions (SPEC 2.17) ------------------------------------
+// Only the friendly is in the roster at mission start — raiders arrive in
+// scripted waves via spawnMissionWave(), not all at once. Same voice/asset
+// as makeRoster's own "Freighter" entry for the escort target, since it's
+// thematically the same ship; the Miner has no recorded loop of its own
+// (oscillator fallback only — nothing dedicated exists to reach for yet).
+function makeMissionRoster(m) {
+    var f = m.kind === 'escort'
+        ? { name: 'Freighter', hp: CFG.missionEscortHull, pos: v3(0, 0, -200),
+            voice: { type: 'sawtooth', freq: 55, trem: 3 },
+            shipAsset: { name: 'ship_cruiser_1', rate: 0.8 } }
+        : { name: 'Miner', hp: CFG.missionMinerHull, pos: v3(0, 0, 0),
+            voice: { type: 'triangle', freq: 220, vib: 4, vibDepth: 10 } };
+    f.kind = 'friendly';
+    f.alive = true;
+    f.maxHp = f.hp;
+    m.friendly = f;
+    return [f];
+}
+
+// A wave of raiders arrives around the friendly's current position — always
+// named plainly 'Raider' (not numbered) so SHIP_CLASS/SALVAGE/laser-matchup
+// lookups, which all key off exact ship name, resolve the same way a
+// standalone drill's Raider would; the trade-off is that Tab-cycling two at
+// once can't tell them apart by name, only by bearing/distance.
+function spawnMissionWave() {
+    mission.wavesSent++;
+    var f = mission.friendly, n = mission.kind === 'escort' ? CFG.missionEscortWaveSize : CFG.missionDefendWaveSize;
+    var first = null;
+    for (var i = 0; i < n; i++) {
+        var ang = Math.random() * Math.PI * 2;
+        var pos = add(f.pos, v3(Math.cos(ang) * 400, (Math.random() - 0.5) * 100, Math.sin(ang) * 400));
+        var t = { name: 'Raider', hp: 80, maxHp: 80, pos: pos,
+                  voice: { type: 'square', freq: 110, trem: 8 },
+                  shipAsset: { name: 'ship_interceptor_1', rate: 1.15 },
+                  alive: true, hostile: true, provoked: false };
+        targets.push(t);
+        if (SIM.audio.ctx) buildVoice(t);
+        if (!first) first = t;
+    }
+    say(n + (n === 1 ? ' raider inbound on the ' : ' raiders inbound on the ') + f.name + '. ' + bearingText(first));
+}
+
+// An unprovoked raider (one the player hasn't hit yet) periodically hits the
+// friendly instead of the player — a deliberately simpler side-channel than
+// the full telegraph/beam/missile simulation in WEAPONS, which stays 100%
+// about the player; see updateMission for the timer that calls this.
+function missionStrike(t) {
+    var f = mission.friendly;
+    var out = SIM.audio.worldOut(t.pos, 500);
+    SIM.audio.sfxTone({ type: 'square', f1: 900, f2: 500, dur: 0.3, vol: 0.3, out: out });
+    f.hp = Math.max(0, f.hp - CFG.missionStrikeDmg);
+    if (f.hp <= 0) {
+        f.alive = false;
+        stopVoice(f);
+        SIM.cues.play('explosion_kill', { pos: f.pos });
+        say(t.name + ' hits the ' + f.name + '. ' + f.name + ' destroyed.');
+        missionEnd(false);
+    } else {
+        say(t.name + ' hits the ' + f.name + '. ' + f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent.');
+    }
+}
+
+function missionIntro() {
+    var f = mission.friendly;
+    return (mission.kind === 'escort'
+        ? 'Stay near the ' + f.name + ' and clear any raider that engages you.'
+        : 'Defend the ' + f.name + ' from the raider waves.') +
+        ' Raiders hold their fire on you until you hit them — until then they harass the ' + f.name +
+        '. Tab cycles hostiles once they arrive. Space fires when the tone goes solid. ' +
+        'G raises the shields. F1 for help.';
+}
+
+// Called every frame a mission is live (simTick, gated on `mission`):
+// advances the escort's leg, fires scheduled waves, runs the friendly-strike
+// timer, and checks both win conditions (the escort's leg timer; the
+// defend's last wave cleared). Loss (the friendly destroyed) is driven by
+// missionStrike itself, not checked here.
+function updateMission(dt) {
+    if (!mission || mission.ended) return;
+    mission.elapsed += dt;
+    var f = mission.friendly;
+    if (mission.kind === 'escort' && f.alive) {
+        f.pos = add(f.pos, scale(v3(0, 0, 1), CFG.missionEscortSpeed * dt));
+        if (f.nodes) SIM.audio.movePanner(f.nodes.panner, f.pos);
+    }
+    while (mission.wavesSent < mission.waveTimes.length && mission.elapsed >= mission.waveTimes[mission.wavesSent]) {
+        spawnMissionWave();
+    }
+    if (f.alive) {
+        mission.nextStrikeIn -= dt;
+        if (mission.nextStrikeIn <= 0) {
+            var cands = aliveTargets().filter(function (t) { return !t.kind && t.hostile && !t.provoked; });
+            if (cands.length) missionStrike(cands[Math.floor(Math.random() * cands.length)]);
+            mission.nextStrikeIn = CFG.missionStrikeGapMinS + Math.random() * (CFG.missionStrikeGapMaxS - CFG.missionStrikeGapMinS);
+        }
+    }
+    if (mission.kind === 'escort' && f.alive && mission.elapsed >= CFG.missionEscortLegS) {
+        missionEnd(true);
+    } else if (mission.kind === 'defend' && f.alive && mission.wavesSent >= mission.waveTimes.length &&
+               aliveTargets().filter(function (t) { return !t.kind; }).length === 0) {
+        missionEnd(true);
+    }
+}
+
+function missionEnd(success) {
+    if (!mission || mission.ended) return;
+    mission.ended = true;
+    mission.success = success;
+    won = true;
+    shieldReset();
+    endThreat();
+    if (success) {
+        profile.credits += CFG.missionCredits;
+        bumpInfluence({ name: 'Station Meridian' }, 1);
+        saveProfile();
+        setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
+        setTimeout(function () {
+            say('Mission complete! ' + CFG.missionCredits + ' credits earned. X returns to the sector.');
+        }, 900);
+    } else {
+        setTimeout(function () {
+            say('Mission failed. No reward. X returns to the sector.');
+        }, 900);
+    }
+}
+
 // Target zone presets. Beginners need a bigger center to land shots; later,
 // skill progression and pickups will resize this at runtime, so all aim arcs
 // live here rather than in fixed config. Z cycles wide -> standard -> narrow.
@@ -683,13 +828,21 @@ var sectorHome = null;   // set while inside an encounter entered from the secto
 var lost = false;        // hull breached: the encounter is over, like won
 var tug = null;          // SPEC 2.16: { total, remaining, poiData, paid } while a
                           // lost ship in the sector campaign waits for pickup
+var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, waveTimes,
+                          // raiderSeq, nextStrikeIn, ended, success } while an escort/
+                          // defend mission is live (mode stays 'combat' throughout)
+var simClock = 0;        // session game-time clock (SPEC 2.17): counts whenever the
+                          // sim is live and not under an overlay, independent of the
+                          // delivery run's own `demo.elapsed` — backs mission cooldowns
+var missionCooldownUntil = { escort: 0, defend: 0 };  // simClock timestamps
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var docked = null;       // { poi, approachDir } once docked; ship held, station menu active
-var hailMenu = { open: false, idx: 0, poi: null };   // the hail-range menu, SPEC 2.14
+var hailMenu = { open: false, idx: 0, poi: null, submenu: null };   // the hail-range menu, SPEC 2.14; submenu: null | 'missions'
+var missionIdx = 0;      // cursor in the Missions submenu (SPEC 2.17)
 var rcs = 0;              // reaction mass, set from CFG.rcsMax
 var rcsBattery = false;   // true once rcs has hit 0 this sortie, until refilled
 var collisionDamage = 0;  // hull lost to collisions since the last dock — billable, not free
@@ -884,6 +1037,7 @@ var HELP_SECTIONS = [
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         function () { return 'The station works by range instead: C within ' + CFG.stationCommRange + ' hails it for a status report, and C within ' + CFG.stationDockRange + ' docks at once — no corridor to fly.'; },
+        function () { return 'The hail (in comm range but not close enough to dock) is a real menu too: rearm, sell ore, buy reaction mass, take a mission, or close. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
         'Docked, the station menu opens, your hull, missiles, chaff, and warp tank are full, and the ship is held until you undock.',
         'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
         'Every module has a real effect, a price in credits, and a mass cost — no friction in space, so a heavier ship turns and thrusts a little slower for every module it carries. Fitted modules stay with you across sessions.',
@@ -1461,7 +1615,9 @@ function aliveRocks()   { return targets.filter(function (t) { return t.alive &&
 function selectNearest() {
     var best = -1, bestD = Infinity;
     targets.forEach(function (t, i) {
-        if (!t.alive) return;
+        // SPEC 2.17: a mission's friendly isn't Tab-cycled by default —
+        // it's who you're protecting, not something to select and shoot.
+        if (!t.alive || t.kind === 'friendly') return;
         var d = len(sub(t.pos, ship.pos));
         if (d < bestD) { bestD = d; best = i; }
     });
@@ -1474,7 +1630,7 @@ function selectNearest() {
 // Shift+Tab) steps back the other way.
 function cycleTarget(dir) {
     dir = dir || 1;
-    var alive = targets.map(function (t, i) { return t.alive ? i : -1; })
+    var alive = targets.map(function (t, i) { return (t.alive && t.kind !== 'friendly') ? i : -1; })
                        .filter(function (i) { return i >= 0; });
     if (!alive.length) { say('No targets remain.'); return; }
     // Nearest-first order, stepping from the current selection.
@@ -1566,6 +1722,13 @@ function destroyTarget(t, extra) {
     stopVoice(t);
     if (targets[selected] === t) selectNearest();
     if (threat && threat.t === t) endThreat();
+    // SPEC 2.17: a mission's win/loss is its own wave-count/timer logic
+    // (updateMission/missionEnd), not "every target in the array is dead"
+    // — the friendly stays in `targets` and alive throughout, so this
+    // generic check would never fire for escort (whose win condition is
+    // the leg timer) and would fire too early for defend (right after any
+    // single wave, before the next one spawns) if left in charge here.
+    if (mission) return false;
     var left = aliveTargets().length;
     if (left === 0) {
         won = true;
@@ -1597,6 +1760,11 @@ function hullPercent(t) {
 // hostile for good (it joins the attack pool), with a short fuse so the
 // retaliation never lands in the same breath as the hit.
 function provoke(t) {
+    // SPEC 2.17: in a mission, every raider already spawns hostile — this
+    // flag is what actually flips a raider from "harassing the friendly"
+    // to "fighting the player", unconditionally, even when the `hostile`
+    // latch below is already true and short-circuits.
+    t.provoked = true;
     if (t.hostile) return;
     t.hostile = true;
     threatIn = Math.max(threatIn, CFG.enemyProvokedS);
@@ -1624,7 +1792,15 @@ function damageTarget(t, dmg) {
         var salvageGain = !t.kind ? addSalvage(name) : 0;
         var salvageText = salvageGain ? 'Salvage plus ' + salvageGain + '. ' : '';
         var over = destroyTarget(t, salvageText);
-        if (!over) say(salvageText + name + ' destroyed. ' + aliveTargets().length + ' targets remain.');
+        if (!over) {
+            // A mission's friendly (kind: 'friendly') never counts as a
+            // "target remaining" in this readout — it isn't something to
+            // destroy, and always-alive-forever would make the count
+            // permanently off by one otherwise.
+            var remain = mission ? aliveTargets().filter(function (x) { return !x.kind; }).length
+                                  : aliveTargets().length;
+            say(salvageText + name + ' destroyed. ' + remain + ' targets remain.');
+        }
         return true;
     }
     return false;
@@ -2257,8 +2433,12 @@ function updateEnemies(dt) {
     if (threat) { stepThreat(dt); return; }
     threatIn -= dt;
     if (threatIn > 0) return;
+    // SPEC 2.17: in a mission every raider is already `hostile` from the
+    // start (they're harassing the friendly, not idle), so this pool has
+    // to key off `provoked` instead — only a raider the player has actually
+    // hit joins the normal player-vs-enemy fight modeled below.
     var cands = aliveTargets().filter(function (t) {
-        return !t.kind && t.hostile && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
+        return !t.kind && (mission ? t.provoked : t.hostile) && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
     });
     if (!cands.length) { threatIn = 2; return; }
     var alert = cands.filter(function (t) { return t.alert; });
@@ -2910,6 +3090,7 @@ function statusReport() {
         'Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery' : '') + '. ';
     line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
+          : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
           : aliveTargets().length + ' targets remain. ';
     if (mode !== 'mining') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
@@ -2925,6 +3106,11 @@ function statusReport() {
         if (laserHot()) line += 'Laser overheated. ';
     }
     if (demo) line += 'Clock ' + fmtTime(demo.elapsed) + '. ' + demoObjective();
+    if (mission) {
+        var f = mission.friendly;
+        line += f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent. ';
+        if (mission.kind === 'escort') line += 'Leg ' + Math.round(mission.elapsed) + ' of ' + CFG.missionEscortLegS + ' seconds. ';
+    }
     say(line);
 }
 
@@ -3570,9 +3756,83 @@ var HAIL_ITEMS = [
                              : units > 0 ? units + ' units bought. Tank at ' + Math.round(rcsPct()) + ' percent. ' + profile.credits + ' credits left.'
                                          : 'Not enough credits for any.');
       } },
+    { label: 'Missions',
+      desc: function () {
+          return MISSIONS.every(function (m) { return !missionAvailable(m.kind); })
+              ? 'Both on cooldown right now.' : 'Escort or defend work, offered from here.';
+      },
+      run: function () { hailMenu.submenu = 'missions'; missionIdx = 0; say(missionsMenuIntro()); } },
     { label: 'Close', desc: 'Break off the hail.',
       run: function () { closeHailMenu(); } }
 ];
+
+// ---- Missions submenu (SPEC 2.17) ------------------------------------------
+// Same nested-submenu shape as the station menu's Modules list: HAIL_ITEMS'
+// own "Missions" entry sets hailMenu.submenu, and hailMenuKey dispatches
+// here first while it's set, same as stationMenuKey does for Modules.
+var MISSIONS = [
+    { kind: 'escort', label: 'Escort freighter to Planet Auren',
+      desc: function () {
+          return 'Three waves of raiders will try to stop it over the ' + CFG.missionEscortLegS +
+                 ' second leg. ' + CFG.missionCredits + ' credits on success.';
+      } },
+    { kind: 'defend', label: 'Defend the miner at Field Kappa',
+      desc: function () {
+          return 'Two waves of raiders. ' + CFG.missionCredits + ' credits on success.';
+      } }
+];
+
+function missionAvailable(kind) { return simClock >= (missionCooldownUntil[kind] || 0); }
+
+function missionText(i) {
+    var m = MISSIONS[i];
+    if (!missionAvailable(m.kind)) {
+        return m.label + '. Not available for ' + Math.ceil(missionCooldownUntil[m.kind] - simClock) + ' more seconds.';
+    }
+    return m.label + '. ' + m.desc();
+}
+
+function missionsMenuIntro() {
+    return 'Missions. Use up and down arrows to navigate and Enter to accept. ' + missionText(missionIdx);
+}
+
+function missionsKey(lname) {
+    var n = MISSIONS.length;
+    if (lname === 'escape' || lname === 'x') { hailMenu.submenu = null; say(hailItemText()); return; }
+    if (lname === 'arrowdown') { menuClick(); missionIdx = (missionIdx + 1) % n; say(missionText(missionIdx)); }
+    else if (lname === 'arrowup') { menuClick(); missionIdx = (missionIdx - 1 + n) % n; say(missionText(missionIdx)); }
+    else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
+        var m = MISSIONS[missionIdx];
+        if (!missionAvailable(m.kind)) { SIM.cues.play('refusal_wait'); say('Not available yet.'); return; }
+        menuSelectSound();
+        startMissionRun(m.kind);
+    } else if (lname === 'tab') {
+        say(missionText(missionIdx));
+    } else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse missions, Enter accepts, Escape returns. ' + MISSIONS[missionIdx].label + '.');
+    }
+}
+
+// Accepting a mission leaves the hail behind and enters the encounter the
+// same way callPoi()'s combat/mining branches do: snapshot the sector spot
+// (so returning, or a loss's tug, comes back here), then newGame('combat',
+// spec) — the spec object becomes `mission`, which routes newGame's own
+// roster-building to makeMissionRoster instead of the standard five ships.
+function startMissionRun(kind) {
+    missionCooldownUntil[kind] = simClock + CFG.missionCooldownS;
+    var poi = hailMenu.poi;
+    hailMenu.open = false;
+    hailMenu.submenu = null;
+    sectorHome = snapshotSector(poi);
+    var spec = {
+        kind: kind, elapsed: 0, wavesSent: 0, ended: false,
+        nextStrikeIn: CFG.missionStrikeGapMinS + Math.random() * (CFG.missionStrikeGapMaxS - CFG.missionStrikeGapMinS),
+        waveTimes: kind === 'escort' ? CFG.missionEscortWaveTimes.slice() : CFG.missionDefendWaveTimes.slice()
+    };
+    newGame('combat', spec);
+    say((kind === 'escort' ? 'Escort accepted. ' : 'Defend accepted. ') + missionIntro());
+}
 
 function hailItemText() {
     var it = HAIL_ITEMS[hailMenu.idx];
@@ -3592,11 +3852,13 @@ function openHailMenu(poi) {
 
 function closeHailMenu() {
     hailMenu.open = false;
+    hailMenu.submenu = null;
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     say('Hail closed.');
 }
 
 function hailMenuKey(lname) {
+    if (hailMenu.submenu === 'missions') { missionsKey(lname); return; }
     var n = HAIL_ITEMS.length;
     if (lname === 'escape' || lname === 'x') { closeHailMenu(); return; }
     if (lname === 'arrowdown') { menuClick(); hailMenu.idx = (hailMenu.idx + 1) % n; say(hailItemText()); }
@@ -3996,6 +4258,7 @@ function onKeyDown(e) {
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
         if (e.repeat) return;
         if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
+        if (mission && over()) { say('X returns to the sector.'); return; }
         if (over()) { say('Enter restarts.'); return; }
         if (lname === 'w') toggleAutoThrust();
         else if (lname === 'r') radarPing();
@@ -4078,6 +4341,11 @@ function onKeyDown(e) {
             // being set here always means this loss came from there.
             if (tug) {
                 payTugFee();
+            } else if (mission && over()) {
+                // SPEC 2.17: a mission (won or failed) never Enter-replays —
+                // it's offered once per station per cooldown from the hail
+                // menu, not farmable in place. X is the only way out.
+                say('Mission ' + (mission.success ? 'complete' : 'over') + '. X returns to the sector.');
             } else if (over()) {
                 // A fresh drill run from the menu starts a fresh hold and a
                 // full magazine; a replay inside a sector run keeps the
@@ -4129,6 +4397,10 @@ function frame(now) {
 }
 
 function simTick(dt) {
+    // Session game-time clock (SPEC 2.17): backs mission cooldowns, so it
+    // needs to keep counting outside the delivery run too — same gate as
+    // the delivery clock, minus its over()/tug wrinkle (nothing here needs it).
+    if (running && !help.open && !map.open && !menuOpen && dt > 0) simClock += dt;
     // The delivery clock runs whenever the sim is live, hyperwarp included —
     // and, as of SPEC 2.16, through a tug wait too: the tug is a consequence
     // on the clock, not a pause of it.
@@ -4218,6 +4490,7 @@ function simTick(dt) {
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
+    if (mission) updateMission(dt);
     updateWarpCore(dt);
     updateStatusLine();
 }
@@ -4282,6 +4555,13 @@ window.__sim = {
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
+            mission: mission ? { kind: mission.kind, elapsed: Math.round(mission.elapsed * 10) / 10,
+                                   wavesSent: mission.wavesSent, ended: mission.ended, success: mission.success,
+                                   friendly: { name: mission.friendly.name, hp: mission.friendly.hp,
+                                               maxHp: mission.friendly.maxHp, alive: mission.friendly.alive } } : null,
+            simClock: Math.round(simClock * 10) / 10,
+            missionCooldown: { escort: Math.round(Math.max(0, missionCooldownUntil.escort - simClock)),
+                               defend: Math.round(Math.max(0, missionCooldownUntil.defend - simClock)) },
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
             rcs: { charge: Math.round(rcs), max: CFG.rcsMax, pct: Math.round(rcsPct()), battery: rcsBattery },
             collisionDamage: collisionDamage,
@@ -4350,6 +4630,8 @@ window.__sim = {
         if (o && o.rcsBattery !== undefined) rcsBattery = o.rcsBattery;
         if (o && o.tugRemaining !== undefined && tug) tug.remaining = o.tugRemaining;
         if (o && o.kill) shipDestroyed('test rig');
+        if (o && o.friendlyHp !== undefined && mission) mission.friendly.hp = o.friendlyHp;
+        if (o && o.missionElapsed !== undefined && mission) mission.elapsed = o.missionElapsed;
         if (o && o.credits !== undefined && profile) profile.credits = o.credits;
         if (o && o.pos !== undefined) ship.pos = v3(o.pos.x, o.pos.y, o.pos.z);
         if (o && o.vel !== undefined) ship.vel = v3(o.vel.x, o.vel.y, o.vel.z);
@@ -4371,7 +4653,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false; tug = null;
+    won = false; lost = false; locked = false; tug = null; mission = null;
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -4385,13 +4667,17 @@ function clearMission() {
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
 
-function newGame(m) {
+function newGame(m, missionSpec) {
     if (m) mode = m;
     clearMission();
+    if (missionSpec) mission = missionSpec;   // SPEC 2.17: set AFTER clearMission clears the old one
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'mining') {
         targets = makeMiningRoster();
+    } else if (mission) {
+        targets = makeMissionRoster(mission);
+        targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
     } else {
         targets = makeRoster();
         targets.forEach(function (t) {

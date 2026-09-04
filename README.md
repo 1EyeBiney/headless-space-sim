@@ -61,11 +61,13 @@ The shareable challenge. The clock starts at once.
    delivery.
 
 Calling the station works by range: within 500 it hails you back with a
-small menu — rearm, sell ore, buy reaction mass — and within 150 it docks
-you outright. Fly it in by ear — the lock tick and R (range, closing or
-opening) are your instruments. Docking repairs your hull, rearms your
-eight missiles, restocks chaff, refills the warp tank, and tops off your
-reaction mass. Losing your ship fails the run.
+small menu — rearm, sell ore, buy reaction mass, take a mission — and
+within 150 it docks you outright. Fly it in by ear — the lock tick and R
+(range, closing or opening) are your instruments. Docking repairs your
+hull, rearms your eight missiles, restocks chaff, refills the warp tank,
+and tops off your reaction mass. Losing your ship no longer fails the
+run outright — a tug is dispatched instead, on the clock, and the run's
+timer keeps running while you wait.
 
 Once docked, a station menu opens: **Sell ore** trades your cargo for
 credits (10 ore per credit), and **Modules** spends them on permanent
@@ -73,6 +75,15 @@ upgrades — a faster shield, a bigger shield pool, a larger missile
 magazine, a bigger warp tank, faster core cooling. Every module adds a
 little mass, and mass is the tradeoff: no friction in space, so a heavier
 ship just turns and thrusts a little slower. Escape undocks.
+
+The hail (in range but not close enough to dock) also offers **Missions**:
+escort a freighter to Planet Auren, or defend a miner at Field Kappa.
+Raiders leave you alone until you hit one — until then they're going
+after the friendly instead, whose hull you'll hear called out as they
+take hits. Survive the escort's run or clear both of the defend's waves
+and the friendly lives, paying credits and a little standing at the
+station; lose the friendly and the mission pays nothing. Each mission
+goes back on offer a while after you take it.
 
 Thrust and braking both draw on a reaction mass tank, and so do the
 automatic stabilizers that quietly cancel your drift whenever you coast —

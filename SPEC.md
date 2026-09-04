@@ -935,8 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.16, 2.18, and 2.19 are DONE (Sonnet). 2.17 next — the last
-item in Phase 2.
+2.10 through 2.19 are all DONE (Sonnet) — Phase 2 is complete.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1282,24 +1281,166 @@ wait, 53 at arrival) — the demo object survives the tug arrival intact
 (`combatCleared`/`delivered` unchanged) and resumes normally afterward.
 Zero console errors throughout. Not yet heard by Brian.
 
-#### 2.17 Escort and defend missions (ideas5)
+#### 2.17 Escort and defend missions (ideas5) — DONE
 
-- Offered from the hail menu's **Missions** line at Station Meridian:
-  "Escort freighter to Planet Auren" and "Defend the miner at Field
-  Kappa". Both reuse the combat encounter with a `mission` object and a
-  new friendly target kind (`kind: 'friendly'`, its own engine loop, not
-  Tab-cycled by default, `hp` spoken on hits).
-- **Escort**: the freighter (hull 200) flies from the station toward the
-  planet at 40; three waves of two interceptors attack it, each wave
-  announced ("Raiders inbound on the freighter, bearing..."); enemies
-  target the freighter unless the pilot hits them first (the provoke
-  fuse). It ends when the freighter's leg completes (about 90 s) or its
-  hull hits zero. **Defend**: the miner (hull 150) sits in the cloud; two
-  waves of three. Reward on success: credits `missionCredits` 300 and
-  salvage for every kill; failure pays nothing. Enemies in missions are
-  hostile from the start at every tier — they're attacking the friendly.
-- Each mission is offered once per station per `missionCooldownS` 600 of
-  game time.
+Built as specified, with one deliberate architectural simplification
+(see below) and one naming trade-off, both explained here rather than
+buried in code comments alone.
+
+**Where it's offered**: `HAIL_ITEMS` gained a `Missions` line (before
+`Close`); selecting it opens a nested `MISSIONS` submenu
+(`hailMenu.submenu = 'missions'`, dispatched from `hailMenuKey` exactly
+the way the station menu's Modules list already nests under
+`stationSubmenu` — same shell, same precedent) listing "Escort freighter
+to Planet Auren" and "Defend the miner at Field Kappa". Accepting one
+(`startMissionRun(kind)`) starts the cooldown immediately (at ACCEPT,
+not completion — matches "offered once", and means abandoning a mission
+early via X still costs the cooldown), snapshots the sector spot the
+same way `callPoi()`'s combat/mining branches already do, and calls
+`newGame('combat', spec)` — `mode` stays `'combat'` throughout (per the
+codebase's own shape: `updateEnemies`/`statusReport`/`tugCandidate`/the
+map's `won`-gate all key off the literal string `'combat'`, and a brand
+new `mode` value would need to be threaded through every one of those;
+a mission is a `mission` object layered on top instead, the same way
+`demo` already layers the delivery run's objective on top of
+`'combat'`/`'mining'` without being its own mode).
+
+**The friendly target**: `makeMissionRoster(mission)` builds ONE target
+with `kind: 'friendly'` — the Freighter (hull 200, the same voice/
+recorded engine loop as the training roster's own "Freighter" entry) or
+the Miner (hull 150, oscillator voice only — no recorded loop exists for
+one yet). `buildVoice(t)` needed no changes at all to accept it (it was
+already generic enough — confirmed by reading it before writing this).
+`selectNearest()`/`cycleTarget()` both gained a `t.kind === 'friendly'`
+exclusion so it's never Tab-cycled, matching spec; `destroyTarget`'s
+generic "all targets destroyed = victory" check is skipped entirely
+when `mission` is set (the friendly stays `alive` the whole mission, so
+that check would never fire for escort and would fire too early — after
+any single wave, before the next spawns — for defend), replaced by
+`updateMission`'s own wave-count/timer logic.
+
+**Raiders arrive in scripted waves**, not all at once:
+`CFG.missionEscortWaveTimes` `[15, 45, 75]` / `CFG.missionDefendWaveTimes`
+`[10, 45]`, sizes `CFG.missionEscortWaveSize` 2 / `CFG.missionDefendWaveSize`
+3, `spawnMissionWave()` called from `updateMission(dt)` once `mission.elapsed`
+crosses each scheduled time. Every raider is named plainly `'Raider'`
+(not numbered) — SHIP_CLASS/SALVAGE/laser-matchup-multiplier all key off
+exact ship name, and a numbered "Raider 1" would silently fall back to
+the wrong salvage/matchup tier; the trade-off, accepted on purpose, is
+that Tab-cycling between two simultaneous raiders can't distinguish them
+by name, only by bearing/distance, same as flying blind between two
+same-named things has always meant in this codebase (there was no
+existing precedent either way, since the training roster never
+duplicates a name).
+
+**The provoke/victim mechanic — the one deliberate simplification**:
+spec says "enemies target the freighter unless the pilot hits them
+first." The FULL version of that would mean threading a "who's the
+victim" parameter through `startEnemyLaser`/`startEnemyMissile`/
+`stepThreat` — the exact telegraph/beam/guided-missile machinery every
+other combat scenario in this game already relies on, heavily tested,
+and touching it risked regressing standalone drills, the sector's
+Contested Zone, and the delivery run all at once for a feature none of
+which need it. Built instead as a side-channel that reuses that
+machinery UNCHANGED for its actual job (fighting the player) and adds a
+separate, simpler mechanic for the other case: `provoke(t)` (called by
+every `damageTarget` hit, mission or not) now unconditionally sets
+`t.provoked = true` before its existing hostile-latch logic — a no-op
+outside a mission, since nothing reads it there. `updateEnemies`'s
+candidate pool, which every mission raider is otherwise eligible for
+(since raiders spawn `hostile: true` from the start, per spec), now
+checks `mission ? t.provoked : t.hostile` — meaning only a raider the
+PLAYER has actually hit ever joins the real telegraph/beam/missile fight
+against them, using every one of those systems exactly as they already
+work. Every raider that hasn't been hit yet instead gets picked, on a
+`CFG.missionStrikeGapMinS`–`MaxS` (6–10 s) timer, by `missionStrike(t)`
+in `updateMission`: a one-shot tone at the raider's position plus
+`CFG.missionStrikeDmg` (15) off the friendly's hp, spoken as one combined
+line ("Raider hits the Freighter. Freighter hull N percent.") — a
+deliberately simpler simulation than the full telegraph+sustained-beam
+model, not a scaled-down version of it. This means a raider currently
+harassing the friendly and a raider currently fighting the player are
+running on two independent systems that happen to share the same target
+objects — confirmed working correctly together in testing (see below):
+a provoked raider immediately stopped appearing in `missionStrike`'s
+candidate pool and started telegraphing/firing at the player instead,
+mid-mission, while its still-unprovoked wave-mates kept hitting the
+friendly on their own schedule, no interference either way.
+
+**Ending a mission**: `missionEnd(success)` sets `won = true` for BOTH
+outcomes (not `lost` — the player's own ship is never destroyed by a
+mission failure, only the friendly is, so reusing `lost`'s ship-destroyed
+semantics would have been wrong) and gates on `mission.success` for the
+reward/message. Success (escort: `mission.elapsed >= CFG.missionEscortLegS`
+90 with the friendly still alive; defend: both waves sent and every
+non-friendly target destroyed) pays `CFG.missionCredits` 300 credits and
+bumps Station Meridian's influence by 1. Failure (the friendly's hp
+reaching 0, via `missionStrike`) pays nothing, exactly as specified.
+Enter is refused after either outcome ("Mission complete/over. X returns
+to the sector.") rather than replaying in place — a mission is offered
+once per cooldown from the hail menu, not farmable via Enter — and the
+generic Enter-retry code path (which still runs `combatIntro()` and
+would have said something nonsensical like "Five targets detected") is
+now gated to skip entirely whenever `mission` is set. `statusReport` (I)
+gained a friendly-hp line and, for escort, a leg-progress line; the
+"N targets remain"/"N targets remain" readouts on a kill and on I both
+exclude the friendly from the count so they don't stay off-by-one
+forever.
+
+**Cooldown**: spec's "600 of game time" needed an actual game clock that
+exists even outside the delivery run (the only other game-time value in
+this codebase, `demo.elapsed`, only exists while a delivery run is
+active). Added `simClock`, a plain session counter advanced in `simTick`
+on the same live/not-under-an-overlay gate as everything else — NOT
+persisted across a reload, same as `demo.elapsed` isn't either, so
+"per station" reduces to "for this session" today (there's only one
+station to offer missions from anyway). `missionCooldownUntil = {escort,
+defend}` are simClock timestamps, not part of `profile` — checked via
+`missionAvailable(kind)`, refused with a spoken remaining-seconds count
+in the Missions submenu.
+
+**Interaction with SPEC 2.16's tug**: untouched on purpose — a mission
+always sets `sectorHome` the same way any other sector-entered encounter
+does, so the player's own ship being destroyed mid-mission (as opposed
+to the friendly) routes through `tugCandidate()`/`shipDestroyed()`
+exactly like any other sector loss, with no mission-specific code
+needed. Confirmed in testing: killing the player mid-escort correctly
+dispatched the tug, and `mission` was cleanly cleared to `null` (via
+`clearMission()`, already called from `tugArrives()`'s own
+`newGame('sector')`) by the time the tug docked.
+
+Machine-tested at a local server end to end: opened the hail menu,
+browsed to Missions, accepted Escort — friendly spawned at full hull,
+wave 1 (2 raiders) arrived on schedule with a spoken "2 raiders inbound
+on the Freighter..." line, unprovoked raiders hit the friendly on their
+own timer while it kept flying its leg; hit one raider with a missile
+(survived, didn't kill it) and confirmed it immediately switched to
+telegraphing/firing at the PLAYER through the untouched vanilla threat
+system while its wave-mates kept hitting the friendly independently;
+killed a different raider outright and confirmed salvage awarded and
+the "N targets remain" count correctly excluded the friendly; let the
+full 90-second leg play out with the friendly surviving at 25% hull —
+mission succeeded, 300 credits and one influence point awarded, Enter
+correctly refused to replay, X returned cleanly to the sector; accepted
+Defend next and force-lowered the miner's hp near zero via a test poke
+to reach the failure path — "Raider hits the Miner. Miner destroyed."
+followed by "Mission failed. No reward." with credits confirmably
+unchanged; re-hailed the station immediately after and confirmed BOTH
+mission kinds correctly refused as on-cooldown with an accurate seconds-
+remaining readout, and that accepting while on cooldown is blocked with
+no credits spent and mode unchanged; killed the player's own ship mid-
+mission and confirmed the SPEC 2.16 tug fired normally and mission state
+was cleanly cleared by the time it docked. A regression pass on the
+UNTOUCHED standalone Combat training drill confirmed the original "all
+five destroyed = Victory, Enter restarts" path still works byte-for-byte
+as before (its own salvage/kill/victory speech unaffected by any of the
+`mission`-gated branches added this round). Zero console errors across
+every scenario. Not yet heard by Brian — the friendly-strike tone, the
+wave-inbound announcement, and the mission-complete fanfare are all new
+sounds nobody has listened to yet.
+
+Phase 2 (the Sunday demo, 2026-09-06 target) is now complete: 2.10
+through 2.19 are all DONE.
 
 #### 2.18 The profile version (ideas5) — DONE
 
