@@ -93,7 +93,7 @@ Right hand on the arrows, left hand on everything else.
 | --- | --- |
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake |
-| 1-6 | Select a laser slot |
+| 1-6 | Select a laser slot. Switching takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |

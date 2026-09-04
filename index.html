@@ -310,6 +310,23 @@ var LASERS = [
 var LASER_SLOTS = 6;
 var STARTING_SLOTS = ['mining1', 'mining2'];   // slots 3-6 empty until the station sells more
 
+// Switching slots takes time (SPEC 1.14, Brian): the sound and the delay
+// belong to the SLOT (the hotkey), not the laser fitted in it. The delays
+// are the six switch recordings' lengths (2.02-2.67 s) stretched linearly
+// so the shortest lands at 1.4 s and the longest at 3.2 s, and the clip is
+// time-stretched to fill its window (playbackRate = clip length / s), so
+// a heavy slot grinds slow and low and a light one snaps. Three clips tie
+// at 2.023 s, so three slots tie at 1.4 — Brian hand-sets these once he
+// has heard the six in place.
+var SLOT_SWITCH = [
+    { asset: 'laser_switch3', s: 1.8 },   // slot 1
+    { asset: 'laser_switch4', s: 1.4 },   // slot 2
+    { asset: 'laser_switch5', s: 2.2 },   // slot 3
+    { asset: 'laser_switch1', s: 1.4 },   // slot 4
+    { asset: 'laser_switch2', s: 3.2 },   // slot 5
+    { asset: 'laser_switch6', s: 1.4 }    // slot 6
+];
+
 // Sound options (SPEC 1.12). Three levels rather than a percentage — a
 // percentage is a lot of arrow presses by ear. Speech is never touched.
 var SOUND_LEVELS = [
@@ -521,6 +538,7 @@ var stationSubmenu = null;  // null | 'modules' — which list stationMenuKey is
 var moduleIdx = 0;       // cursor in the Modules submenu
 var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
 var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
+var laserSwitch = null;  // { slot, until, timer, src, g } while a slot switch is in progress (SPEC 1.14)
 var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
 var shieldRepairTimer = null;   // the ratchet tick loop while in disrepair
 var threat = null;       // the one enemy attack in progress (combat only)
@@ -637,6 +655,7 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'Weapons', items: [
         'Your ship has six laser slots. Keys 1 through 6 select a slot and speak what is fitted there; Space fires the selected laser. You start with mining laser one in slot 1 and mining laser two in slot 2; the rest are empty until the station sells more.',
+        'Switching to another slot takes a moment: you hear the mechanism work, and the heavier the slot the longer it takes. Space is refused until it finishes, and the laser announces itself ready. Re-selecting the slot you are on just restates it.',
         'A burst is fire and forget: one press runs the whole burst, five ticks over five seconds, and it cannot be stopped. Then that slot recharges for a few seconds before it can fire again, and the refusal tells you how long.',
         'Every laser has its own damage shape. Mining laser one bites evenly on every tick; mining laser two lands two heavy ticks and then settles. The shape follows the sound, so you learn each laser by ear.',
         'Each damage tick is also bigger the more centered the target is at that moment, and the number is spoken as it lands.',
@@ -788,7 +807,7 @@ var KEY_DESCRIPTIONS = {
     w: 'Thrust forward along the nose. Hold to accelerate.',
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
-    '1': 'Select laser slot 1 and speak what is fitted there.',
+    '1': 'Select laser slot 1 and speak what is fitted there. Switching slots takes a moment, longer for the heavier slots.',
     '2': 'Select laser slot 2.', '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
@@ -1404,19 +1423,71 @@ function laserCooldownLeft(i) {
     return Math.max(0, ((laserReadyAt[i] || 0) - Date.now()) / 1000);
 }
 
+// Seconds left on a slot switch in progress (0 = none).
+function laserSwitchLeft() {
+    return laserSwitch ? Math.max(0, (laserSwitch.until - Date.now()) / 1000) : 0;
+}
+
+function stopLaserSwitch() {
+    if (!laserSwitch) return;
+    var s = laserSwitch; laserSwitch = null;
+    clearTimeout(s.timer);
+    if (s.g) {
+        SIM.audio.ramp(s.g.gain, 0.0001, 0.1);
+        setTimeout(function () { try { s.src.stop(); s.g.disconnect(); } catch (e) {} }, 200);
+    }
+}
+
+// Keys 1-6. Switching to another slot takes SLOT_SWITCH[i].s seconds: the
+// slot's recording plays, stretched to fill exactly that window, Space is
+// refused until it ends, then the laser announces itself. Re-selecting the
+// current slot just restates it; an empty slot refuses with no delay; a
+// burst in progress refuses (it can't be stopped, SPEC 1.9).
 function selectSlot(i) {
+    var L = profile ? laserById(profile.slots[i]) : null;
+    if (beam && beam.tool === 'laser') {
+        SIM.cues.play('refusal_dud');
+        say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Switch after.');
+        return;
+    }
+    if (i === laserSlot) {
+        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+        SIM.cues.play('slot_select');
+        say(laserStatusText());
+        return;
+    }
+    stopLaserSwitch();
     laserSlot = i;
     saveProfile();
-    var L = currentLaser();
     if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
-    SIM.cues.play('slot_select');
-    var left = laserCooldownLeft(i);
-    say(laserSlotText(i) + (left > 0 ? ', recharging, ' + Math.ceil(left) + ' seconds.' : '.'));
+    var sw = SLOT_SWITCH[i], secs = sw.s, A = SIM.audio, src = null, g = null;
+    if (A.ctx && A.assetBufs[sw.asset]) {
+        var buf = A.assetBufs[sw.asset];
+        src = A.ctx.createBufferSource(); src.buffer = buf;
+        src.playbackRate.value = buf.duration / secs;      // stretch or shrink to the window
+        g = A.ctx.createGain(); g.gain.value = 0.5;
+        src.connect(g); g.connect(A.uiBus);
+        src.start();
+    } else if (A.ctx) {
+        // Clip not decoded (or missing): a mechanical sweep the same length.
+        A.sfxSweep({ f1: 300, f2: 900, f3: 500, dur: secs, vol: 0.12, type: 'sawtooth' });
+    }
+    laserSwitch = { slot: i, until: Date.now() + secs * 1000, src: src, g: g, timer: null };
+    laserSwitch.timer = setTimeout(function () {
+        if (!laserSwitch || laserSwitch.slot !== i) return;
+        laserSwitch = null;
+        if (!running) return;
+        var left = laserCooldownLeft(i);
+        SIM.cues.play('slot_select');
+        say(capFirst(L.name) + (left > 0 ? ' recharging, ' + Math.ceil(left) + ' seconds.' : ' ready.'));
+    }, secs * 1000);
+    say(laserSlotText(i) + ', switching.');
 }
 
 function laserStatusText() {
     var L = currentLaser();
     if (!L) return laserSlotText(laserSlot) + '. ';
+    if (laserSwitch) return laserSlotText(laserSlot) + ', switching, ' + Math.ceil(laserSwitchLeft()) + ' seconds. ';
     var left = laserCooldownLeft(laserSlot);
     return laserSlotText(laserSlot) + (left > 0 ? ', recharging, ' + Math.ceil(left) + ' seconds. ' : ', ready. ');
 }
@@ -1475,6 +1546,11 @@ function startBeam(tool) {
         }
         L = currentLaser();
         if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(laserSlot) + '. Fit a laser at the station.'); return; }
+        if (laserSwitch) {
+            SIM.cues.play('refusal_dud');
+            say('Switching lasers, ' + Math.ceil(laserSwitchLeft()) + ' seconds.');
+            return;
+        }
         var left = laserCooldownLeft(laserSlot);
         if (left > 0) {
             SIM.cues.play('refusal_dud');              // recharging: a dud click,
@@ -3431,6 +3507,7 @@ window.__sim = {
             hull: hull, missiles: missiles, laserHot: laserHot(),
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
+                     switching: Math.round(laserSwitchLeft() * 10) / 10,
                      burstLeft: beamSecondsLeft() },
             shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
@@ -3514,6 +3591,7 @@ function clearMission() {
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();
     laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
+    stopLaserSwitch();
     // (the warp charge itself persists across a sector run)
     stopDocking(true); docked = null; dockToneOn(false);
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across

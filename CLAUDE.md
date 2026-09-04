@@ -36,12 +36,14 @@ expands.
   `audio/ships/warp/` = a warp-drama candidate recording; `audio/weapons/
   missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
   = 16 laser candidates (Mining ×8, Rapid-pulse ×8; `mining1`/`mining2`
-  embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, SPEC
-  1.14 — the switch delay is timed off their lengths); `audio/Explosions/` = 8 new
+  embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, all
+  six embedded as `laser_switch1-6` for SPEC 1.14 — the per-slot switch
+  delay is timed off their lengths); `audio/Explosions/` = 8 new
   unintegrated hull-breach/explosion candidates. Everything under
   `audio/mining/` and `audio/weapons/missiles/` (the embedded ones) is
   already wired in by key name; everything else Brian is auditioning is
-  NOT yet decoded into `audio_assets.js` or referenced anywhere — leave it
+  NOT yet decoded into `audio_assets.js` or referenced anywhere (the six
+  `laser_switch` clips are the exception, embedded for SPEC 1.14) — leave it
   unconnected until told otherwise; see "Audio architecture" for how it
   eventually gets wired in. `audio/z.old/` (Backups/Media/peaks, REAPER
   scratch) is gitignored.
@@ -365,7 +367,15 @@ static once tiers exist.
   entirely — whatever charge is left just regenerates at `shieldRegenPerS`
   3/s like any other down-and-not-full shield.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
-  `LASERS` data table), keys `1`-`6` select (`selectSlot`), Space fires the
+  `LASERS` data table), keys `1`-`6` select (`selectSlot` — as of SPEC 1.14 a switch to
+  ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2 by slot, Brian's
+  per-slot clip mapping 3/4/5/1/2/6; the slot's `laser_switch` recording
+  plays on the UI bus time-stretched via `playbackRate = clip length / s`
+  to fill exactly that window, Space is refused meanwhile, `laserSwitch`
+  holds the state and `stopLaserSwitch()` runs in `clearMission`;
+  re-selecting the current slot just restates it, an empty slot refuses
+  with no delay and cancels any switch in progress, a burst in progress
+  refuses the switch), Space fires the
   selected laser via `startBeam('laser')`. Ship starts with `mining1` (slot
   1, steady 20/20/20/20/20 damage profile) and `mining2` (slot 2, front-
   loaded 35/35/10/10/10); slots 3-6 empty until the station sells more.
@@ -401,7 +411,7 @@ static once tiers exist.
 
 ## Key map (left-hand doctrine — right hand stays on arrows)
 
-Arrows yaw/pitch · W thrust / S brake · 1-6 select laser slot · Space fires
+Arrows yaw/pitch · W thrust / S brake · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
 selected laser (fire-and-forget, cannot be stopped) · F missile · G shields
 · Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · B beacons on/off/target only · I
@@ -525,9 +535,10 @@ Shift+T cycles back / Shift+W auto-thrust. Brian answered the five open
 questions the same day (Part C: `B` key for beacons with a Target-only
 state, per-slot switch clips 3/4/5/1/2/6 stretched into 1.4–3.2 s,
 time-stretch to fit, Shift+R for the sweep, build order 1.12 → 1.13 →
-1.14 → 1.15 → 1.8). 1.12 (see "Sound options" above) and 1.13 (the
-warp-core alerts, in the Sector bullet) are built and machine-tested;
-1.14 (laser switching) is next.
+1.14 → 1.15 → 1.8). 1.12 (see "Sound options" above), 1.13 (the
+warp-core alerts, in the Sector bullet), and 1.14 (the slot switch, in
+the lasers bullet) are built and machine-tested; 1.15 (R range / Shift+R
+sweep / Shift+T back / Shift+W auto-thrust) is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

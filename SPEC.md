@@ -128,10 +128,9 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
 Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
-(sound options, the `B` beacon key) and 1.13 (warp-core alerts) are
-DONE. Order for the rest (Brian: decided) — 1.14, 1.15 (small, one
-commit each), then 1.8 chaff, then 1.11 ship window if Brian wants it
-before Phase 2.
+(sound options, the `B` beacon key), 1.13 (warp-core alerts), and 1.14
+(laser switching) are DONE. Order for the rest (Brian: decided) — 1.15,
+then 1.8 chaff, then 1.11 ship window if Brian wants it before Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -450,7 +449,19 @@ jump. No console errors. Not yet heard.
   sector flight only: encounter exits and the station already say "Warp
   tank filled", no double announcement. `I` keeps reading the exact charge.
 
-#### 1.14 Laser switching takes time, timed by the switch recordings (ideas3)
+#### 1.14 Laser switching takes time, timed by the switch recordings (ideas3) — DONE, needs Brian's ear
+
+Built and machine-tested: the six wavs are decoded into `audio_assets.js`
+(mono 48 kHz 96 kbps like the rest, ~25-33 KB each); pressing another
+slot speaks "Slot 2, mining laser two, switching.", Space during it is
+refused with the seconds left, re-pressing the same key restates the
+countdown, the window ends with "Mining laser two ready." on the dot
+(slot 1 measured 1.8 s: 0.8 left at +1.0 s, ready by +2.0 s); an empty
+slot cancels a switch in progress and refuses with no delay; a burst in
+progress refuses the switch; `I` reads "switching, N seconds"; the clip
+rates come out as designed (slot 2 at 1.448×, slot 5 at 0.833×). No
+console errors. Not yet heard — the pitch shift from the stretch is the
+first thing for Brian's ear, then the three tied 1.4 s slots.
 
 - Six recordings, `audio/weapons/lasers/laser_switch1–6.wav`, measured
   from their WAV headers 2026-09-04: 1 = 2.023 s, 2 = 2.666 s, 3 = 2.164 s,
