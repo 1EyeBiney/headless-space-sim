@@ -411,9 +411,16 @@ static once tiers exist.
 
 ## Key map (left-hand doctrine — right hand stays on arrows)
 
-Arrows yaw/pitch · W thrust / S brake · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
+Arrows yaw/pitch · W thrust / S brake (Shift+W toggles
+auto-thrust — `autoThrust` reads as a held W inside `simTick` via an
+effective-keys object `k`; any W or S press, Shift+W, a warp jump,
+docking, or `clearMission` ends it; the Shift chords are checked in
+`onKeyDown` BEFORE the `HELD` branch, since Shift+W arrives as `lname`
+'w') · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
 selected laser (fire-and-forget, cannot be stopped) · F missile · G shields
-· Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
+· Tab cycle targets (Shift+T / Shift+Tab cycle back) · T report selected
+target (lock onset also speaks distance) · R range to target with
+closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · B beacons on/off/target only · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
 objective) · X leave · F1 help · F12 explore · Escape
@@ -537,8 +544,9 @@ state, per-slot switch clips 3/4/5/1/2/6 stretched into 1.4–3.2 s,
 time-stretch to fit, Shift+R for the sweep, build order 1.12 → 1.13 →
 1.14 → 1.15 → 1.8). 1.12 (see "Sound options" above), 1.13 (the
 warp-core alerts, in the Sector bullet), and 1.14 (the slot switch, in
-the lasers bullet) are built and machine-tested; 1.15 (R range / Shift+R
-sweep / Shift+T back / Shift+W auto-thrust) is next.
+the lasers bullet), and 1.15 (R range / Shift+R sweep / Shift+T back /
+Shift+W auto-thrust, in the key map) are all built and machine-tested —
+ideas3 is fully in. Per Brian's order, 1.8 (chaff) is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

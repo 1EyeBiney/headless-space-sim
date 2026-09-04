@@ -128,9 +128,10 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
 Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
-(sound options, the `B` beacon key), 1.13 (warp-core alerts), and 1.14
-(laser switching) are DONE. Order for the rest (Brian: decided) — 1.15,
-then 1.8 chaff, then 1.11 ship window if Brian wants it before Phase 2.
+(sound options, the `B` beacon key), 1.13 (warp-core alerts), 1.14
+(laser switching), and 1.15 (R / Shift+R / Shift+T / Shift+W) are all
+DONE. Order for the rest (Brian: decided) — 1.8 chaff, then 1.11 ship
+window if Brian wants it before Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -502,7 +503,19 @@ first thing for Brian's ear, then the three tied 1.4 s slots.
 - The six wavs get decoded into `audio_assets.js` (mono 96k MP3 like the
   rest, ~25 KB each).
 
-#### 1.15 Keys: R = range, Shift+T cycles back, Shift+W auto-thrust (ideas3)
+#### 1.15 Keys: R = range, Shift+T cycles back, Shift+W auto-thrust (ideas3) — DONE, needs Brian's ear
+
+Built and machine-tested: R reads "Range 270." at rest and "Range 260,
+closing." under way (the trend is the relative velocity along the line
+of sight, spoken past 2 units a second); Shift+R runs the old sweep;
+Tab, Tab, Shift+T, Shift+Tab walk forward twice and back twice through
+the same order; Shift+W speaks "Auto-thrust on. W, S, or shift W ends
+it.", the ship moves with no key held, `I` reads "Auto-thrust on", and a
+plain W, a plain S, or Shift+W again each speak "Auto-thrust off."; a
+warp jump speaks "Auto-thrust off. Hyperwarp charging." and docking
+"Auto-thrust off. Docked at Station Meridian."; while paused a Shift
+chord answers "Paused."; F12 describes the Shift forms on R, T, Tab, and
+W. No console errors. Not yet heard.
 
 - **R reads the range to the current target**: "Range 430, closing." —
   the distance and whether it's closing or opening (the sign of the range

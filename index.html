@@ -520,6 +520,7 @@ var won = false;
 var running = false;     // true after the init button
 var lastLaserAt = 0;
 var radarBusy = false;
+var autoThrust = false;  // Shift+W cruise (SPEC 1.15): thrusts as if W were held until cancelled
 var zoneIdx = 0;         // start Wide: a big center for first-time pilots
 var help = { open: false, idx: -1, lines: [] };
 var map = { open: false, idx: -1 };   // the Q quadrant map overlay
@@ -636,14 +637,14 @@ var HELP_SECTIONS = [
     { heading: 'Flying', items: [
         'Left and Right arrows yaw the ship.',
         'Up and Down arrows pitch the nose up and down.',
-        'W thrusts forward along the nose. Hold it to accelerate.',
+        'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it.',
         'S brakes to a stop.',
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
         'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
         'I speaks your speed, the selected target, and how many targets remain.'
     ] },
     { heading: 'Targeting', items: [
-        'Tab cycles through the targets, nearest first, and speaks a bearing.',
+        'Tab cycles through the targets, nearest first, and speaks a bearing. Shift T, or shift Tab, cycles back the other way.',
         'T reports the selected target: name, bearing, distance, and hull, without cycling away from it.',
         'When the tick walks you onto a target and the tone goes solid, the distance is spoken at that moment.',
         'The tick tone speeds up as the selected target nears your nose.',
@@ -669,7 +670,7 @@ var HELP_SECTIONS = [
         'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
         'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
         'Weapon and tool keys sit under the left hand — 1 to 6, Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
-        'R sounds a radar ping of every surviving target in order, nearest first.'
+        'R reads the range to the selected target and whether it is closing or opening. Shift R sounds a radar ping of every surviving target in order, nearest first.'
     ] },
     { heading: 'Shields and enemy fire', items: [
         'Every ship holds its fire until you hit it. From the first hit on, that ship is hostile and shoots back. Your hull starts at ' + CFG.shipHull + ' percent, and I reports it.',
@@ -804,7 +805,7 @@ var KEY_DESCRIPTIONS = {
     arrowright: 'Yaw right. Hold to keep turning.',
     arrowup: 'Pitch the nose up. Hold to keep turning.',
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
-    w: 'Thrust forward along the nose. Hold to accelerate.',
+    w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
     '1': 'Select laser slot 1 and speak what is fitted there. Switching slots takes a moment, longer for the heavier slots.',
@@ -815,9 +816,9 @@ var KEY_DESCRIPTIONS = {
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
     m: 'At the mission menu, jumps to space mining.',
-    tab: 'Cycle to the next target and speak its bearing.',
-    t: 'Report the selected target: bearing, distance, and hull, without cycling.',
-    r: 'Radar ping. Plays each surviving target at its true position, nearest first.',
+    tab: 'Cycle to the next target and speak its bearing. Shift Tab cycles back.',
+    t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T cycles back to the previous target.',
+    r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
     z: 'Cycle the target zone size: wide, standard, or narrow.',
     e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
@@ -1267,7 +1268,10 @@ function selectNearest() {
     stopSolidTone();
 }
 
-function cycleTarget() {
+// dir +1 (Tab) steps outward through the nearest-first order, -1 (Shift+T,
+// Shift+Tab) steps back the other way.
+function cycleTarget(dir) {
+    dir = dir || 1;
     var alive = targets.map(function (t, i) { return t.alive ? i : -1; })
                        .filter(function (i) { return i >= 0; });
     if (!alive.length) { say('No targets remain.'); return; }
@@ -1276,7 +1280,8 @@ function cycleTarget() {
         return len(sub(targets[x].pos, ship.pos)) - len(sub(targets[y].pos, ship.pos));
     });
     var at = alive.indexOf(selected);
-    selected = alive[(at + 1) % alive.length];
+    selected = at < 0 ? alive[dir > 0 ? 0 : alive.length - 1]
+                      : alive[(at + dir + alive.length) % alive.length];
     locked = false;
     stopSolidTone();
     lastCycleAt = Date.now();
@@ -2526,6 +2531,23 @@ function startDustVac() {
 // Plays each surviving target's own signature at its true 3D position,
 // nearest first, by briefly boosting its continuous voice +6 dB. Doubles as
 // an HRTF localization drill.
+// R (SPEC 1.15): the one number, plus which way it is going. The range
+// rate is the relative velocity along the line of sight; under 2 units a
+// second it is just "Range N."
+function rangeReport() {
+    var t = targets[selected];
+    if (!t || !t.alive) {
+        say(mode === 'mining' ? 'No rock selected. Tab cycles targets.' : 'No target selected. Tab cycles targets.');
+        return;
+    }
+    var rel = sub(t.pos, ship.pos), d = len(rel);
+    var rate = d > 0 ? dot(scale(rel, 1 / d), sub(t.vel || v3(0, 0, 0), ship.vel)) : 0;   // + = opening
+    var trend = rate < -2 ? ', closing' : rate > 2 ? ', opening' : '';
+    SIM.audio.blip(660, 60, 0.1);
+    say('Range ' + round10(d) + trend + '.');
+}
+
+// Shift+R (was R before SPEC 1.15).
 function radarPing() {
     if (radarBusy) return;
     var alive = aliveTargets().slice().sort(function (x, y) {
@@ -2565,9 +2587,18 @@ function radarPing() {
     }, alive.length * CFG.radarGapMs + 200);
 }
 
+// Shift+W (SPEC 1.15). Ends on Shift+W again, any W or S press, a warp
+// jump, docking, or leaving the mode — the first three speak, the rest
+// fold "Auto-thrust off" into their own line or go quietly with the reset.
+function toggleAutoThrust() {
+    autoThrust = !autoThrust;
+    SIM.audio.blip(autoThrust ? 520 : 380, 90, 0.14, 0, 'triangle');
+    say(autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.' : 'Auto-thrust off.');
+}
+
 function statusReport() {
     var speed = Math.round(len(ship.vel));
-    var line = 'Speed ' + speed + '. ';
+    var line = 'Speed ' + speed + '. ' + (autoThrust ? 'Auto-thrust on. ' : '');
     var t = targets[selected];
     if (t && t.alive) line += bearingText(t) + ' ';
     if (mode === 'mining') {
@@ -2943,7 +2974,8 @@ function finishDocking() {
     var service = (repaired ? 'Hull repaired. ' : '') +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
                   (refueled ? 'Warp tank filled. ' : '');
-    var greeting = influenceGreeting(poi);
+    var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
+    autoThrust = false;
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
         var delivered = ore;
         demo.delivered = true;
@@ -3136,11 +3168,13 @@ function startWarp() {
         say('Warp charge exhausted. Fly it, or let the core cool. Q for the map.');
         return;
     }
+    var autoOff = autoThrust ? 'Auto-thrust off. ' : '';
+    autoThrust = false;
     warping = true;
     keysDown = {};
     thrusterSync(null);
     updateStabilizers(0);
-    say('Hyperwarp charging.');
+    say(autoOff + 'Hyperwarp charging.');
     SIM.cues.play('warp_charge', { dur: CFG.warpChargeMs / 1000 });
     setTimeout(function () {
         if (!running || mode !== 'sector') { warping = false; return; }
@@ -3292,6 +3326,23 @@ function onKeyDown(e) {
         return;
     }
 
+    // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
+    // 'w' and would otherwise just be a held thrust key.
+    if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
+        if (e.repeat) return;
+        if (paused || over()) { say(paused ? 'Paused.' : 'Enter restarts.'); return; }
+        if (lname === 'w') toggleAutoThrust();
+        else if (lname === 'r') radarPing();
+        else cycleTarget(-1);
+        return;
+    }
+    // Any manual thrust or brake press ends auto-thrust (the press itself
+    // still lands as a normal held key).
+    if (autoThrust && (lname === 'w' || lname === 's') && !e.repeat) {
+        autoThrust = false;
+        SIM.audio.blip(380, 90, 0.14, 0, 'triangle');
+        say('Auto-thrust off.');
+    }
     if (HELD[lname]) { keysDown[lname] = true; return; }
     if (e.repeat) return;
 
@@ -3310,7 +3361,7 @@ function onKeyDown(e) {
         case 'g':      if (!paused && !over()) shieldKey(); break;
         case 'b':      beaconKey(); break;
         case 'tab':    if (!paused && !over()) cycleTarget(); break;
-        case 'r':      if (!paused && !over()) radarPing(); break;
+        case 'r':      rangeReport(); break;
         case 'e':      if (!paused && !over()) startExtract(); break;
         case 'v':      if (!paused && !over()) startDustVac(); break;
         case 'q':      if (!paused) openMap(); break;
@@ -3413,6 +3464,9 @@ function simTick(dt) {
     // Attitude from held arrows. Fitted modules add mass (SPEC 1.7); no
     // friction in space, so more mass just means slower turning and thrust.
     var mass = shipMass();
+    // Auto-thrust (SPEC 1.15) reads as a held W to everything below —
+    // thrust, the thruster sound, and the stabilizers' "coasting" test.
+    var k = autoThrust ? Object.assign({}, keysDown, { w: true }) : keysDown;
     if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate / mass * dt;
     if (keysDown.arrowright) ship.yaw   += CFG.turnRate / mass * dt;
     if (keysDown.arrowup)    ship.pitch += CFG.turnRate / mass * dt;
@@ -3420,15 +3474,15 @@ function simTick(dt) {
     ship.pitch = clamp(ship.pitch, -CFG.pitchLimit, CFG.pitchLimit);
 
     // Thrust, brake, damping, cap — with each maneuver's own thruster sound.
-    if (keysDown.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * dt));
-    thrusterSync(keysDown);
-    if (keysDown.s) ship.vel = scale(ship.vel, Math.pow(CFG.brakeKeep, dt));
+    if (k.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * dt));
+    thrusterSync(k);
+    if (k.s) ship.vel = scale(ship.vel, Math.pow(CFG.brakeKeep, dt));
     ship.vel = scale(ship.vel, Math.pow(CFG.dampKeep, dt));
     var spd = len(ship.vel);
     if (spd > CFG.maxSpeed) ship.vel = scale(ship.vel, CFG.maxSpeed / spd);
     ship.pos = add(ship.pos, scale(ship.vel, dt));
     // Stabilizers pulse only while coasting with real momentum to shed.
-    updateStabilizers(spd > 3 && !keysDown.w && !keysDown.s ? spd : 0);
+    updateStabilizers(spd > 3 && !k.w && !k.s ? spd : 0);
 
     if (mode === 'mining') {
         // Rock physics: drift with momentum, bleed energy to friction so a
@@ -3519,6 +3573,7 @@ window.__sim = {
             docked: docked ? { poiName: docked.poi.name } : null,
             stationSubmenu: stationSubmenu,
             beacons: beaconMode,
+            autoThrust: autoThrust,
             sound: profile ? Object.assign({}, profile.sound) : null,
             beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
                                 .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
@@ -3592,6 +3647,7 @@ function clearMission() {
     shieldReset();
     laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
     stopLaserSwitch();
+    autoThrust = false;
     // (the warp charge itself persists across a sector run)
     stopDocking(true); docked = null; dockToneOn(false);
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across

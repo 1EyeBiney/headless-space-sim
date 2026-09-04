@@ -92,14 +92,14 @@ Right hand on the arrows, left hand on everything else.
 | Key | Does |
 | --- | --- |
 | Arrows | Yaw and pitch |
-| W / S | Thrust / brake |
+| W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
 | 1-6 | Select a laser slot. Switching takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
 | B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
-| Tab / T | Cycle targets / report the selected target. The distance is spoken the moment the lock tone comes on |
-| R | Radar sweep of every target, nearest first |
+| Tab / T | Cycle targets / report the selected target. Shift+T or Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
+| R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — starts a docking approach at the station |
