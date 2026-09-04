@@ -69,7 +69,7 @@ SIM.audio = {
     // fetch — fetch of anything is unreliable on a file:// page — just
     // atob into bytes. Once the game is served over https (GitHub Pages),
     // this can grow a fetch-based path alongside this one; see
-    // PHASE_PLAN.md 3.2.
+    // SPEC.md 3.2.
     decodeAssets: function () {
         var A = SIM.audio;
         if (!A.ctx || !window.AUDIO_ASSETS) return;

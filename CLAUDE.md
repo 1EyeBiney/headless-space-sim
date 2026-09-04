@@ -60,7 +60,8 @@ expands.
   https://1eyebiney.github.io/headless-space-sim/ — this URL is the
   reference build; `?run=delivery` skips the menu into the timed run.
 - Plan from the original build: `~\.claude\plans\you-said-do-not-functional-hammock.md`.
-  Rounds 11+ instructions: `PHASE_PLAN.md`.
+  The plan: `SPEC.md` (Part A direction, Part B build order, Part C
+  decisions) — superseded PHASE_PLAN.md and Brian's ideas2 notes on 2026-09-04.
 
 ## Audio architecture (Round 12)
 
@@ -319,7 +320,7 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
 
 ## Where we left off (2026-09-04)
 
-Rounds 10–11 (PHASE_PLAN.md 1.0–1.5) shipped and live on Pages, machine-
+Rounds 10–11 (SPEC.md Phase 1 items 1.0–1.5) shipped and live on Pages, machine-
 tested but largely NOT yet heard by Brian in play: KC-style arrow menu,
 passive-until-hit enemies at Rookie (always-on pacing kept for Veteran/Ace),
 delivery run with a saved run log, missile magazine + rearm, semi-active
@@ -327,7 +328,7 @@ missile cone, laser range/close bonus/overheat, enemy fire with telegraphs,
 the shield damage-pool + disrepair rework, evade + counterattack, ore ×1.5 /
 dust ×0.75, difficulty tiers, no-warp zone, saved profile. Still awaiting his
 ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon balance,
-warp drama. PHASE_PLAN.md 1.6 (docking corridor) and 1.7 (station economy)
+warp drama. SPEC.md 1.6 (docking corridor) and 1.7 (station economy)
 are the two large pieces deliberately deferred — good next round once Round
 10–11 has been heard.
 
