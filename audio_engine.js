@@ -36,7 +36,11 @@ SIM.audio = {
     worldBus: null,  // every HRTF panner lands here — the "World" sound level (SPEC 1.12)
     volScale: 1,     // multiplies every primitive's vol; SIM.cues.play sets it around a cue
     noiseBuf: null,  // shared 1 s white-noise buffer for explosions/thuds/hiss
-    assetBufs: {},   // decoded AudioBuffers from audio_assets.js, keyed by name
+    assetBufs: {},   // decoded AudioBuffers, keyed by AUDIO_MANIFEST name
+    pending: {},     // in-flight load() promises, keyed by name
+    warned: {},      // names already console.warn'd once, so a missing/404
+                      // asset doesn't spam every time something asks for it
+    musicBus: null,  // ambient tracks (SPEC 2.19); no track plays yet
 
     // ---- boot -------------------------------------------------------------
     audioStart: function () {
@@ -59,6 +63,10 @@ SIM.audio = {
         A.worldBus.gain.value = 1;
         A.worldBus.connect(A.masterGain);
 
+        A.musicBus = A.ctx.createGain();
+        A.musicBus.gain.value = 1;
+        A.musicBus.connect(A.masterGain);
+
         // A short quiet tone so the first real sound does not stutter.
         var g = A.ctx.createGain(); g.gain.value = 0.0001; g.connect(A.ctx.destination);
         var o = A.ctx.createOscillator(); o.frequency.value = 440;
@@ -68,37 +76,103 @@ SIM.audio = {
         var d = A.noiseBuf.getChannelData(0);
         for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 
-        A.decodeAssets();
+        // SPEC 2.19: fetch every recording the demo can reach, in the
+        // background — the page is interactive immediately, sounds arrive
+        // as their fetches land rather than all at once before boot.
+        A.preload(window.AUDIO_PRELOAD || []);
     },
 
-    // Decode the base64 MP3s from audio_assets.js into AudioBuffers. No
-    // fetch — fetch of anything is unreliable on a file:// page — just
-    // atob into bytes. Once the game is served over https (GitHub Pages),
-    // this can grow a fetch-based path alongside this one; see
-    // SPEC.md 3.2.
-    decodeAssets: function () {
+    // Fetch + decode one manifest entry. Returns a Promise resolving to the
+    // AudioBuffer. Cached once decoded (repeat calls resolve immediately);
+    // coalesced while in flight (two callers mid-fetch share one request).
+    // A missing key or a failed fetch/decode rejects, warns ONCE per name,
+    // and leaves assetBufs[name] unset — every existing "no buffer ->
+    // synthesized fallback" call site keeps working exactly as it does
+    // today, just with a chance the real recording lands moments later.
+    load: function (name) {
         var A = SIM.audio;
-        if (!A.ctx || !window.AUDIO_ASSETS) return;
-        Object.keys(window.AUDIO_ASSETS).forEach(function (name) {
-            try {
-                var bin = atob(window.AUDIO_ASSETS[name].split(',')[1]);
-                var bytes = new Uint8Array(bin.length);
-                for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                A.ctx.decodeAudioData(bytes.buffer,
-                    function (buf) { A.assetBufs[name] = buf; },
-                    function () { /* decode failed; assetsReady() stays false */ });
-            } catch (e) {}
-        });
+        if (A.assetBufs[name]) return Promise.resolve(A.assetBufs[name]);
+        if (A.pending[name]) return A.pending[name];
+        var path = window.AUDIO_MANIFEST && window.AUDIO_MANIFEST[name];
+        if (!A.ctx || !path) return Promise.reject(new Error('no such asset: ' + name));
+        var p = fetch(encodeURI(path))
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.arrayBuffer();
+            })
+            .then(function (data) { return A.ctx.decodeAudioData(data); })
+            .then(function (buf) {
+                A.assetBufs[name] = buf;
+                delete A.pending[name];
+                return buf;
+            })
+            .catch(function (err) {
+                delete A.pending[name];
+                if (!A.warned[name]) {
+                    A.warned[name] = true;
+                    if (window.console) console.warn('SIM.audio.load: ' + name + ' failed (' + err.message + ')');
+                }
+                throw err;
+            });
+        A.pending[name] = p;
+        return p;
+    },
+
+    // Fire-and-forget a batch of loads (a mission's own asset list, the
+    // boot preload set); never rejects, so one missing/404 file can't
+    // stop the rest from loading.
+    preload: function (names) {
+        return Promise.all((names || []).map(function (n) {
+            return SIM.audio.load(n).catch(function () {});
+        }));
+    },
+
+    // Synchronous readiness check: every named key already has a decoded
+    // buffer. Used to gate a mission start on assets it can't do without.
+    ready: function (names) {
+        var b = SIM.audio.assetBufs;
+        return (names || []).every(function (n) { return !!b[n]; });
     },
 
     // Readiness gate for the mining asteroid loops + explosions specifically
-    // (the only assets a mission start currently blocks on). As more named
-    // assets get wired in this may want a `names` param instead of a fixed
-    // list — left as-is for now to keep this move behavior-identical.
+    // (the only assets a mission start currently blocks on).
     assetsReady: function () {
-        var b = SIM.audio.assetBufs;
-        return !!(b.asteroid1 && b.asteroid2 && b.asteroid3 &&
-                  b.asteroid_explosion1 && b.asteroid_explosion2 && b.asteroid_explosion3);
+        return SIM.audio.ready(['asteroid1', 'asteroid2', 'asteroid3',
+            'asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3']);
+    },
+
+    // Ambient music (SPEC 2.19): loads (or reuses) a manifest key, loops it
+    // on the music bus, and crossfades out whatever was already playing.
+    // No track plays anywhere yet — this is the hook for when one does.
+    musicNode: null,
+    playMusic: function (name, opts) {
+        var A = SIM.audio;
+        opts = opts || {};
+        var vol = opts.vol !== undefined ? opts.vol : 0.3;
+        var fadeS = opts.fadeS !== undefined ? opts.fadeS : 1.5;
+        var prev = A.musicNode;
+        A.load(name).then(function (buf) {
+            if (!A.ctx) return;
+            var src = A.ctx.createBufferSource();
+            src.buffer = buf; src.loop = true;
+            var g = A.ctx.createGain(); g.gain.value = 0.0001;
+            src.connect(g); g.connect(A.musicBus);
+            src.start();
+            A.ramp(g.gain, vol, fadeS);
+            A.musicNode = { src: src, g: g };
+            if (prev) {
+                A.ramp(prev.g.gain, 0.0001, fadeS);
+                setTimeout(function () { try { prev.src.stop(); prev.g.disconnect(); } catch (e) {} }, fadeS * 1000 + 200);
+            }
+        });
+    },
+    stopMusic: function (fadeS) {
+        var A = SIM.audio, n = A.musicNode;
+        if (!n) return;
+        A.musicNode = null;
+        fadeS = fadeS !== undefined ? fadeS : 1.5;
+        A.ramp(n.g.gain, 0.0001, fadeS);
+        setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, fadeS * 1000 + 200);
     },
 
     // Sound-options levels (SPEC 1.12): 'world' is the HRTF bus, 'cockpit'
@@ -110,7 +184,8 @@ SIM.audio = {
     // wherever the param actually is and always converges on the target.
     setBusLevel: function (name, value) {
         var A = SIM.audio;
-        var bus = name === 'world' ? A.worldBus : name === 'cockpit' ? A.uiBus : null;
+        var bus = name === 'world' ? A.worldBus : name === 'cockpit' ? A.uiBus :
+                  name === 'music' ? A.musicBus : null;
         if (bus && A.ctx) bus.gain.setTargetAtTime(value, A.ctx.currentTime, 0.06);
     },
 
@@ -294,10 +369,13 @@ SIM.audio = {
     },
 
     // One-shot playback of a decoded recording. Returns false if the asset
-    // isn't ready so callers can fall back to a generated cue.
+    // isn't ready so callers can fall back to a generated cue — and kicks
+    // off a load for next time (SPEC 2.19), same as every other direct
+    // assetBufs reader in index.html.
     playAsset: function (name, vol, out) {
         var A = SIM.audio;
-        if (!A.ctx || !A.assetBufs[name]) return false;
+        if (!A.ctx) return false;
+        if (!A.assetBufs[name]) { A.load(name); return false; }
         var src = A.ctx.createBufferSource(); src.buffer = A.assetBufs[name];
         var g = A.ctx.createGain(); g.gain.value = A.scaledVol(vol || 0.3);
         src.connect(g); g.connect(out || A.uiBus);

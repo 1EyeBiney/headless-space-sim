@@ -321,6 +321,7 @@ function applySoundLevels() {
     if (!profile || !SIM.audio.ctx) return;
     SIM.audio.setBusLevel('world',   SOUND_LEVELS[profile.sound.world].v);
     SIM.audio.setBusLevel('cockpit', SOUND_LEVELS[profile.sound.cockpit].v);
+    SIM.audio.setBusLevel('music',   SOUND_LEVELS[profile.sound.music].v);
     SIM.cues.setLevel(SOUND_LEVELS[profile.sound.effects].v);
 }
 
@@ -432,7 +433,9 @@ var SOUND_CATS = [
     { id: 'cockpit', label: 'Cockpit instruments',
       desc: 'The lock tick, thrusters, tools, the shield hum, and station hails.' },
     { id: 'effects', label: 'Sound effects',
-      desc: 'Menu clicks, chimes, warnings, and the fanfare.' }
+      desc: 'Menu clicks, chimes, warnings, and the fanfare.' },
+    { id: 'music',   label: 'Music',
+      desc: 'Ambient tracks. Nothing plays yet.' }
 ];
 // The four POI beacons: on, off, or only the selected nav target (B key).
 var BEACON_MODES = [
@@ -1026,6 +1029,9 @@ function buildVoice(t) {
         t.nodes = { gain: gain, lp: lp, panner: panner, oscs: [src], src: src };
         return;
     }
+    // Not decoded yet (SPEC 2.19): kick off the fetch for next time and
+    // fall through to the synthesized voice below for this one.
+    if (t.shipAsset) SIM.audio.load(t.shipAsset.name);
 
     var oscs = [], lfos = [];
     function osc(type, freq) {
@@ -1074,7 +1080,8 @@ function stopVoice(t) {
 // encoder padding so the loop never clicks, and a random start offset keeps
 // two rocks of the same type from playing in lockstep.
 function buildRockVoice(t) {
-    if (!SIM.audio.ctx || !SIM.audio.assetBufs[t.type.asset]) return;
+    if (!SIM.audio.ctx) return;
+    if (!SIM.audio.assetBufs[t.type.asset]) { SIM.audio.load(t.type.asset); return; }
     var buf = SIM.audio.assetBufs[t.type.asset];
     var gain = SIM.audio.ctx.createGain();
     gain.gain.value = CFG.targetGain * 1.15;
@@ -1645,6 +1652,7 @@ function stopLaserSwitch() {
 // can't be stopped, SPEC 1.9).
 function startSlotSwitch(i, L) {
     var sw = SLOT_SWITCH[i], secs = sw.s, A = SIM.audio, src = null, g = null;
+    if (A.ctx && !A.assetBufs[sw.asset]) A.load(sw.asset);   // SPEC 2.19: kick off for next time
     if (A.ctx && A.assetBufs[sw.asset]) {
         var buf = A.assetBufs[sw.asset];
         src = A.ctx.createBufferSource(); src.buffer = buf;
@@ -1791,6 +1799,8 @@ function startBeam(tool) {
         asrc.start();
         SIM.audio.ramp(ag.gain, 0.5, 0.05);
         nodes = { g: ag, src: asrc, isAsset: true };
+    } else if (L && SIM.audio.ctx) {
+        SIM.audio.load(L.asset);   // not decoded yet: kick off the fetch, use the synth carrier this time
     }
     // Per-tool voices: laser = bright wobbling saw with high shimmer;
     // vac (E, core extractor) = deep fast pulse with low rumble;
@@ -3615,7 +3625,8 @@ function playWarpStart(engine) {
 }
 function startWarpEngagedLoop(engine) {
     var A = SIM.audio, name = 'warp_engaged' + engine + 'r';
-    if (!A.ctx || !A.assetBufs[name]) return;
+    if (!A.ctx) return;
+    if (!A.assetBufs[name]) { A.load(name); return; }
     var src = A.ctx.createBufferSource();
     src.buffer = A.assetBufs[name];
     src.loop = true;
@@ -3633,7 +3644,8 @@ function stopWarpEngagedLoop() {
 }
 function playWarpFinish(engine) {
     var A = SIM.audio, name = 'warp_finish' + engine;
-    if (!A.ctx || !A.assetBufs[name]) return;
+    if (!A.ctx) return;
+    if (!A.assetBufs[name]) { A.load(name); return; }
     var src = A.ctx.createBufferSource();
     src.buffer = A.assetBufs[name];
     var g = A.ctx.createGain(); g.gain.value = 0.0001;
@@ -4475,6 +4487,8 @@ function soundDemo(id) {
         if (out) A.sfxTone({ type: 'triangle', f1: 440, f2: 330, dur: 0.35, vol: 0.25, out: out });
     } else if (id === 'cockpit') {
         A.sfxTone({ type: 'sine', f1: 880, dur: 0.12, vol: 0.2 });
+    } else if (id === 'music') {
+        A.sfxChord([330, 415, 494], 0.5, 0.22, { out: A.musicBus });
     } else {
         SIM.cues.play('menu_select');
     }

@@ -935,9 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.15 are DONE (Sonnet). **2.19 next** (recorded audio as
-fetched files — Brian, 2026-09-04: he is collecting more audio now, so the
-bank has to scale before anything else lands), then 2.18 (the profile
+2.10 through 2.15 and now 2.19 are DONE (Sonnet). 2.18 next (the profile
 version), then 2.16, 2.17.
 
 Every number below is a placeholder Brian retunes by ear; all live in
@@ -1261,7 +1259,7 @@ placeholders for his ear.
   is loaded as-is and never rewritten with fields dropped. Do this before
   2.14/2.15 land, so no tester's save is thrown away.
 
-#### 2.19 Recorded audio as fetched files, not base64 (Brian, 2026-09-04) — NEXT; supersedes 3.15 and the `file://` requirement
+#### 2.19 Recorded audio as fetched files, not base64 (Brian, 2026-09-04) — DONE; supersedes 3.15 and the `file://` requirement
 
 Brian: "I do not need to run via index locally and will be happy to run it
 off Git." **`file://` support is dropped.** The game runs from GitHub
@@ -1343,16 +1341,27 @@ at every boot.
   introduced 2.19 already did the ones that describe the DECISION; the
   ones describing the CODE change with the code). README is already
   Pages-only. 3.15 and 3.2 are superseded.
-- **Test checklist**, at the local server and at Pages, network tab open:
-  `audio_assets.js` is tiny; the preload set fetches in the background
-  and the mission menu is speakable before it finishes; a Mining start
-  before the asteroid loops land says "still loading," after it starts; a
-  laser fires with its recording; a warp plays all three phases; a
-  deliberately wrong manifest path warns once and the fallback cue plays;
-  the lab lists every key without a "missing" marker; the Sound menu's
-  new Music line saves and reloads. `file://` is NOT tested — it no longer
-  works, by decision.
-
+- **Test checklist** — DONE, machine-tested at a local server, network tab
+  open: a fresh boot has zero decoded buffers immediately and all 37
+  within about a second, background fetches confirmed via the network log
+  (every manifest path 200s; the page is speakable and playable throughout,
+  never blocked on the fetch); Mining's "still loading" refusal confirmed
+  by forcing an asteroid buffer absent (correctly refuses, correctly
+  proceeds once restored); a laser fires with its recording
+  (`laser_mining1` in `assetBufs`, burst runs its full 8 ticks); a warp
+  plays through the start→engaged transition; a deliberately broken
+  manifest path console.warns exactly once across two failed calls,
+  confirmed against a genuinely fresh tab (the first attempt's warnings
+  and 404s otherwise persist in the browser's own console/network buffers
+  across navigations in the *same* tab, which briefly looked like a real
+  bug until a fresh tab ruled it out); the Sound menu's new Music line
+  browses, changes, saves, and demos on `musicBus`; the lab lists all 37
+  manifest keys plus 7 on-disk-only groups (36 files — the two laser
+  groups that moved into the manifest back in 2.12 are gone from it now)
+  and a manifest button loads-then-plays on click. No console errors from
+  a clean boot. `file://` was not tested — it no longer works, by
+  decision. Not yet re-tested at Pages by Brian's ear, but the mechanism
+  itself (fetch, not embed) needs nothing different there.
 ### Phase 2, continued — a living sector, smarter enemies (the existing 2.1–2.8)
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)

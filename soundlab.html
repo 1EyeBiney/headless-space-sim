@@ -51,8 +51,8 @@
         <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
         <a href="#sec-cues">Discrete cues</a>
         <a href="#sec-prim">Raw primitives</a>
-        <a href="#sec-embed">Embedded recordings</a>
-        <a href="#sec-disk">On-disk recordings (not yet embedded)</a>
+        <a href="#sec-embed">Recordings in the manifest</a>
+        <a href="#sec-disk">On disk, not in the manifest</a>
         <a class="stop-btn" href="javascript:void(0)" id="stopAllBtn">&#x25A0; STOP ALL</a>
     </div>
 </nav>
@@ -78,13 +78,13 @@
 <div class="button-group" id="primContainer"></div>
 
 <!-- ============================================================ -->
-<h2 id="sec-embed" class="section-header">Embedded recordings (audio_assets.js)</h2>
-<p class="section-note">Already decoded and wired into the game by key name.</p>
+<h2 id="sec-embed" class="section-header">Recordings in the manifest (audio_assets.js)</h2>
+<p class="section-note">Every key AUDIO_MANIFEST points at a file for. Loads on first click if it hasn't already (SPEC 2.19 fetches on demand, plus a background preload of this whole list from audioStart).</p>
 <div class="button-group" id="embedContainer"></div>
 
 <!-- ============================================================ -->
-<h2 id="sec-disk" class="section-header">On-disk recordings (not yet embedded)</h2>
-<p class="section-note">Brian's candidate recordings under <code>audio/</code>, played directly as files — not part of the game's audio bank yet. Standard HTML5 players: Tab to reach, Space to play/pause.</p>
+<h2 id="sec-disk" class="section-header">On disk, not in the manifest</h2>
+<p class="section-note">Brian's candidate recordings under <code>audio/</code>, played directly as files — no manifest key points at them yet, so the game can't reference them by name. Standard HTML5 players: Tab to reach, Space to play/pause.</p>
 <div id="diskContainer"></div>
 
 </div>
@@ -260,23 +260,34 @@ PRIMITIVES.forEach(function (p) {
     primContainer.appendChild(btn);
 });
 
-// ---- embedded recordings ------------------------------------------------
+// ---- recordings in the manifest ------------------------------------------
+// A button per AUDIO_MANIFEST key. The background preload (audioStart)
+// means most are ready almost immediately; a click on one that isn't
+// loads it on demand and plays it the moment it lands, same as the game
+// itself does for anything outside its own boot preload set.
 var embedContainer = document.getElementById('embedContainer');
 function buildEmbedButtons() {
     embedContainer.innerHTML = '';
-    Object.keys(window.AUDIO_ASSETS || {}).sort().forEach(function (key) {
+    Object.keys(window.AUDIO_MANIFEST || {}).sort().forEach(function (key) {
         var btn = document.createElement('button');
         var ready = SIM.audio.assetBufs[key];
-        btn.textContent = key + (ready ? '' : ' (decoding…)');
-        btn.disabled = !ready;
-        btn.addEventListener('click', function () { SIM.audio.playAsset(key, 0.5); });
+        btn.textContent = key + (ready ? '' : ' (loading on click…)');
+        btn.addEventListener('click', function () {
+            SIM.audio.load(key).then(function () {
+                SIM.audio.playAsset(key, 0.5);
+                btn.textContent = key;
+            }).catch(function () {
+                btn.textContent = key + ' (failed to load)';
+                btn.disabled = true;
+            });
+        });
         embedContainer.appendChild(btn);
     });
 }
 buildEmbedButtons();
 var embedPoll = setInterval(function () {
     buildEmbedButtons();
-    var allReady = Object.keys(window.AUDIO_ASSETS || {}).every(function (k) { return SIM.audio.assetBufs[k]; });
+    var allReady = Object.keys(window.AUDIO_MANIFEST || {}).every(function (k) { return SIM.audio.assetBufs[k]; });
     if (allReady) clearInterval(embedPoll);
 }, 500);
 
@@ -319,17 +330,6 @@ var DISK_FILES = {
         'audio/ships/warp/warp_finish4.mp3', 'audio/ships/warp/warp_finish5.mp3',
         'audio/ships/warp/warp_finish6.mp3'
     ],
-    'Mining laser versions 3-8 (1, 2 embedded)': [
-        'audio/weapons/lasers/Mining_laser 3.mp3', 'audio/weapons/lasers/Mining_laser 4.mp3',
-        'audio/weapons/lasers/Mining_laser 5.mp3', 'audio/weapons/lasers/Mining_laser 6.mp3',
-        'audio/weapons/lasers/Mining_laser 7.mp3', 'audio/weapons/lasers/Mining_laser 8.mp3'
-    ],
-    'Rapid-pulse laser versions 1-8 (none embedded yet)': [
-        'audio/weapons/lasers/Rapid_pulse_laser1.mp3', 'audio/weapons/lasers/Rapid_pulse_laser2.mp3',
-        'audio/weapons/lasers/Rapid_pulse_laser3.mp3', 'audio/weapons/lasers/Rapid_pulse_laser4.mp3',
-        'audio/weapons/lasers/Rapid_pulse_laser5.mp3', 'audio/weapons/lasers/Rapid_pulse_laser6.mp3',
-        'audio/weapons/lasers/Rapid_pulse_laser7.mp3', 'audio/weapons/lasers/Rapid_pulse_laser8.mp3'
-    ]
 };
 var diskContainer = document.getElementById('diskContainer');
 Object.keys(DISK_FILES).forEach(function (group) {

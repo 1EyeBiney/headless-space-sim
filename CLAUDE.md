@@ -23,11 +23,12 @@ expands.
   SPEC 2.19; recorded audio is fetched, and `file://` can't fetch). Needs
   `audio_assets.js`, `audio_engine.js`, `audio_cues.js` loaded before it,
   in that order.
-- `audio_assets.js` — until 2.19 lands: a base64 mono-96k-MP3 sound bank
-  (37 assets, 3.8 MB) loaded by a plain script tag. As of 2.19: a ~3 KB
-  MANIFEST, `window.AUDIO_MANIFEST = { key: 'audio/path.mp3' }`, same keys,
-  fetched on demand by `SIM.audio.load(key)`; the recordings under `audio/`
-  are the served assets and must be committed.
+- `audio_assets.js` — as of SPEC 2.19, a ~3 KB MANIFEST (was a 3.8 MB
+  base64 sound bank before): `window.AUDIO_MANIFEST = { key:
+  'audio/path.mp3' }`, one line per recording, plus `window.AUDIO_PRELOAD`
+  (today the same 37 keys the old bank embedded) — fetched on demand by
+  `SIM.audio.load(key)`; the recordings under `audio/` are now the served
+  assets and must be committed for Pages to have them.
 - `audio_engine.js` / `audio_cues.js` — see "Audio architecture" below.
 - (There is no longer a single-file `space_sim_demo.html`: Brian dropped it
   on 2026-09-04 now that the Pages URL is the share link. Do not regenerate
@@ -38,48 +39,42 @@ expands.
   (index.html's closure normally supplies these to the other two files;
   here a minimal object stands in), then lists every `SIM.cues` entry
   (generated from `categories()`/`list()`), a handful of raw-primitive
-  presets, every embedded recording, and every NOT-yet-embedded
-  recording under `audio/` as plain `<audio controls>` (paths with
-  spaces `encodeURI`'d). Native HTML buttons/audio elements, not the
-  game's custom key-trap shell — Tab and Enter/Space already work.
-  Test at the local server (`soundlab.html`, not `index.html`).
+  presets, every recording IN `AUDIO_MANIFEST` (a button per key, loads
+  on click if the background preload hasn't landed it yet), and every
+  recording under `audio/` that has NO manifest key yet, as plain
+  `<audio controls>` (paths with spaces `encodeURI`'d). Native HTML
+  buttons/audio elements, not the game's custom key-trap shell — Tab and
+  Enter/Space already work. Test at the local server (`soundlab.html`,
+  not `index.html`).
 - (F2, the ship status screen, SPEC 2.13 — same browsable shell as the run
   log, listing hull/shields/warp/cargo/missiles/chaff, one line per laser
   slot with its family matchup in words, fitted modules, and total mass;
   works from any live mission or the mission menu.)
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's recordings, organized by category as of Round 12's
-  housekeeping pass. Until 2.19 they are never read at runtime
-  (`audio_assets.js` embeds by ASSET KEY, not by path, so moving files
-  doesn't touch code); as of 2.19 they ARE the runtime assets, fetched by
-  the manifest's paths, so every served file has to be committed and a
-  move means a manifest edit. 27 MB on disk, 73 files, 40 tracked in git
-  at the time of writing — `audio/ships/warp/` and `audio/weapons/lasers/`
-  are untracked and `audio/missiles/` has 7 pending deletions from Brian's
-  reorganization; 2.19 stages `audio/` explicitly (never `git add -A`):
-  `audio/mining/` = 3 asteroid loops + 3 asteroid explosions (all 6 already
-  embedded in `audio_assets.js`); `audio/ships/` = 18 ship loops
-  (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
-  `audio/ships/warp/` = 18 warp recordings for SPEC 1.17 (`warp_start1-6`,
-  `warp_finish1-6` at 4.0 s each, `warp_engaged1r-6r` loops at 1.5 s,
-  all stereo 48 kHz; engine 1's three clips embedded, the other five
-  stay on disk until a second drive exists — see "Sector" above);
-  `audio/weapons/
-  missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
-  = 16 laser candidates (Mining ×8, Rapid-pulse ×8; `mining1`/`mining2`
-  embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, all
-  six embedded as `laser_switch1-6` for SPEC 1.14 — the per-slot switch
-  delay is timed off their lengths); `audio/Explosions/` = 8 new
-  unintegrated hull-breach/explosion candidates. Everything under
-  `audio/mining/` and `audio/weapons/missiles/` (the embedded ones) is
-  already wired in by key name; everything else Brian is auditioning is
-  NOT yet decoded into `audio_assets.js` or referenced anywhere (the six
-  `laser_switch` clips, embedded for SPEC 1.14, and engine 1's three
-  `warp_start1`/`warp_engaged1r`/`warp_finish1`, embedded for SPEC 1.17,
-  are the exceptions) — leave the rest
-  unconnected until told otherwise; see "Audio architecture" for how it
-  eventually gets wired in. `audio/z.old/` (Backups/Media/peaks, REAPER
-  scratch) is gitignored.
+  housekeeping pass. As of SPEC 2.19 these ARE the runtime assets
+  (`AUDIO_MANIFEST` points at them by path), fetched over the wire, so
+  every served file has to be committed and a move means a manifest edit
+  — 2.19's own commit staged `audio/` explicitly (never `git add -A`,
+  since two subfolders were untracked and `audio/missiles/` had pending
+  deletions from Brian's reorganization). ~25 MB on disk:
+  `audio/mining/` = 3 asteroid loops + 3 asteroid explosions, WAV masters
+  with served MP3 siblings (all 6 in the manifest); `audio/ships/` = 18
+  ship loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 in the
+  manifest so far — one per roster class) plus `audio/ships/warp/` = 18
+  warp recordings for SPEC 1.17 (`warp_start1-6`, `warp_finish1-6` at
+  4.0 s each, `warp_engaged1r-6r` loops at 1.5 s, all stereo 48 kHz;
+  engine 1's three clips in the manifest, the other five stay on disk
+  until a second drive exists — see "Sector" above); `audio/weapons/
+  missiles/` = the one manifest missile-firing mp3, `audio/weapons/lasers/`
+  = 16 lasers (Mining ×8, Rapid-pulse ×8, all 16 in the manifest as of
+  SPEC 2.12) plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
+  masters with served MP3 siblings, all 6 in the manifest — the per-slot
+  switch delay is timed off their original lengths); `audio/Explosions/`
+  = 8 new unintegrated hull-breach/explosion candidates, no manifest key
+  yet. `soundlab.html` is the up-to-date "what's connected" checker —
+  trust it over this paragraph for the current count. `audio/z.old/`
+  (Backups/Media/peaks, REAPER scratch) is gitignored.
 - `.claude/launch.json` — a static-file server config (`npx serve`, port
   8934) for `preview_start`, same convention as `ag`'s and `kc`'s own
   `.claude/launch.json`. Needed now that the game is split across four
@@ -118,8 +113,10 @@ sounds in a standalone page, port winners into the game by name later.
 will be replaced by "engineered stuff" UNLESS it's coupled to gameplay
 mechanics still in flux. That's the actual split point:
 - `audio_engine.js` (`SIM.audio`) — the generic Web Audio layer: ctx/bus/
-  asset-bank state, `audioStart`/`decodeAssets`/`assetsReady` (2.19
-  replaces `decodeAssets` with `load`/`preload`/`ready` over `fetch`), `ramp`,
+  asset-bank state, `audioStart`/`assetsReady`, plus (SPEC 2.19)
+  `load`/`preload`/`ready`/`playMusic`/`stopMusic` over `fetch` — the old
+  `decodeAssets`, which read base64 out of `audio_assets.js`, is gone,
+  `ramp`,
   `makePanner`/`movePanner`/`worldOut`, and the primitives `sfxTone`/
   `sfxNoise`/`sfxChord`/`sfxArpeggio`/`blip`/`playAsset`/`noiseBurst` — plus
   two additions this round, `sfxEcho` and `sfxSweep`, ported faithfully from
@@ -272,7 +269,7 @@ static once tiers exist.
   site that used to touch `startSolidTone()`/`stopSolidTone()` directly
   now goes through `startLockTone()`/`stopLockTone()` so clearing a lock
   always cancels whichever tone is live; `__sim.state().lockToneMode`
-  exposes which one for testing. Only engine 1's three clips are embedded
+  exposes which one for testing. Only engine 1's three clips are in the manifest
   (`CFG.warpEngine` default 1); an un-decoded engine falls back to the old
   synthesized `warp_charge` cue for the start phase and silence for
   engaged/finish, while the arrival stings (`warp_arrive`/`warp_dry`)
@@ -622,10 +619,11 @@ static once tiers exist.
   corvette) for `CFG.laserMatchupStrong` 1.3 / `CFG.laserMatchupWeak` 0.7
   / 1 in between; `CFG.laserShipMult` (Rookie, 1.20) still multiplies on
   top for ships only. `STARTING_SLOTS` is now `['mining1', 'rapid1']`.
-  All 14 remaining laser recordings are embedded (mono 48k 96k like the
-  rest, ~1.6 MB added) — every laser slot in the game now has real
-  recorded audio, no synthesized carrier fallback needed for these two
-  families. Space fires the
+  All 14 remaining laser recordings are in the manifest (mono 48k 96k
+  like the rest, ~1.6 MB added when this was still base64 — SPEC 2.19
+  later moved all of it to fetched files) — every laser slot in the game
+  now has real recorded audio, no synthesized carrier fallback needed
+  for these two families. Space fires the
   selected laser via `startBeam('laser')`. Ship starts with `mining1` (slot
   1, steady 20/20/20/20/20 damage profile) and `mining2` (slot 2, front-
   loaded 35/35/10/10/10); slots 3-6 empty until the station sells more.
@@ -858,26 +856,36 @@ server and confirmed live on Pages, none yet heard or flown by Brian:
 sound lab at `soundlab.html`, plus the sector/mining lock tone switching
 to a soft double-blip — see "Sound options" above for the shape of it,
 though it's really its own bullet now), 2.12 (sixteen lasers in two
-families with 1/Shift+1 cycling, all recordings embedded), 2.13 (F2 ship
-screen), 2.14 (reaction mass, S as a real reverse thruster, battery mode,
-collisions billed at the next landing, the hail menu — see the "Reaction
-mass, collisions, the hail menu" bullet above for the full shape), and
-2.15 (salvage from kills, alloy from iron cores, ice into reaction mass,
-F3 — see the "Salvage and alloy" bullet above, including a real speech
-bug found and fixed there: two `say()` calls in one tick collapse into
-one DOM mutation, so a screen reader only hears the last — worth knowing
-for any future code that wants to speak two things on one event). 2.18
-(the profile version) was next, promoted ahead of 2.16/2.17 now that
-saves carry real economy state worth migrating safely — and then Brian,
-seeing `audio_assets.js` at 3.8 MB, decided (2026-09-04, Fable session)
-to drop `file://` support and serve recorded audio as fetched files
-instead of base64, NOW, because he is collecting more audio (ambient
-music next). That is **SPEC 2.19**, docs only so far, and it is the next
-build: 2.19 → 2.18 → 2.16 → 2.17. It rewrites `audio_assets.js` into a
-manifest, deletes the atob decode path, adds `load`/`preload`/`ready`
-and a music bus, converts the twelve WAV masters to served MP3s, and
-commits the `audio/` folders — see the SPEC item for the loader shape
-and the git caution.
+families with 1/Shift+1 cycling, all recordings in the manifest), 2.13
+(F2 ship screen), 2.14 (reaction mass, S as a real reverse thruster,
+battery mode, collisions billed at the next landing, the hail menu —
+see the "Reaction mass, collisions, the hail menu" bullet above for the
+full shape), and 2.15 (salvage from kills, alloy from iron cores, ice
+into reaction mass, F3 — see the "Salvage and alloy" bullet above,
+including a real speech bug found and fixed there: two `say()` calls in
+one tick collapse into one DOM mutation, so a screen reader only hears
+the last — worth knowing for any future code that wants to speak two
+things on one event).
+
+Round 15 (Sonnet) built **SPEC 2.19**: Brian, seeing `audio_assets.js` at
+3.8 MB, decided to drop `file://` support and serve recorded audio as
+fetched files instead of base64, because he is collecting more audio
+(ambient music next). `audio_assets.js` is now a manifest
+(`AUDIO_MANIFEST`/`AUDIO_PRELOAD`, ~3 KB); the old `decodeAssets` atob
+path is gone, replaced by `load`/`preload`/`ready` over `fetch` (every
+existing "no buffer → synthesized fallback" call site — ships, rocks,
+lasers, the warp phases — now also kicks off a `load()` on a miss, so
+the fetch starts the first time something's needed and the real
+recording is there next time); a `musicBus` and `playMusic`/`stopMusic`
+exist with a Music line in the Sound menu, no track playing yet. The
+twelve WAV masters (6 asteroid, 6 laser-switch) got served MP3 siblings
+via the same `ffmpeg -ac 1 -ar 48000 -b:a 96k` pipeline every embed
+used. `soundlab.html` follows the manifest instead of the old embedded
+bank (and dropped two laser groups from its on-disk list that had
+actually been in the manifest since SPEC 2.12 — a staleness this file
+never got updated for until now). See the `audio_assets.js`/
+`audio_engine.js` bullets above and SPEC 2.19 itself for the full shape.
+2.18 (the profile version) is next, then 2.16, 2.17.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
