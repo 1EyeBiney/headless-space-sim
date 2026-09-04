@@ -938,7 +938,20 @@ rest fixes or explains things Brian has already heard. Order: 2.10,
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
 
-#### 2.10 Warp overlap, 11 seconds (ideas5)
+#### 2.10 Warp overlap, 11 seconds (ideas5) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: `warpJumpMinS`/`warpJumpMaxS`
+are 8.5/11; the delivery run's station → Contested Zone leg (travel
+10606, the same distance as before) now measures exactly 11 s; the
+engaged loop starts and the ship begins moving at elapsed 3.5 (was 4.0),
+confirmed by polling `warpFlight.phase`/`elapsed` every 0.1 s; the finish
+phase begins at elapsed 7.0 (`totalTime − warpEdgeClipS` = 11 − 4,
+unchanged formula, smaller `totalTime`); the finish clip now fades in
+over 0.15 s (`playWarpFinish` rebuilt like `startWarpEngagedLoop` instead
+of a flat `playAsset` call) so it crossfades against the engaged loop's
+existing 0.15 s fade-out instead of cutting; arrival speech ("Hyperwarp
+complete...") still fires correctly. No console errors. Not yet heard —
+the crossfade quality is the thing for Brian's ear.
 
 - Two new numbers: `warpEngagedLeadS` 0.5 and `warpFinishLeadS` 0.5. The
   engaged loop starts that much BEFORE the start clip ends; the finish

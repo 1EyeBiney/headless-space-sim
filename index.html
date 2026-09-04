@@ -118,15 +118,25 @@ var CFG_DEFAULTS = {
     // rate, never trimmed or time-stretched. warpEdgeClipS/warpEngagedS are
     // the measured lengths of the recordings themselves (audio/ships/warp),
     // not independently tunable — change them only if the clips are re-cut.
-    // The shortest allowed jump is exactly one pass of all three
-    // (4 + 1.5 + 4 = 9.5s); warpJumpLongDist is calibrated (see SECTOR_POIS)
-    // so the delivery run's station -> Contested Zone leg on a full tank
-    // takes exactly warpJumpMaxS. Anything past that distance is still
-    // warpJumpMaxS — the engaged loop just repeats longer in between.
+    // The shortest allowed jump is one pass of all three, minus the two
+    // overlaps below (4 + 1.5 + 4 - 1 = 8.5s); warpJumpLongDist is
+    // calibrated (see SECTOR_POIS) so the delivery run's station ->
+    // Contested Zone leg on a full tank takes exactly warpJumpMaxS.
+    // Anything past that distance is still warpJumpMaxS — the engaged
+    // loop just repeats longer in between.
     warpEdgeClipS: 4,        // length of every warp_startN / warp_finishN clip
     warpEngagedS: 1.5,       // length of a warp_engagedNr loop
-    warpJumpMinS: 9.5,
-    warpJumpMaxS: 12,
+    // SPEC 2.10 (ideas5): the engaged loop starts this much before the
+    // start clip's natural end, crossfading with its tail — shortens the
+    // shortest/longest jump to match, since the flight no longer waits
+    // for the clip to finish before the ship gets moving.
+    warpEngagedLeadS: 0.5,
+    // Symmetric overlap on the other end: the total flight shortens by
+    // this much again so the finish clip's arrival still lands exactly
+    // on time while the engaged loop's tail crossfades into it.
+    warpFinishLeadS: 0.5,
+    warpJumpMinS: 8.5,
+    warpJumpMaxS: 11,
     warpJumpLongDist: 10606, // travel distance (see SPEC 1.17) mapping to warpJumpMaxS
     warpMinChargePct: 25,    // refuse a jump under this % of the tank
     warpEngine: 1,           // 1-6; a drive module will pick this later (A.5) — only
@@ -3137,7 +3147,14 @@ function stopWarpEngagedLoop() {
     setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, 300);
 }
 function playWarpFinish(engine) {
-    SIM.audio.playAsset('warp_finish' + engine, 0.5);
+    var A = SIM.audio, name = 'warp_finish' + engine;
+    if (!A.ctx || !A.assetBufs[name]) return;
+    var src = A.ctx.createBufferSource();
+    src.buffer = A.assetBufs[name];
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    src.connect(g); g.connect(A.uiBus);
+    src.start();
+    A.ramp(g.gain, 0.5, 0.15);
 }
 
 function startWarp() {
@@ -3194,11 +3211,13 @@ function startWarp() {
 function updateWarpFlight(dt) {
     var f = warpFlight;
     f.elapsed += dt;
-    var moveStart = CFG.warpEdgeClipS;
+    // SPEC 2.10: the engaged loop (and the ship's own departure) starts
+    // warpEngagedLeadS early, crossfading with the tail of the start clip.
+    var moveStart = CFG.warpEdgeClipS - CFG.warpEngagedLeadS;
     var p = clamp((f.elapsed - moveStart) / (f.totalTime - moveStart), 0, 1);
     ship.pos = add(f.fromPos, scale(f.dir, f.travel * p));
 
-    if (f.phase === 'start' && f.elapsed >= CFG.warpEdgeClipS) {
+    if (f.phase === 'start' && f.elapsed >= moveStart) {
         f.phase = 'engaged';
         startWarpEngagedLoop(f.engine);
     }
