@@ -935,8 +935,10 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.15 are DONE (Sonnet). 2.18 next (the profile version —
-important now that saves carry real economy state), then 2.16, 2.17.
+2.10 through 2.15 are DONE (Sonnet). **2.19 next** (recorded audio as
+fetched files — Brian, 2026-09-04: he is collecting more audio now, so the
+bank has to scale before anything else lands), then 2.18 (the profile
+version), then 2.16, 2.17.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1259,6 +1261,98 @@ placeholders for his ear.
   is loaded as-is and never rewritten with fields dropped. Do this before
   2.14/2.15 land, so no tester's save is thrown away.
 
+#### 2.19 Recorded audio as fetched files, not base64 (Brian, 2026-09-04) — NEXT; supersedes 3.15 and the `file://` requirement
+
+Brian: "I do not need to run via index locally and will be happy to run it
+off Git." **`file://` support is dropped.** The game runs from GitHub
+Pages, and from the local static server during development — nowhere
+else. He is creating and collecting more audio now, ambient music next,
+so the bank has to scale as files, not as a 3.8 MB base64 blob decoded
+at every boot.
+
+- **`audio_assets.js` becomes a manifest.** Same filename and script tag,
+  so nothing else moves: `window.AUDIO_MANIFEST = { asteroid1:
+  'audio/mining/asteroid1.mp3', ... }`, one line per sound, keys unchanged
+  — every call site already looks sounds up by key through
+  `SIM.audio.assetBufs`, so gameplay code doesn't change. `AUDIO_ASSETS`
+  and the base64 go away. Paths are repo-relative; the loader
+  `encodeURI`s them, so Brian's existing filenames with spaces
+  (`Mining_laser 3.mp3`) work as they are, no renaming. Convention for NEW
+  files: lowercase, underscores, no spaces, filename = key
+  (`audio/music/ambient_sector1.mp3` → `ambient_sector1`), so adding a
+  sound is one manifest line.
+- **Serve MP3, keep the WAV masters.** The twelve WAV recordings (six in
+  `audio/mining/`, the six `laser_switch` clips) are 1–2 MB each — too big
+  to fetch. Convert each once with the exact pipeline every embed used
+  (`ffmpeg -i in.wav -ac 1 -ar 48000 -b:a 96k out.mp3`), commit the `.mp3`
+  beside its `.wav`, point the manifest at the mp3. The MP3 originals
+  (lasers, ships, warp, explosions) are served as they are; stereo ones on
+  the UI bus stay stereo, and a stereo buffer into an HRTF panner is
+  downmixed by Web Audio, so positioned voices work either way.
+- **The loader** (`audio_engine.js`): `decodeAssets()`, the atob path, is
+  deleted. `SIM.audio.load(key)` returns a Promise — buffer cached →
+  resolve; fetch in flight (`pending[key]`) → return it; else
+  `fetch(encodeURI(AUDIO_MANIFEST[key]))` → `arrayBuffer` →
+  `decodeAudioData` → `assetBufs[key]`. A missing key or a 404 rejects,
+  `console.warn`s ONCE per key, and leaves the key absent so every
+  existing "no buffer → synthesized fallback" branch keeps doing exactly
+  what it does today. `SIM.audio.preload(keys)` = `Promise.all` over
+  `load`, swallowing rejections; `SIM.audio.ready(keys)` = every key has a
+  buffer, synchronous.
+- **What loads when.** `audioStart()` kicks off `preload(AUDIO_PRELOAD)` in
+  the background — a list in the manifest file of what the demo always
+  needs (today's 37 keys: the mining loops and explosions, `missile_fire`,
+  the five ship loops, all sixteen lasers, the six switch clips, warp set
+  1 — the same ~3 MB the base64 carried, now arriving AFTER the page is
+  interactive instead of before). Everything else loads on first use:
+  `playAsset` and every direct `assetBufs[key]` reader call
+  `SIM.audio.load(key)` when the buffer is absent (start the fetch, use
+  the fallback this time, the real sound next time). Mission starts
+  `preload` their own keys without waiting; the one existing gate stays —
+  Mining's "The asteroid sounds are still loading" via `assetsReady()`,
+  which becomes `ready(MINING_KEYS)` — and the delivery run gets the same
+  gate for the same keys, since it mines too.
+- **Speech**: nothing new. A fetch that hasn't landed is silent-with-
+  fallback, exactly like an un-embedded engine is today. A spoken "sounds
+  loading" at boot is one line gated on `ready(AUDIO_PRELOAD)` if Brian
+  wants it; not built by default.
+- **Music hook** (small, so the first ambient track is one manifest line
+  away): a fourth bus, `SIM.audio.musicBus` → `masterGain`; a fourth
+  `SOUND_CATS` line, Music, in the Sound menu (`profile.sound.music`,
+  applied by `applySoundLevels`); `SIM.audio.playMusic(key, {vol, fadeS})`
+  / `stopMusic(fadeS)` — loads the key, loops it on the music bus,
+  crossfades from whatever was playing. No track plays anywhere yet;
+  where music plays (sector, station, combat) is 3.18, once Brian has
+  tracks.
+- **The sound lab**: "embedded recordings" becomes "in the manifest" (one
+  button per key, `load` on click then play, a "missing" marker if the
+  fetch fails — the lab is now the manifest checker); "on disk, not
+  embedded" becomes "on disk, not in the manifest" (the candidate list as
+  now). The lab's shim references `AUDIO_MANIFEST`.
+- **Git — this is the part that bites if skipped**: the files have to be
+  IN the repo for Pages to serve them. `audio/ships/warp/` and
+  `audio/weapons/lasers/` are untracked today, and `audio/missiles/` has
+  seven deletions pending from Brian's reorganization. Stage `audio/`
+  explicitly (`git add audio/`) in this item's commit — never `git add -A`;
+  the ideas files stay untracked and `z.old/` is gitignored regardless.
+  About 25 MB of audio lands in the repo; fine for Pages. `audio_assets.js`
+  drops from 3.8 MB to ~3 KB.
+- **Docs**: every "double-click", "file://", "base64", and "embedded"
+  statement in CLAUDE.md's Files, Audio architecture, and Working
+  agreements sections is rewritten by this item (the doc edit that
+  introduced 2.19 already did the ones that describe the DECISION; the
+  ones describing the CODE change with the code). README is already
+  Pages-only. 3.15 and 3.2 are superseded.
+- **Test checklist**, at the local server and at Pages, network tab open:
+  `audio_assets.js` is tiny; the preload set fetches in the background
+  and the mission menu is speakable before it finishes; a Mining start
+  before the asteroid loops land says "still loading," after it starts; a
+  laser fires with its recording; a warp plays all three phases; a
+  deliberately wrong manifest path warns once and the fallback cue plays;
+  the lab lists every key without a "missing" marker; the Sound menu's
+  new Music line saves and reloads. `file://` is NOT tested — it no longer
+  works, by decision.
+
 ### Phase 2, continued — a living sector, smarter enemies (the existing 2.1–2.8)
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)
@@ -1427,12 +1521,11 @@ From A.9–A.12. Numbers are placeholders in CFG; order is a suggestion.
   small counts and don't count against it.
 - The tug (2.16) gains the experience lever once experience exists.
 
-#### 3.15 Lazy-load audio (moves up from 3.2)
+#### 3.15 Lazy-load audio — superseded by 2.19
 
-- Sixteen lasers and six warp engines roughly double the embedded bank.
-  Over https, fetch each recording on first use (a manifest of paths with
-  the same keys), keep base64 as the `file://` fallback. Boot speaks
-  "sounds loading" only if a needed one isn't ready yet.
+- Promoted into the Sunday phase as 2.19 the moment Brian decided to
+  drop `file://` (2026-09-04); there is no base64 fallback to keep, which
+  is what made it small enough to do now.
 
 #### 3.16 Verbosity and the journal (A.12)
 
@@ -1460,9 +1553,9 @@ in 1.9 is exactly why the content waits.
 
 #### 3.2 Hosting, second pass
 
-Lazy-load the ship loops and new recordings over fetch on https (base64
-stays for file://); a service worker for offline play; a share page. The
-double-click file keeps working.
+Fetched audio is 2.19 now. Left here: a service worker for offline play
+and a share page. The double-click `file://` build is gone by decision
+(2.19) — "offline" means the service worker, not the filesystem.
 
 ### Phase 5 — the base, and bases at war (direction only; A.8)
 
@@ -1552,6 +1645,15 @@ mined resources (3.13); escort and defend missions are in the demo
 (2.17); alloy from iron is the sixth resource (2.15); lazy-load and the
 profile version move up (2.18, 3.15); Sunday 2026-09-06 is the demo
 target, with 2.16 and 2.17 the first to drop if it slips.
+
+Decided (Brian, 2026-09-04, after seeing `audio_assets.js` at 3.8 MB):
+recorded audio is served as files and fetched, not embedded as base64;
+**`file://` support is dropped** — the game runs from GitHub Pages and the
+local dev server only; do it now, before the rest of Phase 2, because he
+is collecting more audio, ambient music included (2.19). Accepted by
+default there: serve MP3 and keep the WAV masters; lazy-load everything
+outside a boot preload list; a Music bus and Sound-menu line ready for
+the first track; the audio folders get committed.
 
 Accepted by default (say otherwise), ideas5: the hail/land split — hail
 for rearm, selling, buying reaction mass, missions, prices; land for

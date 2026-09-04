@@ -18,10 +18,16 @@ expands.
   LOOP→SHELL). AUDIO now holds only simulation-driven sound (ship/rock/beacon
   voices, the beam, the lock tick, thrusters) — the generic engine and the
   discrete-cue registry moved out as of Round 12; see "Audio architecture"
-  below. Runs by double-click from file://. Needs `audio_assets.js`,
-  `audio_engine.js`, `audio_cues.js` loaded before it, in that order.
-- `audio_assets.js` — base64 mono-96k-MP3 sound bank (12 assets), loaded by a
-  plain script tag (fetch is blocked on file://, script tags are not).
+  below. Runs from GitHub Pages or the local static server — NOT from a
+  double-clicked `file://` page any more (Brian dropped that on 2026-09-04,
+  SPEC 2.19; recorded audio is fetched, and `file://` can't fetch). Needs
+  `audio_assets.js`, `audio_engine.js`, `audio_cues.js` loaded before it,
+  in that order.
+- `audio_assets.js` — until 2.19 lands: a base64 mono-96k-MP3 sound bank
+  (37 assets, 3.8 MB) loaded by a plain script tag. As of 2.19: a ~3 KB
+  MANIFEST, `window.AUDIO_MANIFEST = { key: 'audio/path.mp3' }`, same keys,
+  fetched on demand by `SIM.audio.load(key)`; the recordings under `audio/`
+  are the served assets and must be committed.
 - `audio_engine.js` / `audio_cues.js` — see "Audio architecture" below.
 - (There is no longer a single-file `space_sim_demo.html`: Brian dropped it
   on 2026-09-04 now that the Pages URL is the share link. Do not regenerate
@@ -42,9 +48,15 @@ expands.
   slot with its family matchup in words, fitted modules, and total mass;
   works from any live mission or the mission menu.)
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
-- `audio/` — Brian's source recordings (never read at runtime, organized by
-  category as of Round 12's housekeeping pass — `audio_assets.js` embeds by
-  ASSET KEY, not by path, so none of these moves touch runtime code):
+- `audio/` — Brian's recordings, organized by category as of Round 12's
+  housekeeping pass. Until 2.19 they are never read at runtime
+  (`audio_assets.js` embeds by ASSET KEY, not by path, so moving files
+  doesn't touch code); as of 2.19 they ARE the runtime assets, fetched by
+  the manifest's paths, so every served file has to be committed and a
+  move means a manifest edit. 27 MB on disk, 73 files, 40 tracked in git
+  at the time of writing — `audio/ships/warp/` and `audio/weapons/lasers/`
+  are untracked and `audio/missiles/` has 7 pending deletions from Brian's
+  reorganization; 2.19 stages `audio/` explicitly (never `git add -A`):
   `audio/mining/` = 3 asteroid loops + 3 asteroid explosions (all 6 already
   embedded in `audio_assets.js`); `audio/ships/` = 18 ship loops
   (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
@@ -73,11 +85,10 @@ expands.
   `.claude/launch.json`. Needed now that the game is split across four
   script files: a `file://` page (and this session's browser-preview tool,
   which renders local files as an opaque `data:` snapshot) can't resolve
-  relative `<script src>` tags or read `localStorage`, so multi-file
+  relative `<script src>` tags, read `localStorage`, or fetch audio, so
   testing needs a real origin. Test at `http://localhost:8934` during
-  development; `index.html` still works by double-click for a final
-  check, and the Pages URL is the release reference (see Working
-  agreements).
+  development; the Pages URL is the release reference (see Working
+  agreements). There is no double-click build any more (SPEC 2.19).
 - Git repo, public on GitHub: https://github.com/1EyeBiney/headless-space-sim
   Served live via GitHub Pages at
   https://1eyebiney.github.io/headless-space-sim/ — this URL is the
@@ -107,7 +118,8 @@ sounds in a standalone page, port winners into the game by name later.
 will be replaced by "engineered stuff" UNLESS it's coupled to gameplay
 mechanics still in flux. That's the actual split point:
 - `audio_engine.js` (`SIM.audio`) — the generic Web Audio layer: ctx/bus/
-  asset-bank state, `audioStart`/`decodeAssets`/`assetsReady`, `ramp`,
+  asset-bank state, `audioStart`/`decodeAssets`/`assetsReady` (2.19
+  replaces `decodeAssets` with `load`/`preload`/`ready` over `fetch`), `ramp`,
   `makePanner`/`movePanner`/`worldOut`, and the primitives `sfxTone`/
   `sfxNoise`/`sfxChord`/`sfxArpeggio`/`blip`/`playAsset`/`noiseBurst` — plus
   two additions this round, `sfxEcho` and `sfxSweep`, ported faithfully from
@@ -138,11 +150,13 @@ mechanics still in flux. That's the actual split point:
   recorded loop later (the way ship engines already pitch a recorded MP3
   via `shipAsset.rate`) is a different, smaller change than what the cue
   registry solves.
-- New recorded assets Brian is auditioning do NOT get manifest entries yet
-  — they aren't decoded into `audio_assets.js`, so nothing here could even
-  reference them. A future sound-lab tester auditions them via plain
-  `<audio>`/`new Audio(path).play()`, completely outside this registry and
-  outside the game, which is what "not connected yet" means in practice.
+- New recorded assets Brian is auditioning do NOT get cue-registry entries
+  until they're wired to a moment in the game. Before 2.19 they also
+  weren't in `audio_assets.js` at all; after 2.19, connecting a recording
+  is one manifest line (`key: 'audio/path.mp3'`) plus whatever plays it —
+  the sound lab (`soundlab.html`) lists every manifest key and, separately,
+  the on-disk files that don't have one yet, so it doubles as the "what's
+  connected" checker.
 
 **The multi-file gotcha that bit this refactor once already**: `index.html`'s
 main script is one IIFE (`(function(){'use strict'; ...})();`), so
@@ -694,8 +708,9 @@ Rookie/Veteran/Ace in place.
   browser pane to https://1eyebiney.github.io/headless-space-sim/ , wait
   ~60-90 s after a push for the pages-build-deployment workflow (`gh run
   list`) before testing, and hard-reload if a test shows stale behavior.
-  The double-click `index.html` must still work standalone, but the URL
-  is the reference.
+  As of SPEC 2.19 there is no `file://` build to keep working — Brian
+  dropped it (2026-09-04) so recorded audio can be fetched; the Pages URL
+  and the local static server are the only two places the game runs.
 - Multi-file gotcha (Round 12): the game is now split across four `<script>`
   tags. This session's browser-preview tool renders a local file as an
   opaque `data:` URL snapshot — relative `<script src>` tags don't resolve
@@ -852,8 +867,17 @@ F3 — see the "Salvage and alloy" bullet above, including a real speech
 bug found and fixed there: two `say()` calls in one tick collapse into
 one DOM mutation, so a screen reader only hears the last — worth knowing
 for any future code that wants to speak two things on one event). 2.18
-(the profile version) is next, promoted ahead of 2.16/2.17 now that
-saves carry real economy state worth migrating safely.
+(the profile version) was next, promoted ahead of 2.16/2.17 now that
+saves carry real economy state worth migrating safely — and then Brian,
+seeing `audio_assets.js` at 3.8 MB, decided (2026-09-04, Fable session)
+to drop `file://` support and serve recorded audio as fetched files
+instead of base64, NOW, because he is collecting more audio (ambient
+music next). That is **SPEC 2.19**, docs only so far, and it is the next
+build: 2.19 → 2.18 → 2.16 → 2.17. It rewrites `audio_assets.js` into a
+manifest, deletes the atob decode path, adds `load`/`preload`/`ready`
+and a music bus, converts the twelve WAV masters to served MP3s, and
+commits the `audio/` folders — see the SPEC item for the loader shape
+and the git caution.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
