@@ -380,6 +380,39 @@ static once tiers exist.
   owed (confirmed a partial-afford case: 69 billable points at 300 credits
   on hand repaired exactly 60 of them, `collisionDamage` reduced to 9, not
   zeroed) — ordinary combat/mining damage stays free exactly as before.
+  **Salvage and alloy (Round 14, SPEC 2.15)**: `profile.resources`
+  `{ salvage, alloy }`, persistent like `profile.credits` (unlike `ore`,
+  which stays the temporary cargo hold — Brian's own design split, since
+  losing salvage/alloy on a lost ship would undercut them as the
+  achievement resource combat forces even a miner to earn a little of).
+  `SALVAGE` `{ interceptor: 2, corvette: 3, cruiser: 5 }` keyed by
+  `SHIP_CLASS` (2.12's own ship-class map), awarded in `damageTarget` via
+  `addSalvage(shipName)` on every ship kill. Mining an Ice core's depleted
+  branch (`vacTick`) calls `addRcs(CFG.rcsPerIceCore)`; an Iron core adds
+  `CFG.alloyPerIronCore` to `profile.resources.alloy`; Stone cores give
+  nothing extra, matching 2.12's own "middle" rock in the laser matchup
+  table. Both sell at the landing menu (`Sell salvage`/`Sell alloy`,
+  `CFG.salvageCredit` 30 / `CFG.alloyCredit` 20 per unit, via a shared
+  `sellResource(key, price, poi)` — `sellOre()` is now a one-line wrapper
+  around the equivalent `sellOreAt(poi)`, needed because the NEW hail menu
+  also needs to sell ore without being `docked`). **F3** (same shell as
+  F2): ore, salvage, alloy, reaction mass, warp charge, hydrogen (0 until
+  2.8), credits, missiles, chaff, each with a line on what it's for.
+  **A real speech bug found here, general to this codebase**: `say()`
+  only sets `liveEl.textContent`, no queue — two `say()` calls in the same
+  synchronous tick collapse into ONE DOM mutation, so a screen reader only
+  ever hears the LAST one. `addSalvage()` originally spoke its own
+  "Salvage plus N." right before `damageTarget`'s kill line and the
+  salvage announcement was silently swallowed every time (confirmed: the
+  profile updated correctly but the line never appeared in an
+  announcement log). Fixed by making `addSalvage` silent (returns the
+  amount) and folding it into ONE `say()` call — `destroyTarget` gained
+  an optional `extra` param it prepends to its own already-`setTimeout`-
+  delayed victory line (safe, since a real timer is a genuine task
+  boundary), and `damageTarget` builds one combined string for the
+  ordinary case. **Any future code that wants to speak two things on one
+  event must combine them into one `say()` call or separate them with a
+  real `setTimeout`** — never call `say()` twice back to back.
   **The hail menu** (`HAIL_ITEMS`/`hailMenuKey`/`openHailMenu`) replaces
   1.19's plain `hailText()` status line with a real browsable menu, same
   shell as the station/landing menu: Rearm (missiles + chaff, free),
@@ -813,8 +846,14 @@ though it's really its own bullet now), 2.12 (sixteen lasers in two
 families with 1/Shift+1 cycling, all recordings embedded), 2.13 (F2 ship
 screen), 2.14 (reaction mass, S as a real reverse thruster, battery mode,
 collisions billed at the next landing, the hail menu — see the "Reaction
-mass, collisions, the hail menu" bullet above for the full shape). 2.15
-(salvage/alloy/ice, F3) is next.
+mass, collisions, the hail menu" bullet above for the full shape), and
+2.15 (salvage from kills, alloy from iron cores, ice into reaction mass,
+F3 — see the "Salvage and alloy" bullet above, including a real speech
+bug found and fixed there: two `say()` calls in one tick collapse into
+one DOM mutation, so a screen reader only hears the last — worth knowing
+for any future code that wants to speak two things on one event). 2.18
+(the profile version) is next, promoted ahead of 2.16/2.17 now that
+saves carry real economy state worth migrating safely.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

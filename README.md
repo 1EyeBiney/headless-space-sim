@@ -110,6 +110,7 @@ Right hand on the arrows, left hand on everything else.
 | W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
 | 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse) carrying all eight versions; pressing the slot's key again cycles to the next version, Shift+ the key cycles back. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | F2 | Ship status: hull, shields, warp charge, cargo, missiles, chaff, each laser slot with what it's good against, fitted modules, and mass |
+| F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and chaff, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | D | Chaff. A decoy burst that spoofs the missile coming at you — no shield needed. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
@@ -153,6 +154,12 @@ shield.
 The mining family bites hardest against iron rocks and cruiser-class
 ships, and struggles against ice and interceptors; rapid-pulse is the
 reverse. Check F2 for the exact matchup on whatever you have loaded.
+
+Every kill leaves salvage behind, sellable at a station and eventually
+needed to fit some modules — even a dedicated miner ends up fighting a
+little. Ice cores top off your reaction mass tank instead of ore; iron
+cores yield alloy alongside their ore. F3 lists everything you're
+carrying and what each resource is for.
 
 ## Files
 

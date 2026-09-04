@@ -78,6 +78,9 @@ var CFG_DEFAULTS = {
     rcsPerIceCore: 10,            // refill from mining an ice core
     rcsPerKill: 5,                // refill from a combat kill
     rcsCreditPerUnit: 1,          // hail-range purchase price
+    alloyPerIronCore: 1,          // SPEC 2.15: an iron core's other yield
+    salvageCredit: 30,            // sell price per unit at the landing menu
+    alloyCredit: 20,
     // Collisions (SPEC 2.14): hit a station or planet too fast and it costs
     // hull, billed at the next landing rather than repaired free like combat
     // damage — the "bad drivers pay" rule.
@@ -277,7 +280,8 @@ var profile = null;
 function defaultProfile() {
     return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
-             sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on' };
+             sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
+             resources: { salvage: 0, alloy: 0 } };
 }
 
 function loadProfile() {
@@ -305,6 +309,9 @@ function loadProfile() {
         profile.sound[c.id] = (i >= 0 && i < SOUND_LEVELS.length && snd[c.id] !== undefined) ? i : SOUND_LEVELS.length - 1;
     });
     beaconMode = BEACON_MODES.some(function (m) { return m.id === profile.beacons; }) ? profile.beacons : 'on';
+    if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0 };
+    if (typeof profile.resources.salvage !== 'number') profile.resources.salvage = 0;
+    if (typeof profile.resources.alloy !== 'number') profile.resources.alloy = 0;
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
 }
 
@@ -376,6 +383,10 @@ LASER_FAMILIES.forEach(function (fam) {
 // Ship classes for the laser matchup table (same split 2.2 will use).
 var SHIP_CLASS = { Freighter: 'cruiser', Raider: 'interceptor', Scout: 'interceptor',
                     Drone: 'corvette', Cruiser: 'cruiser' };
+// Salvage (SPEC 2.15/A.9): collected on the kill (a container to fly to
+// comes later, 2.8). The one resource combat-only play can't skip mining
+// for — Brian: even the most mining-focused pilot should fight a little.
+var SALVAGE = { interceptor: 2, corvette: 3, cruiser: 5 };
 
 // Replaces the old per-laser hullMult/rockMult: the FAMILY decides whether
 // this shot is a good match for the target, a rock by type, a ship by class.
@@ -669,6 +680,7 @@ var demo = null;         // the timed delivery run, while active
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
 var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
 var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
+var resourceScreen = { open: false, idx: -1, lines: [] };   // F3 (SPEC 2.15)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
 var beaconMode = 'on';   // 'on' | 'off' | 'target' — live; profile.beacons is the saved copy
 function over() { return won || lost; }
@@ -934,6 +946,7 @@ var KEY_DESCRIPTIONS = {
     '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
     f2: 'Ship status: hull, shields, warp charge, cargo, missiles, chaff, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
+    f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and chaff, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
@@ -1506,7 +1519,15 @@ function updateTargeting() {
 }
 
 // ============================== 7. WEAPONS ==================================
-function destroyTarget(t) {
+// `extra` (SPEC 2.15) is a short line — e.g. a salvage gain — to prepend to
+// whichever message this kill ends up producing. It can't just be its own
+// say() call before this one: say() only sets textContent, and two
+// synchronous writes in the same tick collapse into one DOM mutation, so a
+// screen reader (and anything else watching the live region) only ever
+// perceives the LAST one. The immediate "target destroyed" line is built by
+// the caller (damageTarget) for the same reason; this function only needs
+// to thread `extra` through to its own delayed victory line.
+function destroyTarget(t, extra) {
     t.alive = false;
     SIM.cues.play('explosion_kill', { pos: t.pos });
     stopVoice(t);
@@ -1528,7 +1549,7 @@ function destroyTarget(t) {
                 tail = 'Press Enter to play again, or X ' +
                        (sectorHome ? 'to return to the sector.' : 'for the mission menu.');
             }
-            say('All targets destroyed. Victory. ' + tail);
+            say((extra || '') + 'All targets destroyed. Victory. ' + tail);
         }, 900);
         return true;
     }
@@ -1549,13 +1570,28 @@ function provoke(t) {
 }
 
 // Apply damage; returns true if the target died (kill speech handled here).
+// Salvage (SPEC 2.15): every kill adds it by class. Ships have no `kind`
+// field (rocks/dust/poi do), so !t.kind is this codebase's own "is a ship"
+// check, same as the hostile-pool filters elsewhere. Silent on purpose —
+// see destroyTarget's comment on why this can't be its own say() call.
+function addSalvage(shipName) {
+    if (!profile) return 0;
+    var amt = SALVAGE[SHIP_CLASS[shipName] || 'corvette'] || 0;
+    if (amt <= 0) return 0;
+    profile.resources.salvage += amt;
+    saveProfile();
+    return amt;
+}
+
 function damageTarget(t, dmg) {
     provoke(t);
     t.hp -= dmg;
     if (t.hp <= 0) {
         var name = t.name;
-        var over = destroyTarget(t);
-        if (!over) say(name + ' destroyed. ' + aliveTargets().length + ' targets remain.');
+        var salvageGain = !t.kind ? addSalvage(name) : 0;
+        var salvageText = salvageGain ? 'Salvage plus ' + salvageGain + '. ' : '';
+        var over = destroyTarget(t, salvageText);
+        if (!over) say(salvageText + name + ' destroyed. ' + aliveTargets().length + ' targets remain.');
         return true;
     }
     return false;
@@ -1906,7 +1942,19 @@ function vacTick() {
         t.alive = false;
         stopVoice(t);
         SIM.audio.blip(900, 200, 0.15, 0, 'sine');
-        say('Core depleted. Ore hold ' + ore + '.');
+        // SPEC 2.15: ice and iron cores carry a second yield alongside ore —
+        // reaction mass and alloy respectively. Stone has none (a plain
+        // ore-only rock, the middle option 2.12's matchup table also uses).
+        var bonus = '';
+        if (t.type.name === 'Ice') {
+            addRcs(CFG.rcsPerIceCore);
+            bonus = ' Reaction mass plus ' + CFG.rcsPerIceCore + '.';
+        } else if (t.type.name === 'Iron') {
+            profile.resources.alloy += CFG.alloyPerIronCore;
+            saveProfile();
+            bonus = ' Alloy plus ' + CFG.alloyPerIronCore + '.';
+        }
+        say('Core depleted. Ore hold ' + ore + '.' + bonus);
         if (targets[selected] === t) selectNearest();
         checkMiningEnd();
         return;
@@ -3004,6 +3052,59 @@ function shipScreenKey(lname) {
     }
 }
 
+// ---- F3 resources screen (SPEC 2.15) ---------------------------------------
+// Same shell as F2/the run log. One line per resource, each naming what
+// it's for — the point being a pilot can look up the whole economy in one
+// place, not just what's fitted to the ship.
+function buildResourceLines() {
+    var lines = [];
+    lines.push('Ore: ' + ore + '. Mined from any rock, sold for credits at a station.');
+    lines.push('Salvage: ' + (profile ? profile.resources.salvage : 0) +
+                '. From combat kills only, sold for ' + CFG.salvageCredit +
+                ' credits each, and some modules will need it.');
+    lines.push('Alloy: ' + (profile ? profile.resources.alloy : 0) +
+                '. From iron cores, sold for ' + CFG.alloyCredit + ' credits each.');
+    lines.push('Reaction mass: ' + Math.round(rcsPct()) + ' percent' +
+                (rcsBattery ? ', on battery power' : '') +
+                '. Spent by thrust, braking, and the stabilizers.');
+    lines.push('Warp charge: ' + warpPct() + ' percent. Spent by hyperwarp jumps.');
+    lines.push('Hydrogen: 0. Not collectible yet — combat drops and a mining module add it later.');
+    lines.push('Credits: ' + (profile ? profile.credits : 0) + '. Spent on modules, lasers, and collision repairs.');
+    lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.') + ' Fired with F.');
+    lines.push(chaff + (chaff === 1 ? ' chaff.' : ' chaff.') + ' Spent with D against an incoming missile.');
+    return lines;
+}
+
+function openResourceScreen() {
+    resourceScreen.open = true;
+    resourceScreen.idx = -1;
+    resourceScreen.lines = buildResourceLines();
+    keysDown = {};
+    thrusterSync(null);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    say('Resources. ' + resourceScreen.lines.length + ' lines. Down arrow reads line by line, Escape closes.');
+}
+
+function closeResourceScreen() {
+    resourceScreen.open = false;
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    say('Resources closed.');
+}
+
+function resourceScreenKey(lname) {
+    if (lname === 'escape' || lname === 'f3') { closeResourceScreen(); return; }
+    var n = resourceScreen.lines.length;
+    if (lname === 'arrowdown') {
+        if (resourceScreen.idx < n - 1) { resourceScreen.idx++; say(resourceScreen.lines[resourceScreen.idx]); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
+    } else if (lname === 'arrowup') {
+        if (resourceScreen.idx > 0) { resourceScreen.idx--; say(resourceScreen.lines[resourceScreen.idx]); }
+        else { resourceScreen.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+    } else {
+        say('Up and down arrows read resources, Escape closes.');
+    }
+}
+
 // ============================== 8B. SECTOR ==================================
 // The quadrant map (Q): a browsable overlay in the help-screen style. The
 // sim freezes and the world ducks while it is open; Enter sets the nav
@@ -3207,6 +3308,28 @@ var STATION_ITEMS = [
           return true;
       },
       run: function () { sellOre(); } },
+    { label: 'Sell salvage',
+      desc: function () {
+          var n = profile.resources.salvage;
+          return n > 0 ? 'Sell ' + n + ' salvage for ' + (n * CFG.salvageCredit) + ' credits.'
+                       : 'No salvage in the hold.';
+      },
+      ready: function () {
+          if (profile.resources.salvage <= 0) { say('No salvage to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellResource('salvage', CFG.salvageCredit, docked.poi); } },
+    { label: 'Sell alloy',
+      desc: function () {
+          var n = profile.resources.alloy;
+          return n > 0 ? 'Sell ' + n + ' alloy for ' + (n * CFG.alloyCredit) + ' credits.'
+                       : 'No alloy in the hold.';
+      },
+      ready: function () {
+          if (profile.resources.alloy <= 0) { say('No alloy to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellResource('alloy', CFG.alloyCredit, docked.poi); } },
     { label: 'Modules',
       desc: function () {
           return MODULES.length + ' modules on file, ' + ownedModules().length + ' fitted. ' +
@@ -3226,6 +3349,18 @@ function sellOreAt(poi) {
     say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
 }
 function sellOre() { sellOreAt(docked.poi); }
+
+// Salvage and alloy (SPEC 2.15): the same sell-for-credits shape as ore,
+// at a flat per-unit price rather than ore's per-10 rate — they're rarer.
+function sellResource(key, pricePerUnit, poi) {
+    var n = profile.resources[key];
+    var earned = n * pricePerUnit;
+    profile.resources[key] = 0;
+    profile.credits += earned;
+    bumpInfluence(poi, 1);
+    saveProfile();
+    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
+}
 
 // ---- Modules submenu --------------------------------------------------------
 function moduleText(i) {
@@ -3712,6 +3847,9 @@ function onKeyDown(e) {
     // F2 ship status, same shell.
     if (shipScreen.open) { shipScreenKey(lname); return; }
 
+    // F3 resources, same shell.
+    if (resourceScreen.open) { resourceScreenKey(lname); return; }
+
     // The Sound settings list, same shell (reached from the mission menu).
     if (soundMenu.open) { soundKey(lname); return; }
 
@@ -3813,6 +3951,7 @@ function onKeyDown(e) {
             break;
         case 'f1':     openHelp(); break;
         case 'f2':     openShipScreen(); break;
+        case 'f3':     openResourceScreen(); break;
         case 'f12':
             describeMode = true;
             say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
@@ -4288,6 +4427,8 @@ function menuKey(lname, name) {
         openHelp();
     } else if (lname === 'f2') {
         openShipScreen();
+    } else if (lname === 'f3') {
+        openResourceScreen();
     } else if (lname === 'f12') {
         describeMode = true;
         say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');

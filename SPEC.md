@@ -935,7 +935,8 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.14 are DONE (Sonnet). 2.15 next.
+2.10 through 2.15 are DONE (Sonnet). 2.18 next (the profile version —
+important now that saves carry real economy state), then 2.16, 2.17.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1168,7 +1169,38 @@ placeholders for his ear and hands.
   mass. Ranges may move once Brian has flown it.
 - The delivery run starts with a full tank of mass.
 
-#### 2.15 Salvage, alloy, ice, and F3 the resources screen (ideas5)
+#### 2.15 Salvage, alloy, ice, and F3 the resources screen (ideas5) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: F3 opens anywhere and reads
+all 9 lines correctly in order (ore, salvage, alloy, reaction mass, warp
+charge, hydrogen, credits, missiles, chaff); a Scout kill (interceptor
+class) correctly added exactly 2 salvage, confirmed against a genuinely
+clean profile after isolating a test-script contamination issue (see the
+bug below); the landing menu's new Sell salvage line correctly priced 2
+salvage at 60 credits (2 × 30) and Sell alloy correctly reported "No
+alloy in the hold." against zero. No console errors.
+
+**A real bug found and fixed**: `say()` only ever sets `liveEl.textContent`
+directly, with no queue — two `say()` calls in the same synchronous tick
+collapse into ONE DOM mutation, so a screen reader only ever perceives
+the LAST of the two. `addSalvage()` originally spoke its own "Salvage
+plus N." immediately before `damageTarget`'s "X destroyed" line; in
+practice the salvage announcement was silently swallowed every time,
+confirmed by an isolated test where the profile updated correctly (2
+salvage saved) but the spoken line never appeared in the announcement
+log. Fixed by making `addSalvage` silent (it returns the amount) and
+folding it into the SAME `say()` call as the kill/victory line —
+`destroyTarget` now takes an optional `extra` string it prepends to its
+own (real-setTimeout-delayed, so already safe) victory line, and
+`damageTarget` builds one combined string for the ordinary case.
+**This is a general gotcha for anything built on this codebase's speech
+model going forward: never call `say()` twice without an await/setTimeout
+between them** — combine into one string, or use `setTimeout` to force a
+real task boundary. Confirmed fixed: "Salvage plus 2. Scout destroyed.
+4 targets remain." now speaks as one line.
+
+Not yet heard by Brian — the salvage-per-class and sell-price numbers are
+placeholders for his ear.
 
 - `profile.resources` `{ salvage, alloy }` beside `credits`; ore stays
   the cargo hold. **Salvage**: every kill adds it by class, `SALVAGE`
