@@ -108,6 +108,106 @@ mining thresholds never spoken, every attack telegraphed, every rule has an
 audible tell. The strategic layer is menus, maps, and speech — the same
 widgets the mission menu, quadrant map, and run log already are.
 
+### A.8 The endgame: the base, and bases at war (ideas5, 2026-09-04)
+
+- The player's long game is building a **base**: a Death Star, a hollowed
+  rogue moon, a mined-out asteroid, whichever construct — the type sets
+  some of the base's attributes, but every base is the same kind of thing:
+  a resource generator, a home, and eventually a combatant.
+- The endgame is **base against base**: a new combat sim where the player
+  controls a station with small fleets, a galactic battle rather than a
+  dogfight. Not designed yet beyond this sentence; it's what every
+  resource below is ultimately FOR, so the resource ladder (A.9) is built
+  with a base as its sink.
+- Winning = a base that outlasts the others. Everything before that is
+  gathering the five resources and the influence to build and defend it.
+
+### A.9 The resources (ideas5)
+
+Six resources (ore, and five special ones), each with an activity that
+produces it and a sink that wants it, so where a player spends their
+hours is a strategic choice:
+
+| Resource | Comes from | Spent on |
+| --- | --- | --- |
+| Ore | Mining any rock | Credits at a station |
+| Reaction mass | Ice rocks, station fuel, small combat drops | Thrusters, braking, stabilizers (A.10) |
+| Alloy | Iron rocks | Modules and lasers that need metal, later the base |
+| Hydrogen | Combat containers, a hydrogen-extractor module | Quadrant jumps, later the base |
+| Salvage | Combat kills only | Modules and lasers that credits alone cannot buy |
+| Biomass | Planet agriculture, later | The base's crew and production |
+
+- **Levers**: each sellable category carries a saturation number. Selling
+  into it pushes its price down; the number decays over play time, so a
+  neglected category drifts back above base price. A combat-only player
+  still wins, but every kill's salvage is worth less the longer they go
+  without mining, so they need more kills — more effort in one category
+  beats the balanced player's spread only with more total effort.
+- **Gates**: some modules need salvage, so even the most mining-focused
+  pilot fights a little. For them, "super easy" combat — targets that
+  don't fire back, harder to hit as tiers rise — is offered only by a
+  friendly station (influence past the threshold), costs mined resources
+  to accept, and is rate-limited per station, so nobody farms it.
+- Every resource is a line on the F3 resources screen (A.12).
+
+### A.10 The quadrant is a solar system (ideas5)
+
+- A quadrant has a star at its center, two or three planets on orbits,
+  two or three stations each with its own market, one jump gate, ONE
+  active combat zone, and one to three asteroid clouds — about ten points
+  of interest. Combat zones appear at different places over time and
+  clouds DRIFT on orbits like real asteroids, so travel inside the
+  quadrant has value and the warp tank module matters.
+- Instance rules (Brian): one combat zone active at a time; when it's
+  cleared and exited, it disappears from the map and a new one spawns
+  elsewhere. One to three clouds; a depleted cloud disappears on exit and
+  a new one spawns so there is always at least one.
+- The spawn rules that keep it flyable against the warp tank (Phase 3,
+  3.10 has the numbers): a replacement spawns 5,000–11,000 from the pilot
+  at that moment (one clean jump — leaving any encounter refills the
+  tank), at least 4,000 from any other point, and within 11,000 of at
+  least one station, so fuel and a market are always in reach. The
+  quadrant is 16,000 in radius — two to three tanks edge to edge, so a
+  crossing needs a station stop or a regen wait.
+- Stations differ: each has its own market demands, met by the player's
+  supply and simulated so prices diverge — a reason not to fly to the
+  same station every time. Planets, until agriculture exists, are
+  second markets buying certain things at better prices. F4 is the
+  trading screen (A.12).
+- **Time is game time**, never wall-clock: play seconds that don't advance
+  in a menu. Markets, respawns, and drift all run on it. A pilot who saves
+  for the night comes back in the morning to exactly what they left.
+- The timed delivery run keeps today's FIXED layout — its legs are
+  hand-tuned. The moving world belongs to the open campaign.
+
+### A.11 Death: the tug (ideas5)
+
+- A lost ship is **rescued by a tug** from the nearest station: a wait in
+  game time, spoken as a countdown, then the pilot is back at the station
+  with the hull repaired. Cargo survives. The wait is the penalty and it
+  is never crippling.
+- Levers on the wait: credits buy a shorter ride; influence at that
+  station shortens it for free; experience later. An experienced, liked,
+  funded pilot barely notices; a broke first-timer waits the full base
+  time. The delivery clock keeps running through it.
+- Training drills (Combat training, Mining from the menu) keep today's
+  instant Enter-to-retry — the tug is a campaign thing.
+
+### A.12 Screens (ideas5)
+
+Function keys, the way F1 is help: **F2 ship** (attributes, slots with
+each laser's matchups in words, modules, mass), **F3 resources** (one
+line per resource and what it's for), **F4 trading** (prices at the
+station you're hailing, and what it wants). All browse line by line like
+the run log, Escape closes, F12 describes them. The ship's six
+attributes — hull, shield pool, reaction mass, warp charge, cargo, mass —
+are what every module and laser adjusts; battery mode is a flat fraction,
+not a seventh attribute. Also planned: a verbosity setting in Sound for
+pilots who want fewer spoken numbers, and a journal — a browsable log of
+the session for when a line got talked over. Tutorials are several and
+contextual: the first time a pilot leaves a quadrant, opens the galactic
+map, lands on a planet, docks — not one long lesson (Phase 3).
+
 ---
 
 ## Part B — Build plan (the playable demo first)
@@ -335,13 +435,11 @@ already precedented for the run log (see CLAUDE.md).
 - **Undock**: Escape (or `X`) on the station menu top level. "Undocked.
   Clear of Station Meridian."
 
-#### 1.11 Ship window (from A.5) — deferred past the demo
+#### 1.11 Ship window (from A.5) — moved to 2.13
 
-- Not needed for the demo (Brian). When it comes: a browsable overlay
-  (same shell as the run log) — hull, shields, warp charge, hydrogen, ore,
-  credits, missiles, chaff, one line per slot, total mass; Escape closes.
-  Brian's direction: screens like this end up on **function keys** (F2
-  and up), the way F1 is help — not on letter keys.
+- Brian deferred it past the first demo; ideas5 brought it back as the
+  F2 ship screen, because sixteen lasers need somewhere to be explained.
+  Built as 2.13, with F3 resources beside it (2.15).
 
 #### 1.8 Countermeasures (chaff) — DONE, needs Brian's ear
 
@@ -574,8 +672,9 @@ commit per item, machine-test at a local server with beacons off, docs
 in sync, push, re-test at Pages, close every tab.
 
 1.19, 1.20, 1.16, 1.18, and 1.17 are all DONE (Sonnet, Round 13) — see
-below. ideas4 is fully built. Next: Brian's ear on Rounds 10–13, then
-Phase 2 on his go (1.11, the ship window, remains deferred).
+below. ideas4 is fully built. Next is **Phase 2, the Sunday demo**
+(2.10–2.18 below, from ideas5 and the 2026-09-04 design conversation),
+which absorbs 1.11: the ship window is 2.13 now.
 
 #### 1.16 Chaff is instant, any time (ideas4) — CONFIRMED, no code change
 
@@ -825,7 +924,211 @@ yet heard.
 Brian: "make lasers do 2x damage on enemy ships at this difficulty."
 Rookie confirmed (Brian, same evening) — the tier he is testing at.
 
-### Phase 2 — a living sector, smarter enemies, the second resource
+### Phase 2 — the Sunday demo (target 2026-09-06)
+
+Brian wants a playable demo to show off by Sunday, two days after this
+was written. Sonnet built five items in a day in Round 13, so this is
+eight items, specs precise enough not to need questions. Same rules as
+Phase 1: one commit per item, machine-test at a local server with
+beacons off, docs in sync, push, re-test at Pages, close every tab.
+**If it slips, drop 2.16 and 2.17 first** — they're new content; the
+rest fixes or explains things Brian has already heard. Order: 2.10,
+2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
+
+Every number below is a placeholder Brian retunes by ear; all live in
+CFG or a data table. Decisions behind them are in Part C.
+
+#### 2.10 Warp overlap, 11 seconds (ideas5)
+
+- Two new numbers: `warpEngagedLeadS` 0.5 and `warpFinishLeadS` 0.5. The
+  engaged loop starts that much BEFORE the start clip ends; the finish
+  clip starts that much EARLIER than it does now. The phases crossfade
+  (a 0.15 s ramp each way) instead of butting.
+- The jump lengths shorten to match, both ends: `warpJumpMinS` 8.5,
+  `warpJumpMaxS` 11. The timeline for a jump of total time T: start clip
+  0–4; engaged from 3.5 until the finish starts; finish starts at T − 4
+  and ends exactly at arrival; the engaged section is T − 7 seconds long
+  (1.5 at the shortest jump = one loop, 4 at the longest). The ship
+  departs when the engaged loop begins (3.5), not when the start clip
+  ends. `warpJumpLongDist` stays 10606, so the delivery run's first leg is
+  exactly 11 s — confirm it, as 1.17 did for 12.
+
+#### 2.11 The sound lab, and the open-space lock tone (ideas5)
+
+- `soundlab.html` — this project's own `.soundtester`-style page,
+  loading the same `audio_assets.js`/`audio_engine.js`/`audio_cues.js`
+  so nothing is duplicated. One button per `SIM.cues` entry grouped by
+  category (`SIM.cues.list()` exists for exactly this), a row of the
+  primitives with a few presets each, one button per embedded recording,
+  and one per UN-embedded recording under `audio/` played with a plain
+  `<audio>` element (works from the local server and Pages, not from
+  `file://`). Keyboard-first like everything else: arrows and Enter, the
+  button's name spoken. Not linked from the game; Brian opens it
+  directly. Test convention: `.claude/launch.json`'s static server.
+- **The lock tone** (Brian: the solid tone is harsh over the minutes a
+  sector lock lasts; combat locks are brief). Three candidates in the
+  lab, Brian picks by ear, the pick is wired in as context-dependent —
+  combat keeps today's solid 880 Hz sine, sector and mining get the pick:
+  A. a soft low double-blip every 2 s (two 60 ms sines, 330 then 440 Hz,
+  quiet); B. today's tone dropped to 440 Hz with a slow tremolo, fading to
+  a quarter of its level after 3 s and holding there; C. a single filtered
+  pulse every second (a 40 ms lowpassed square at 220 Hz). `CFG.lockTone`
+  = `{ combat: 'solid', sector: <pick>, mining: <pick> }`. Until Brian
+  picks, ship A as the default so the irritant is gone on Sunday.
+
+#### 2.12 Sixteen lasers, cycling on 1 and Shift+1 (ideas5)
+
+- **Slots become families.** Slot 1 is the Mining family, slot 2 the
+  Rapid-pulse family, slots 3–6 stay empty. Each family carries all eight
+  versions for now (a carry limit per family comes later, Brian).
+  `LASER_FAMILIES` `{ id, label, tickBase, ticks, tickS, cooldownS,
+  assetPrefix, matchups }`; `LASERS` becomes the 16 entries generated
+  from it (`mining1`–`mining8`, `rapid1`–`rapid8`), each `{ id, family,
+  version, name, asset }` with damage derived: version n's ticks are the
+  family's `tickBase` × 1.1^(n−1), so version 8 is ~1.95× version 1.
+  Labels are just "mining 3", "rapid 5".
+- **Keys**: pressing 1 when slot 1 isn't selected switches to slot 1 at
+  its current version (the 1.14 switch, same clip, same delay). Pressing
+  1 again advances to the next version — also a switch, same clip, same
+  delay (Brian: it takes the same time and uses the same sound triggers).
+  Shift+1 goes to the previous version. Wraps at both ends. Same for 2.
+  Speech: "Slot 1, mining 3, switching." then "Mining 3 ready." The
+  selected version per slot persists (`profile.slotVersion[i]`).
+- **The two families**, placeholders Brian approved:
+
+  | | Mining | Rapid-pulse |
+  | --- | --- | --- |
+  | Burst | 8 ticks over 8 s | 10 ticks over 5 s |
+  | Tick at version 1 | 15 | 6 |
+  | Cooldown | 3 s | 1.5 s |
+  | Strong (×1.3) | iron, cruisers | ice, interceptors |
+  | Weak (×0.7) | ice, interceptors | iron, cruisers |
+  | Middle (×1.0) | stone, corvettes | stone, corvettes |
+
+  The burst length follows the recording (Mining clips are 8 s, Rapid
+  5 s), so the two families sound as different as they play. Ship
+  classes for the matchup: Freighter and Cruiser are cruisers, Drone is a
+  corvette, Raider and Scout are interceptors (the same split 2.2 uses).
+  `hullMult`/`rockMult` per laser go away in favor of the family
+  matchup table; `CFG.laserShipMult` (Rookie ×2, 1.20) still multiplies
+  on top for ships.
+- **Assets**: all 14 remaining recordings embedded (mono 48k 96k, the
+  laser_switch pipeline), ~1.4 MB more on `audio_assets.js`. The
+  lazy-load path (3.15) comes after Sunday; note the load time.
+- Help, KEY_DESCRIPTIONS for 1–6 and Shift, README, `I` ("Slot 1, mining
+  3, ready"), all updated.
+
+#### 2.13 F2, the ship screen (ideas5; was 1.11)
+
+- Same shell as the run log: F2 opens it anywhere a key works (freezes
+  and ducks like help), arrows read line by line, Escape closes, F12
+  describes it. Lines, in order: hull; shields (pool and state); warp
+  charge; reaction mass (2.14); cargo — ore, salvage, alloy (2.15);
+  credits; missiles; chaff; then one line per slot: "Slot 1, mining 3,
+  ready. Bites iron and cruisers. Weak on ice and interceptors." (the
+  matchup in words, never numbers unless Brian asks); then fitted
+  modules one per line; then total mass.
+- The matchup sentence is the point of the screen: it's where a pilot
+  learns which laser to bring to which rock and which ship.
+
+#### 2.14 Reaction mass, the approach, collisions, hail versus land (ideas5)
+
+- **Not Newtonian** (Brian: too hard to fly). The stabilizers keep
+  countering momentum automatically exactly as they sound today; the
+  pilot has no control over them beyond not thrusting in the first place.
+  What changes: they SPEND reaction mass while they work, and so do W
+  and S.
+- `rcs` (reaction mass), `CFG.rcsMax` 100, in the profile like warp
+  charge. Burn: W `rcsThrustPerS` 1, S `rcsBrakePerS` 1.5, stabilizers
+  `rcsPerSpeedShed` 0.02 per unit of speed they remove. Empty = **battery
+  mode**: thrust, braking, and stabilizers at `rcsBatteryFactor` 0.4 of
+  strength, never zero, never stranded ("Reaction mass empty. Battery
+  power."). Spoken at 50 and 25 percent like the warp core, `I` reads it.
+  Emergency canisters in the hull are a later anti-stranding lever.
+- **Braking is a reverse thruster**, not today's near-instant `brakeKeep`:
+  `CFG.brakeThrust` 35 (half of `thrust` 70), so from top speed the ship
+  needs ~3 s and ~140 units to stop. That is what makes an approach a
+  piloting task and burns the mass.
+- **Refills**: landing at a station fills it free; an ice core extracted
+  gives `rcsPerIceCore` 10; a kill gives `rcsPerKill` 5; a hail buys it at
+  `rcsCreditPerUnit` 1.
+- **Collision**: inside `stationHullRadius` 60 of a station (or planet)
+  faster than `collisionSafeSpeed` 25, the ship hits it: damage
+  `collisionDmgPerSpeed` 2 per point of speed over the limit, a crunch on
+  the UI bus and the impact at the station's position, the ship stopped
+  and pushed back to the hull radius. That damage is the only hull damage
+  that COSTS to repair: `repairCreditPerPoint` 5 on landing; the station
+  repairs what the pilot can afford and says so. Bad drivers get a bill.
+- **Hail versus land**: `C` inside `stationCommRange` 500 opens a short
+  **hail menu** (the station-menu shell with a different list): Rearm
+  (missiles and chaff), Sell ore, Buy reaction mass, Missions (2.17),
+  Prices (3.11, later), and Close. `C` inside `stationDockRange` 150
+  docks as now; the landing menu keeps Modules (and lasers), Repair, the
+  free full reaction-mass refill, and Undock. You land because that is
+  where the shop is, and landing means braking, which means spending
+  mass. Ranges may move once Brian has flown it.
+- The delivery run starts with a full tank of mass.
+
+#### 2.15 Salvage, alloy, ice, and F3 the resources screen (ideas5)
+
+- `profile.resources` `{ salvage, alloy }` beside `credits`; ore stays
+  the cargo hold. **Salvage**: every kill adds it by class, `SALVAGE`
+  `{ interceptor: 2, corvette: 3, cruiser: 5 }`, collected on the kill
+  (2.8's containers to fly to come later). **Alloy**: every iron core
+  extracted adds 1. **Ice**: every ice core extracted adds 10 reaction
+  mass (2.14). Spoken as they land: "Salvage 3." / "Alloy 1." / "Reaction
+  mass plus 10."
+- Sinks for Sunday: both sell at the station's landing menu at fixed
+  prices, `salvageCredit` 30, `alloyCredit` 20. Salvage-gated modules and
+  the easy drone missions are 3.13.
+- **F3 resources**: one line each — ore, salvage, alloy, reaction mass,
+  warp charge, hydrogen (0 until 2.8), credits, missiles, chaff — each
+  with a few words on what it's for. Same shell as F2.
+
+#### 2.16 Death by tug (ideas5)
+
+- In the sector campaign and the delivery run, a lost ship is no longer
+  Enter-to-retry: "Hull breached. Ship lost. Tug dispatched from Station
+  Meridian, N seconds." A countdown every 10 s in game time; at zero the
+  pilot is docked at the station, hull repaired, reaction mass full,
+  cargo intact, and the station menu opens. The delivery clock keeps
+  running. Training drills from the menu keep today's Enter-to-retry.
+- `tugBaseS` 90. Influence at that station past the threshold halves it
+  (`tugInfluenceFactor` 0.5). During the wait, Enter offers "Pay
+  `tugFeeCredits` 50 to halve the wait" — one press, once. Experience as a
+  lever comes later.
+- For the delivery run this REPLACES the restart-from-scratch: a loss is a
+  tug ride on the clock, not a reset **(accepted by default — a reset was
+  the crippling version)**.
+
+#### 2.17 Escort and defend missions (ideas5)
+
+- Offered from the hail menu's **Missions** line at Station Meridian:
+  "Escort freighter to Planet Auren" and "Defend the miner at Field
+  Kappa". Both reuse the combat encounter with a `mission` object and a
+  new friendly target kind (`kind: 'friendly'`, its own engine loop, not
+  Tab-cycled by default, `hp` spoken on hits).
+- **Escort**: the freighter (hull 200) flies from the station toward the
+  planet at 40; three waves of two interceptors attack it, each wave
+  announced ("Raiders inbound on the freighter, bearing..."); enemies
+  target the freighter unless the pilot hits them first (the provoke
+  fuse). It ends when the freighter's leg completes (about 90 s) or its
+  hull hits zero. **Defend**: the miner (hull 150) sits in the cloud; two
+  waves of three. Reward on success: credits `missionCredits` 300 and
+  salvage for every kill; failure pays nothing. Enemies in missions are
+  hostile from the start at every tier — they're attacking the friendly.
+- Each mission is offered once per station per `missionCooldownS` 600 of
+  game time.
+
+#### 2.18 The profile version (ideas5)
+
+- `profile.version` 2, written on every save. `loadProfile()` migrates:
+  a v1 profile (no `version`) gains `resources`, `rcs`, `slotVersion`
+  with defaults and keeps everything else; a version NEWER than the code
+  is loaded as-is and never rewritten with fields dropped. Do this before
+  2.14/2.15 land, so no tester's save is thrown away.
+
+### Phase 2, continued — a living sector, smarter enemies (the existing 2.1–2.8)
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)
 
@@ -920,9 +1223,104 @@ It is the sector's exit and hydrogen's sink; opening it is Phase 4.
 (HRTF), then "Iron. Rich." / "Ice. Lean." A hint, never a number — hidden
 thresholds stay hidden. Later a module tells you which laser suits it.
 
-### Phase 3 — teaching and hosting
+### Phase 3 — the moving world, the markets, the gates (after Sunday)
 
-#### 3.1 Tutorial shell (framework only)
+From A.9–A.12. Numbers are placeholders in CFG; order is a suggestion.
+
+#### 3.10 The moving, spawning world (A.10)
+
+- The sector becomes a quadrant: a star (a beacon at the center, no
+  interaction yet), 2–3 planets on orbits, 2–3 stations, one gate, one
+  combat zone, 1–3 clouds. `QUADRANT` replaces `SECTOR_POIS` for the open
+  campaign; the delivery run keeps a fixed layout of its own.
+- **Orbits**: planets and clouds are `{ ring radius, angular speed, phase }`
+  around the star; position is computed from the game clock every frame.
+  Cloud drift `cloudDriftPerS` 5 (≈300 a minute, a third of an orbit an
+  hour). The map reads live positions; leaving a cloud's encounter puts
+  the pilot at the cloud's CURRENT position (`returnToSector` follows the
+  cloud instead of the snapshot).
+- **Spawning**: a replacement combat zone or cloud spawns when the old one
+  is cleared/depleted AND exited: `spawnMinFromPilot` 5,000,
+  `spawnMaxFromPilot` 11,000, `spawnMinGap` 4,000 from any other point,
+  within `spawnMaxFromStation` 11,000 of at least one station, inside
+  `quadrantRadius` 16,000. Reject-and-retry up to 50 times, then relax the
+  pilot band. Announced: "Contested Zone reported, bearing ... distance
+  ...". Rules: one combat zone active; 1–3 clouds, never zero.
+- **Depletion**: a cloud has `cloudOreBudget` 40,000 spoken roughly at its
+  hail ("plenty" / "thinning" / "nearly worked out"); at zero it's
+  depleted and vanishes on exit.
+- **Beacons**: default audible only within `beaconAudibleDist` 8,000 plus
+  the selected target; B's On mode overrides to all. Tab cycles nearest
+  first as now; the map lists everything with distance and warp reach.
+- **The game clock**: `profile.clock` in play seconds, advancing only
+  while the sim is live (the delivery clock's own rule). Every orbit,
+  market, cooldown, and respawn keys off it. The whole quadrant state is
+  saved (instances, positions, phases, budgets), so a save at night
+  reloads to exactly the same sky.
+
+#### 3.11 Stations, planets, and F4 trading (A.10)
+
+- Two or three stations per quadrant, each with its own market: `MARKETS`
+  `{ station, base prices per category, demand weights }`. Planets buy a
+  couple of categories at better prices (salvage and hydrogen first) and
+  sell nothing until agriculture. Hailing any of them opens the hail
+  menu; **Prices** on it opens **F4**, also reachable directly by F4
+  when within comm range of a market: one line per category with the
+  price and whether it's high, normal, or low here.
+- Landing services differ only in prices for now; every station docks,
+  repairs, refits.
+
+#### 3.12 The price levers (A.9)
+
+- Per station per category: `saturation` rises `satPerSale` 0.1 per unit
+  sold (scaled per category) and decays `satDecayPerMin` 0.05 per game
+  minute; price = base × clamp(1.5 − saturation, 0.5, 1.5). Sell a lot of
+  ore in one place and it drops toward half; neglect a category for ten
+  minutes of play and it drifts to half again over base. The lever is
+  audible before the sale: the hail menu's Sell line names the price.
+
+#### 3.13 Salvage gates and the easy drone missions (A.9)
+
+- `MODULES` entries gain optional `salvage` and `alloy` costs on top of
+  credits; the first: shield plating needs 4 alloy, the missile rack
+  needs 3 salvage. "Need 2 more salvage" refusals name the resource.
+- **Easy combat**: "Clear the drone swarm" — 4 drones that never fire,
+  each tier faster and jinkier (harder to hit, `droneEvadeTier`). Offered
+  only where influence ≥ threshold, costs `easyMissionOre` 2,000 ore to
+  accept, one per station per `missionCooldownS`. Pays salvage only.
+
+#### 3.14 Cargo limit and death cost (A.12)
+
+- `CFG.cargoMax` 20,000 ore (a cargo module raises it); the hold refuses
+  more ("Hold full. Sell or extract no more."). Salvage and alloy are
+  small counts and don't count against it.
+- The tug (2.16) gains the experience lever once experience exists.
+
+#### 3.15 Lazy-load audio (moves up from 3.2)
+
+- Sixteen lasers and six warp engines roughly double the embedded bank.
+  Over https, fetch each recording on first use (a manifest of paths with
+  the same keys), keep base64 as the `file://` fallback. Boot speaks
+  "sounds loading" only if a needed one isn't ready yet.
+
+#### 3.16 Verbosity and the journal (A.12)
+
+- A `Verbosity` line in the Sound list: full / brief — brief drops the
+  spoken damage numbers, the switch countdowns, and the coaching lines.
+- **Journal** on **J** (F5 and F6 belong to the browser): a browsable
+  list of the last 30 spoken lines with the game-clock time of each,
+  newest first, Escape closes. For when a line was talked over.
+
+#### 3.17 Contextual tutorials (A.12, folds in the old 3.1)
+
+- `TUTORIALS` keyed by first-time events: first sector entry, first hail,
+  first dock, first warp, first F2, first quadrant exit, first galactic
+  map. Each is three to five spoken steps with an expected key, Escape
+  skips, "seen" flags in the profile. The Tutorial menu item replays any.
+
+### Phase 3, continued — teaching and hosting (the existing 3.1–3.2)
+
+#### 3.1 Tutorial shell (framework only) — superseded by 3.17
 
 `TUTORIAL_STEPS` `{ say, expect: { key | condition }, then }`; the runner
 speaks a step, waits, advances; Escape leaves; a "Tutorial" menu item.
@@ -934,6 +1332,12 @@ in 1.9 is exactly why the content waits.
 Lazy-load the ship loops and new recordings over fetch on https (base64
 stays for file://); a service worker for offline play; a share page. The
 double-click file keeps working.
+
+### Phase 5 — the base, and bases at war (direction only; A.8)
+
+Building the base from the five resources; the base as a resource
+generator and home; then the endgame combat sim — the player's station
+with small fleets against other bases. Designed when Phase 4 is real.
 
 ### Phase 4 — the strategic layer (direction only, no specs yet)
 
@@ -996,11 +1400,48 @@ the dock range; embed only warp engine set 1 now; the start clip is the
 spool (the 2 s `warpChargeMs` goes); the engaged loop's last repeat is
 cut with a short fade under the finish; undock along the arrival vector.
 
+Decided (Brian, ideas5 and the 2026-09-04 design conversation): the
+endgame is base against base (A.8); five resources with price levers and
+salvage gates (A.9); the quadrant is a solar system with one active
+combat zone, 1–3 drifting clouds, depletion, respawn, 2–3 stations with
+their own markets, planets as second markets, game time not wall-clock
+(A.10); death is a tug ride with credit and influence levers, never
+crippling (A.11); F2 ship, F3 resources, F4 trading, multiple contextual
+tutorials, a verbosity setting, a journal (A.12); warp clips overlap by
+0.5 s each end and the jumps shorten to 8.5–11 s with the first leg 11
+(2.10); the sound lab holds every generated sound and the lock-tone
+candidates (2.11); slots 1 and 2 are the two laser families with all
+eight versions aboard, 1 cycles forward, Shift+1 back, each version 10 %
+over the last, same switch time and clip (2.12); the ship's six
+attributes, battery as a flat fraction (A.12); NOT Newtonian — the
+stabilizers stay automatic and cost reaction mass, empty is battery
+mode (2.14); even the most mining-focused pilot fights a little, via
+easy no-return-fire missions that only a friendly station sells for
+mined resources (3.13); escort and defend missions are in the demo
+(2.17); alloy from iron is the sixth resource (2.15); lazy-load and the
+profile version move up (2.18, 3.15); Sunday 2026-09-06 is the demo
+target, with 2.16 and 2.17 the first to drop if it slips.
+
+Accepted by default (say otherwise), ideas5: the hail/land split — hail
+for rearm, selling, buying reaction mass, missions, prices; land for
+modules, lasers, repair, the free refill (2.14); braking as a reverse
+thruster at half thrust (2.14); collision repair is the only paid repair
+(2.14); the tug replaces the delivery run's restart-from-scratch (2.16);
+lock-tone candidate A ships as the default until Brian picks (2.11);
+the delivery run keeps a fixed layout while the open campaign gets the
+moving world (A.10); beacons audible within 8,000 by default once the
+quadrant has ten points (3.10); salvage collected on the kill for now,
+containers later (2.15); J for the journal (3.16).
+
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
 ships placeholders. The per-slot switch delays (three tie at 1.4 s) —
 Brian hand-sets them in `SLOT_SWITCH` after hearing them. Nothing open
-from ideas4 — all three follow-up questions were answered.
+from ideas4 — all three follow-up questions were answered. From ideas5:
+the lock tone (Brian picks in the lab, 2.11); whether shields should
+also drain slowly while raised with nothing hitting them (today they
+only drain by damage absorbed — one number if wanted); the hail and dock
+ranges once the approach has been flown with reaction mass (2.14).
 
 ## Deferred (Brian: "not yet")
 

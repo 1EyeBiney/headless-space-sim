@@ -679,9 +679,21 @@ mission menu, see the "Escape / mission menu" bullet above) and 1.17
 five ideas4 items (1.16–1.20) are now built and machine-tested;
 Round 13's one real bug (the `warping`/`menuOpen` ordering in
 `onKeyDown`, found while testing 1.17 against 1.18) is documented in the
-warp paragraph. Nothing from Rounds 10–13 has been heard by Brian yet;
-that's the next step, then Phase 2 on his go (1.11, the ship window,
-stays deferred).
+warp paragraph. Nothing from Rounds 10–13 has been heard by Brian yet.
+
+Brian's ideas5 (2026-09-04, `ideas5.txt`, untracked) plus a long design
+conversation the same evening are written into SPEC.md (Fable, docs
+only): Part A gained A.8–A.12 (the base endgame, the five resources
+with price levers and salvage gates, the quadrant as a solar system
+with drifting clouds and spawning combat zones, death by tug, the
+F2/F3/F4 screens); Part B gained **Phase 2, the Sunday demo** (2.10–2.18:
+warp overlap and 11 s, the sound lab and the open-space lock tone,
+sixteen lasers cycling on 1/Shift+1, the F2 ship screen, reaction mass
+with collisions and the hail/land split, salvage/alloy/ice and the F3
+screen, death by tug, escort and defend missions, the profile version)
+and **Phase 3, the moving world** (3.10–3.17). Target: a playable demo by
+Sunday 2026-09-06, Sonnet building 2.10–2.18 in order, 2.16 and 2.17
+dropped first if it slips. Nothing from ideas5 is built yet.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
