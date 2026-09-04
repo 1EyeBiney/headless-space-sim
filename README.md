@@ -41,7 +41,7 @@ Right hand on the arrows, left hand on everything else.
 | Space | Laser beam, 2 seconds. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
-| T / Tab | Cycle targets / repeat bearing |
+| Tab / T | Cycle targets / report the selected target. The distance is spoken the moment the lock tone comes on |
 | R | Radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Target zone size: wide, standard, narrow |

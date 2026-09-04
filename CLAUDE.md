@@ -87,7 +87,7 @@ Delivery run / Sector (the hub) / Combat training / Mining / Help.
 ## Key map (left-hand doctrine — right hand stays on arrows)
 
 Arrows yaw/pitch · W thrust / S brake · Space laser beam · F missile · G shields
-· T cycle targets · Tab repeat bearing · R radar · E extractor · V vacuum · Z
+· Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · I status (adds hull, missiles, shields,
 laser heat, demo clock + objective) · X leave · F1 help · F12 explore · Escape
 pause. Menu: arrows + Enter (first letters D/S/C/M/H jump).

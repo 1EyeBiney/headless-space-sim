@@ -247,6 +247,7 @@ var shield = { up: false, raising: -1, held: 0, recharge: 0, warned: false, node
 var threat = null;       // the one enemy attack in progress (combat only)
 var threatIn = 0;        // seconds until the next enemy attack
 var coachedShield = 0;   // how many times the lock warning has said "G"
+var lastCycleAt = 0;     // a cycle already spoke the distance; lock stays quiet for a beat
 var demo = null;         // the timed delivery run, while active
 function over() { return won || lost; }
 
@@ -338,8 +339,9 @@ var HELP_SECTIONS = [
         'I speaks your speed, the selected target, and how many targets remain.'
     ] },
     { heading: 'Targeting', items: [
-        'T cycles through the targets, nearest first, and speaks a bearing.',
-        'Tab repeats the selected target\'s full bearing and distance without cycling away from it.',
+        'Tab cycles through the targets, nearest first, and speaks a bearing.',
+        'T reports the selected target: name, bearing, distance, and hull, without cycling away from it.',
+        'When the tick walks you onto a target and the tone goes solid, the distance is spoken at that moment.',
         'The tick tone speeds up as the selected target nears your nose.',
         'Higher tick pitch means the target is above you, lower means below.',
         'The tick comes from the side you should turn toward.',
@@ -400,7 +402,7 @@ var HELP_SECTIONS = [
         'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
         'The combat area throbs like a war drum, the mining field rumbles like distant rock, the station sends a clean blinking tone, and the planet is a deep slow drone.',
         'Q opens the quadrant map: up and down browse the points with bearing and distance, Enter sets one as your nav target, Escape closes.',
-        'T and Tab work on beacons too, and the tick guides you onto your nav target just like any other.',
+        'Tab and T work on beacons too, and the tick guides you onto your nav target just like any other.',
         'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
         'Within 500, C calls the point: combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
@@ -486,8 +488,8 @@ var KEY_DESCRIPTIONS = {
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
     m: 'At the mission menu, jumps to space mining.',
-    t: 'Cycle to the next target and speak its bearing.',
-    tab: 'Repeat the selected target\'s bearing and distance without cycling.',
+    tab: 'Cycle to the next target and speak its bearing.',
+    t: 'Report the selected target: bearing, distance, and hull, without cycling.',
     r: 'Radar ping. Plays each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
     z: 'Cycle the target zone size: wide, standard, or narrow.',
@@ -1121,6 +1123,7 @@ function cycleTarget() {
     selected = alive[(at + 1) % alive.length];
     locked = false;
     stopSolidTone();
+    lastCycleAt = Date.now();
     say(bearingText(targets[selected]));
 }
 
@@ -1171,6 +1174,9 @@ function updateTargeting() {
         locked = true;
         blip(660, 100, 0.15); setTimeout(function () { blip(880, 120, 0.15); }, 110);
         startSolidTone();
+        // The tick has walked the pilot onto the target; the one number that
+        // matters now is how far away it is (laser reach, missile flight).
+        if (Date.now() - lastCycleAt > 1500) say('Locked. Distance ' + round10(a.dist) + '.');
     } else if (locked && a.err > z.lockOff) {
         locked = false;
         stopSolidTone();
@@ -2442,7 +2448,7 @@ function snapshotSector(atPoi) {
 
 function callPoi() {
     var t = targets[selected];
-    if (!t) { say('No point of interest selected. T cycles them.'); return; }
+    if (!t) { say('No point of interest selected. Tab cycles them.'); return; }
     var d = len(sub(t.pos, ship.pos));
     if (d > CFG.poiInteract) {
         say('Too far to call ' + t.name + '. Get within ' + CFG.poiInteract +
@@ -2572,7 +2578,7 @@ function onKeyDown(e) {
             else if (!paused && !over()) fireMissile();
             break;
         case 'g':      if (!paused && !over()) shieldKey(); break;
-        case 't':      if (!paused && !over()) cycleTarget(); break;
+        case 'tab':    if (!paused && !over()) cycleTarget(); break;
         case 'r':      if (!paused && !over()) radarPing(); break;
         case 'e':      if (!paused && !over()) startExtract(); break;
         case 'v':      if (!paused && !over()) startDustVac(); break;
@@ -2587,11 +2593,11 @@ function onKeyDown(e) {
             else exitToMenu();
             break;
         case 'i':      statusReport(); break;
-        case 'tab': {
+        case 't': {
             var sel = targets[selected];
             if (sel && sel.alive) say(bearingText(sel));
-            else say(mode === 'mining' ? 'No rock selected. T cycles targets.'
-                                       : 'No target selected. T cycles targets.');
+            else say(mode === 'mining' ? 'No rock selected. Tab cycles targets.'
+                                       : 'No target selected. Tab cycles targets.');
             break;
         }
         case 'z':
@@ -2935,7 +2941,7 @@ function exitToMenu() {
 
 function combatIntro() {
     return 'Combat training. Five targets detected. The Freighter is dead ahead. ' +
-           'T cycles targets, Space fires when the tone goes solid. Ships hold their fire ' +
+           'Tab cycles targets, T reports the selected one, Space fires when the tone goes solid. Ships hold their fire ' +
            'until you hit them, then they shoot back: when you hear the lock-on chirps, ' +
            'G raises the shields. F1 for help.';
 }
@@ -2943,7 +2949,7 @@ function combatIntro() {
 function sectorIntro() {
     return 'Entering the sector. Four points of interest on the quadrant map: ' +
            'a combat area, a mining area, a space station, and a planet, each with its own beacon sound. ' +
-           'Q opens the map, T cycles beacons, H hyperwarps to your nav target, ' +
+           'Q opens the map, Tab cycles beacons, H hyperwarps to your nav target, ' +
            'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.';
 }
 
