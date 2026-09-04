@@ -9,9 +9,9 @@ instructions. Part B is the build plan for the playable demo, the thing
 Brian wants to show people first. Part C is what's decided vs open.
 
 Read `CLAUDE.md` first: every rule there (ear-first, CFG-only tuning, silent
-testing, help + KEY_DESCRIPTIONS + README in sync, regenerate
-`space_sim_demo.html`, commit + push each round, test at the Pages URL or a
-local server) applies to every item below. Brian's ear decides all sound.
+testing, help + KEY_DESCRIPTIONS + README in sync, commit + push each
+round, test at the Pages URL or a local server) applies to every item
+below. Brian's ear decides all sound.
 
 Items marked **DECIDE** are open — ask Brian before building them. Items
 marked **(accepted by default)** were settled on Claude's recommendation
@@ -127,44 +127,65 @@ Suggested order for the rest — lasers first because they change the feel
 of the thing being shown, then the station because everything else hangs
 off it:
 
-#### 1.9 Laser slots and fire-and-forget (from A.2) — NEW
+#### 1.9 Laser slots and fire-and-forget (from A.2) — NEW, decided
 
-- `LASERS` data table; each entry `{ id, name, burstS, cooldownS,
-  tickDamage, rockMult, cue }`. Starting ship: slot 1 a combat pulse laser,
-  slot 2 a mining laser (both from the recordings once auditioned; synth
-  placeholder until then). Slots 3–6 empty: "Slot 3 empty. Fit a laser at
-  the station."
-- Keys `1`–`6` select: "Slot 2, mining laser." Space fires the selected
-  slot. Selection persists in the profile.
-- Fire-and-forget: Space starts a burst of `burstS` (~5 s, ticks every
-  `beamTickMs` as now, damage per tick from the laser's table), the beam
-  carries its own live pitch-tracking voice as today, and it runs to the
-  end. Then `cooldownS` before that slot fires again ("Pulse laser
+- `LASERS` data table; each entry `{ id, name, asset, ticks: [..],
+  tickS, cooldownS, hullMult, rockMult }`. **Damage is a per-tick
+  profile, not one number**: the laser hits harder on some ticks than
+  others, and the profile matches the shape of that laser's sound (Brian:
+  "a laser might hit 5, 5, 25, 20, 10, 5, 5"). Five ticks per burst. The
+  ship starts with the first two mining-laser recordings: slot 1 =
+  `Mining_laser 1`, steady damage every tick; slot 2 = `Mining_laser 2`,
+  two heavy ticks then steady. Placeholder totals match today's burst (100
+  at point-blank, perfect aim); Brian sets the real per-tick numbers by
+  ear once he's heard each recording against its profile. Slots 3–6 empty:
+  "Slot 3 is empty. Fit a laser at the station."
+- Keys `1`–`6` select: "Slot 2, mining laser two." Space fires the
+  selected slot. Selection persists in the profile.
+- Fire-and-forget, **cannot be stopped** (Brian: decided): Space starts the
+  burst and it runs every tick to the end. Each tick still scales by aim
+  quality and the point-blank multiplier, and the spoken number is the
+  aim feedback. The recording plays as the beam's voice (a subtle
+  playback-rate rise with aim quality keeps a trace of today's pitch
+  narration; the synthesized carrier is the fallback if the asset is
+  missing). Consequence: `G` during a burst is refused ("Laser burst in
+  progress, 3 seconds.") — you commit to the burst, then shield. That's
+  the strategic cost **(accepted by default)**.
+- Then `cooldownS` before that slot fires again ("Mining laser one
   recharging, 3 seconds."), spoken on a refused press, never silent.
-- **DECIDE**: does the miss-overheat (two empty bursts → 5 s down) stay as a
-  penalty on top of the cooldown, or does the per-laser cooldown replace
-  it? Recommendation: keep both — cooldown is the cost of firing, overheat
-  is the cost of firing badly.
-- **DECIDE**: can a burst be cancelled early (Space again) with a penalty,
-  or is it truly locked in? Recommendation: locked in at Rookie; a
-  "beam cutoff" module allows cancelling later.
+  **Misses still matter** (Brian: decided): the two-empty-bursts overheat
+  stays on top of the cooldown.
 - Enemy beams are 5 s already; a 5 s player beam changes the duel's rhythm
   — flag for the play-test.
-- Help, KEY_DESCRIPTIONS (1–6), README, and the `I` status ("Slot 2, mining
-  laser, ready") all updated.
+- Help, KEY_DESCRIPTIONS (1–6), README, and the `I` status ("Slot 2,
+  mining laser two, ready") all updated. The two recordings get decoded
+  into `audio_assets.js` (mono 96k like the rest) — the first new
+  recordings connected to the game.
 
-#### 1.10 Warp charge (from A.3) — NEW
+#### 1.10 Warp charge (from A.3) — NEW, decided
 
-- `warpCharge` 0–`warpTankMax` (100). A jump costs `distance /
-  warpUnitsPerCharge`; the drive refuses under cost: "Insufficient warp
-  charge, 30 percent. This jump needs 45." Regen `warpRegenPerS` in flight
-  with an audible core-cooling hiss on the UI bus that fades as it fills;
-  full refill at the station (1.7). Starting tank reaches roughly one long
-  jump; the tank and cooling are modules.
-- `I` reads charge; the map lines read each point's jump cost.
-- The delivery run's clock now has a fuel dimension — flag for the
-  play-test whether the starting tank makes the run feel strategic or
-  merely slow.
+- The tank is measured in distance: `warpCharge` up to `warpTankMax`.
+  A jump spends charge by distance flown — and if the nav target is
+  farther than the charge, the drive still jumps, drops the pilot out
+  where the tank runs dry, and the rest is flown by ear ("Warp charge
+  exhausted. Asteroid Field Kappa dead ahead, distance 500."). No refusal,
+  no stranding: a dry tank just means thrusting the last stretch.
+- Refill: full at the station, and full on completing or leaving an
+  encounter (the core cools while you fight and mine — Brian: assume the
+  tank fills in combat and in mining). Slow regen in open flight
+  (`warpRegenPerS`, an audible core-cooling hiss that fades as it fills)
+  so nobody is ever stuck, but slow enough that waiting isn't the plan.
+- **The demo route** (Brian: decided): new players start right outside
+  Station Meridian with a full tank. Leg 1, station → Contested Zone, is
+  within one full tank. Leg 2, Contested Zone → Field Kappa, is a little
+  MORE than one tank, so the pilot thrusts the last ~500. Leg 3, Field
+  Kappa → station, is the same shape as leg 2: the tank runs dry ~500 out
+  and the last stretch is flown in. `SECTOR_POIS` positions and
+  `warpTankMax` get tuned together to produce exactly those three legs;
+  the existing `warpDropout` (600 short of any target) still applies when
+  the tank reaches.
+- `I` reads charge; the map lines read each point's distance and whether
+  the tank reaches it. Bigger tank and faster cooling are modules (1.7).
 
 #### 1.6 Docking approach (the corridor)
 
@@ -216,13 +237,13 @@ implementation.
 - **Undock**: pushes the ship 100 out along the corridor heading, "Undocked.
   Clear of the station." Escape = Undock.
 
-#### 1.11 Ship window (from A.5) — NEW, small
+#### 1.11 Ship window (from A.5) — deferred past the demo
 
-- A browsable overlay (same shell as the run log): hull, shields, warp
-  charge, hydrogen, ore, credits, missiles, chaff, then one line per slot
-  ("Slot 2, mining laser", "Drive: standard tank"), total mass. Escape
-  closes. **DECIDE** the key — recommendation `A` ("all systems"), free
-  under the left hand; Menu gets a "Ship" item too.
+- Not needed for the demo (Brian). When it comes: a browsable overlay
+  (same shell as the run log) — hull, shields, warp charge, hydrogen, ore,
+  credits, missiles, chaff, one line per slot, total mass; Escape closes.
+  Brian's direction: screens like this end up on **function keys** (F2
+  and up), the way F1 is help — not on letter keys.
 
 #### 1.8 Countermeasures (chaff)
 
@@ -360,25 +381,26 @@ numbered items when it's next; none of it starts before the demo is heard.
 
 ## Part C — Decisions
 
-Decided (Brian): chaff wastes a round when nothing is inbound; the mining
-scanner is in; Pages is the test reference; lasers are fire-and-forget on
-slots 1–6; warp has a tank; hydrogen gates quadrants; modules have mass.
+Decided (Brian, 2026-09-04): chaff wastes a round when nothing is
+inbound; the mining scanner is in; Pages is the test reference; lasers are
+fire-and-forget on slots 1–6 and **cannot be stopped**; **misses still
+matter** (overheat stays on top of the cooldown); damage is a **per-tick
+profile matched to the laser's sound**; the demo ships with **Mining_laser
+1 (steady) and Mining_laser 2 (two heavy ticks, then steady)**; warp has a
+tank measured in distance and the demo route is station → combat (one
+tank) → mining (tank + ~500 flown) → station (tank + ~500 flown); the tank
+refills in encounters and at the station; the ship window is **not for the
+demo** and screens like it go on **function keys**; hydrogen gates
+quadrants; modules have mass; **lasers are built first**; the single-file
+demo is gone for good.
 
 Accepted by default (say otherwise): shields as a damage pool; credits and
-modules persist across sessions; chaff on `D`.
+modules persist across sessions; chaff on `D`; `G` refused during a
+laser burst; slow warp regen in open flight so a dry tank never strands.
 
-**DECIDE** (open, ask before building):
-1. Lasers — miss-overheat kept on top of the per-laser cooldown, or
-   replaced by it? (Rec: keep both.)
-2. Lasers — can a burst be cut short, and at what penalty? (Rec: locked at
-   Rookie, a module later.)
-3. Starting loadout — which two lasers, and burst/cooldown numbers for
-   each? (Rec: pulse 5 s / 4 s cooldown, mining 5 s / 2 s.)
-4. Warp tank — starting reach in jumps, regen rate. (Rec: one long jump,
-   full regen ≈ 3 minutes of flight.)
-5. Ship window key. (Rec: `A`.)
-6. Phase 1 order — 1.9 lasers before the station, as suggested, or the
-   station first?
+**DECIDE** (open): the real per-tick damage numbers for each laser — set by
+Brian's ear after hearing each recording against its profile; the code
+ships placeholders.
 
 ## Deferred (Brian: "not yet")
 
@@ -395,5 +417,5 @@ muffling · full tutorial content · fully inert systems.
   hydrogen, modules, corridor, tow, commander) and `poke` can force a
   distress call, drop a container, set credits, set the shield pool.
 - localStorage blocked/absent → game still runs.
-- Regenerate `space_sim_demo.html`; commit; push; wait for the Pages deploy;
-  re-test at the URL; close every browser tab and stop the local server.
+- Commit; push; wait for the Pages deploy; re-test at the URL; close every
+  browser tab and stop the local server.

@@ -11,9 +11,7 @@ full audio-only game.
 — hosted on GitHub Pages, no download. Add `?run=delivery` to the link to
 skip the menu and jump straight into the timed delivery run.
 
-Or download `space_sim_demo.html` and double-click it: a single file with
-the sound bank inlined, so it runs from disk in Chrome or Edge with no
-server. Wear headphones either way: the whole game is in the stereo image.
+Wear headphones: the whole game is in the stereo image.
 
 Press Enter to begin, then pick a mission from the menu: up and down arrows
 browse it, Enter selects, and a first letter jumps to an item. Everything is
@@ -96,8 +94,6 @@ with the dramatic evade.
 - `index.html` is the game. It loads `audio_assets.js` (the sound bank),
   `audio_engine.js` (the Web Audio primitives), and `audio_cues.js` (the
   named sound-effect registry) beside it, in that order.
-- `space_sim_demo.html` is the same game with all three of those inlined,
-  for sharing as one file.
 - `audio/` holds the source recordings.
 - `CLAUDE.md` is the design and working notes.
 

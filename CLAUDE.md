@@ -23,11 +23,9 @@ expands.
 - `audio_assets.js` — base64 mono-96k-MP3 sound bank (12 assets), loaded by a
   plain script tag (fetch is blocked on file://, script tags are not).
 - `audio_engine.js` / `audio_cues.js` — see "Audio architecture" below.
-- `space_sim_demo.html` — single-file shareable snapshot, all four scripts
-  inlined in load order (audio_assets → audio_engine → audio_cues → main).
-  REGENERATE after changes: a node script replaces each `<script src=...>`
-  tag with that file's contents inline, in order (see git history for the
-  exact script; do not hand-edit the demo file).
+- (There is no longer a single-file `space_sim_demo.html`: Brian dropped it
+  on 2026-09-04 now that the Pages URL is the share link. Do not regenerate
+  or restore it.)
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's source recordings (never read at runtime, organized by
   category as of Round 12's housekeeping pass — `audio_assets.js` embeds by
@@ -52,16 +50,16 @@ expands.
   which renders local files as an opaque `data:` snapshot) can't resolve
   relative `<script src>` tags or read `localStorage`, so multi-file
   testing needs a real origin. Test at `http://localhost:8934` during
-  development; `index.html` and `space_sim_demo.html` still work by
-  double-click for a final check, and the Pages URL is the release
-  reference (see Working agreements).
+  development; `index.html` still works by double-click for a final
+  check, and the Pages URL is the release reference (see Working
+  agreements).
 - Git repo, public on GitHub: https://github.com/1EyeBiney/headless-space-sim
   Served live via GitHub Pages at
   https://1eyebiney.github.io/headless-space-sim/ — this URL is the
   reference build; `?run=delivery` skips the menu into the timed run.
-- Plan from the original build: `~\.claude\plans\you-said-do-not-functional-hammock.md`.
   The plan: `SPEC.md` (Part A direction, Part B build order, Part C
   decisions) — superseded PHASE_PLAN.md and Brian's ideas2 notes on 2026-09-04.
+  (The original build's plan: `~\.claude\plans\you-said-do-not-functional-hammock.md`.)
 
 ## Audio architecture (Round 12)
 
@@ -280,8 +278,8 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
   browser pane to https://1eyebiney.github.io/headless-space-sim/ , wait
   ~60-90 s after a push for the pages-build-deployment workflow (`gh run
   list`) before testing, and hard-reload if a test shows stale behavior.
-  The double-click `index.html` / `space_sim_demo.html` files must still
-  work standalone, but the URL is the reference.
+  The double-click `index.html` must still work standalone, but the URL
+  is the reference.
 - Multi-file gotcha (Round 12): the game is now split across four `<script>`
   tags. This session's browser-preview tool renders a local file as an
   opaque `data:` URL snapshot — relative `<script src>` tags don't resolve
@@ -316,7 +314,7 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
 - Brian's ear is the tiebreaker on all sound decisions. Report every file
   change explicitly; keep help text, KEY_DESCRIPTIONS, and README in sync
   with mechanics; hidden mining thresholds must never leak into speech.
-- Regenerate `space_sim_demo.html` and commit/push after every round.
+- Commit/push after every round; there is no demo file to regenerate any more.
 
 ## Where we left off (2026-09-04)
 
