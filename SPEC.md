@@ -573,7 +573,8 @@ test), 1.20 (one number per tier), 1.16 (a test, nothing to build),
 commit per item, machine-test at a local server with beacons off, docs
 in sync, push, re-test at Pages, close every tab.
 
-1.19, 1.20, and 1.16 are DONE (Sonnet, Round 13) — see below. 1.18 next.
+1.19, 1.20, 1.16, and 1.18 are DONE (Sonnet, Round 13) — see below. 1.17
+(warp takes time) is the last ideas4 item.
 
 #### 1.16 Chaff is instant, any time (ideas4) — CONFIRMED, no code change
 
@@ -659,7 +660,44 @@ must be exactly that 12 s.
   N seconds to go.") all updated. CLAUDE.md's 1.10 bullet and the "warp
   drama" note in "Where we left off" get superseded.
 
-#### 1.18 Escape opens the mission menu from open space or an encounter (ideas4)
+#### 1.18 Escape opens the mission menu from open space or an encounter (ideas4) — DONE, needs Brian's ear
+
+Built and machine-tested: Escape from any live mission opens the SAME
+mission-menu list with a new **Resume** item appended after Run log
+(appended, not prepended — every other item keeps its own index whether
+or not Resume is showing, which matters once the overlay closes and
+`X` reads the plain list again); the cursor lands on Resume; the sim
+freezes (confirmed: holding W while the menu was open moved the ship
+0 units); Escape again resumes instantly, and so does Enter on Resume
+(with the normal select-beat); choosing any other item abandons the
+mission exactly as its own `run()` already did (confirmed: Combat
+training selected from mid-Sector-flight correctly left `mode`
+`'combat'`), and `X` afterward reads the right item at the right index
+(no off-by-one). Help/Map/Run log/Sound opened from inside the overlay
+still work exactly as before and return to it ("Help closed. Mission
+menu still open." — the old "Still paused." line updated ). The
+separate `paused` state is gone entirely — grepped clean; every guard
+that used to read `!paused` either reads `!menuOpen` (the audio-duck
+double-guard in help/map/run log, `beamTick`'s freeze) or was flat-out
+dead code once `menuOpen` already intercepts all key dispatch before
+reaching the switch, and was deleted.
+
+**Mid-warp exception, confirmed working**: pressing Escape while
+`warping` is true opens the menu WITHOUT ducking audio — held for the
+whole 2 s spool in one continuous test, `masterGain` never moved off
+its resting value while `warping` stayed true. The warp-completion
+`setTimeout` is a real timer independent of `menuOpen`/the RAF loop, so
+it fires on schedule regardless: confirmed the arrival line ("Warp
+charge exhausted..." on this test, a dry jump) spoke correctly UNDER
+the still-open menu, menu navigation kept working immediately after,
+and Resume returned control to the ship at its new, correctly-updated
+position. (Two of my own EARLIER test attempts appeared to show ducking
+and a missing arrival line — both were testing artifacts: splitting the
+mid-warp wait across separate tool-call round-trips let real wall-clock
+time exceed the 2 s spool before the next script even ran, so `warping`
+had already gone false by the time it checked. A single continuous
+script proved the real behavior is correct.) No console errors anywhere
+in testing. Not yet heard.
 
 - Today Escape = pause (masterGain ducked, sim frozen, "Paused."). New:
   Escape in the raw sim — open sector space or any encounter — opens

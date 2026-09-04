@@ -108,7 +108,7 @@ Right hand on the arrows, left hand on everything else.
 | X | Leave the mission |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |
-| Escape | Pause |
+| Escape | Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves the mission. Escape again also resumes |
 
 ## How combat works
 

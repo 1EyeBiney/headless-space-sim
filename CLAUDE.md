@@ -226,6 +226,55 @@ static once tiers exist.
   docks by range, no corridor to fly (see below) / planet placeholder
   hail. Weapons/tools cold in open space. Ore, hull, and missile
   count persist across a sector run (menu starts reset them).
+- **Escape / mission menu (Round 13, SPEC 1.18)**: Escape no longer
+  toggles a separate `paused` flag (removed entirely — grepped clean).
+  From any live mission it calls `openMissionMenuOverlay()`: sets
+  `menuOpen = true` (which ALREADY froze `simTick` and the delivery
+  clock before this round, since both guard lists already included
+  `menuOpen` alongside the old `paused`), `menuResumable = true`, cursor
+  to the appended **Resume** item, and ducks `masterGain` — UNLESS
+  `warping`, in which case the duck is skipped so the warp sound keeps
+  playing (the warp-completion `setTimeout` in `startWarp` is a real
+  timer independent of `menuOpen`, so the flight and its arrival speech
+  run through to completion regardless of the open menu; confirmed in a
+  single continuous test — splitting the wait across separate tool
+  calls in earlier attempts let real time outrun the spool between
+  calls and produced misleading results, not a real bug). `onKeyDown`'s
+  `if (warping) {...}` guard special-cases `lname === 'escape'` to reach
+  `openMissionMenuOverlay()` instead of the usual "Hyperwarp in
+  progress" refusal — every other key still blocked mid-warp as before.
+  **`RESUME_ITEM` is APPENDED after `MENU_ITEMS`, never prepended** —
+  prepending would shift every other item's index by one the instant
+  Resume is showing, and `menuIdx` would then point at the WRONG item
+  once the overlay closed and a bare `X` re-displayed the un-augmented
+  boot list; appending means indices 0–7 mean the same thing in both
+  lists, and `resumeFromMenu()` only needs to clamp `menuIdx` down by
+  one in the single case where the cursor was sitting on the Resume slot
+  itself. `activeMenuItems()` returns `MENU_ITEMS` or `MENU_ITEMS.concat
+  ([RESUME_ITEM])` depending on `menuResumable`; `menuItemText`/
+  `menuKey`'s arrow/Enter/first-letter branches all read through it now.
+  Selecting any OTHER item runs its own existing `run()` (`startMission`/
+  `startDemo`/etc.), which abandons the live mission exactly as it
+  always has — 1.18 changes nothing about what those do. Escape pressed
+  again while the overlay is open resumes immediately (checked before
+  the rest of `menuKey()`, only when `menuResumable`); at the plain boot
+  list (`menuResumable` false) it falls through to the same generic
+  "up and down arrows..." hint every other unbound key gets there,
+  unchanged from before. `X` (leave/return-to-sector) is completely
+  untouched — it only ever fires from the raw sim, since `menuOpen`
+  already intercepts every key before the switch reaches `case 'x'`.
+  Every `!paused` audio-duck double-guard in `openHelp`/`closeHelp`/
+  `openRunLog`/`closeRunLog`/`openMap`/`closeMap` became `!menuOpen`
+  (opening a sub-overlay from the raw sim always finds `menuOpen` false;
+  opening one from INSIDE the Resume-capable overlay finds it already
+  true and already ducked, so the guard's job — don't double-ramp — is
+  identical either way); `closeHelp()`'s old "Still paused." line is now
+  "Mission menu still open." `beamTick`'s own freeze guard changed from
+  `paused` to `menuOpen` (a burst now stops silently under the menu the
+  same way it used to stop silently while paused). Every `!paused &&`
+  guard inside the raw-sim key switch was deleted outright rather than
+  swapped, since `menuOpen` already intercepts the WHOLE switch before
+  any of those cases can run — they were dead code under the new model.
 - **Docking (Round 13, SPEC 1.19, supersedes Round 12's SPEC 1.6)**: the
   flown corridor is GONE — Brian: use ranges instead. `callPoi()` computes
   `range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract`
@@ -435,10 +484,11 @@ target (lock onset also speaks distance) · R range to target with
 closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · B beacons on/off/target only · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
-objective) · X leave · F1 help · F12 explore · Escape
-pause. Menu: arrows + Enter (first letters D/S/C/M/H jump, S cycles
-Sector then Sound; B cycles beacons here too); Left/Right on
-the Difficulty line cycles Rookie/Veteran/Ace in place.
+objective) · X leave · F1 help · F12 explore · Escape opens the mission
+menu (SPEC 1.18 — see below; no separate pause any more). Menu: arrows +
+Enter (first letters D/S/C/M/H jump, S cycles Sector then Sound; B
+cycles beacons here too); Left/Right on the Difficulty line cycles
+Rookie/Veteran/Ace in place.
 
 ## Accessibility architecture (non-negotiable)
 
@@ -590,7 +640,9 @@ tick at 29 confirmed untouched), and the Difficulty/help text reflect it
 only when the multiplier is above 1. Machine-tested, not yet heard.
 
 Round 13 also confirmed 1.16 (chaff instant/any time) needed no code
-change — see the chaff bullet above. 1.18 is next, then 1.17.
+change — see the chaff bullet above, and built 1.18 (Escape opens the
+mission menu) — see the "Escape / mission menu (Round 13, SPEC 1.18)"
+bullet below. 1.17 (warp takes time) is the last ideas4 item.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

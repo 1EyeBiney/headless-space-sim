@@ -507,7 +507,9 @@ var missile = null;
 var locked = false;
 var keysDown = {};       // held-key map for arrows / w / s
 var describeMode = false;
-var paused = false;
+var menuResumable = false;  // SPEC 1.18: true while the mission menu is open
+                             // OVER a live mission (Escape, not the boot menu)
+                             // — governs whether Resume appears in the list.
 var won = false;
 var running = false;     // true after the init button
 var lastLaserAt = 0;
@@ -723,7 +725,7 @@ var HELP_SECTIONS = [
     { heading: 'System', items: [
         'B cycles the point-of-interest beacons: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship.',
         'The Sound item on the mission menu sets a level, off, quiet, or full, for world sounds, cockpit instruments, and sound effects. Speech is never affected. Settings are saved.',
-        'Escape pauses and resumes the simulation.',
+        'Escape opens the mission menu over the live game: Resume goes back to the ship, or pick anything else to leave. Escape again also resumes.',
         'F12 turns on explore mode, where every key describes itself safely.',
         'F1 opens this help screen. Escape closes it.',
         'F5 and control R belong to the browser and reload the page.'
@@ -748,15 +750,15 @@ function openHelp() {
     keysDown = {};
     thrusterSync(null);
     stopBeam(true);
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Help. ' + HELP_SECTIONS.length + ' sections, ' + help.lines.length +
         ' lines. Down arrow reads line by line, H jumps to the next heading, Escape closes.');
 }
 
 function closeHelp() {
     help.open = false;
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
-    say('Help closed.' + (paused ? ' Still paused.' : ''));
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    say('Help closed.' + (menuOpen ? ' Mission menu still open.' : ''));
 }
 
 function helpSpeakLine() {
@@ -821,7 +823,7 @@ var KEY_DESCRIPTIONS = {
     enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
-    escape: 'Pauses and resumes the simulation.',
+    escape: 'Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves. Escape again also resumes.',
     f5: 'Belongs to the browser. Outside explore mode it reloads the page.',
     f6: 'Belongs to the browser. Outside explore mode it moves browser focus.',
     f11: 'Belongs to the browser. Outside explore mode it toggles full screen.'
@@ -1220,7 +1222,7 @@ function scheduleTick() {
 }
 
 function tickBeat() {
-    if (!running || paused || over() || help.open || map.open || menuOpen || warping) { tick.timer = setTimeout(tickBeat, 250); return; }
+    if (!running || over() || help.open || map.open || menuOpen || warping) { tick.timer = setTimeout(tickBeat, 250); return; }
     var t = targets[selected];
     if (!t || !t.alive) { tick.timer = setTimeout(tickBeat, 250); return; }
     var a = aim(t.pos);
@@ -1635,7 +1637,7 @@ function stopBeam(silent) {
 
 function beamTick() {
     if (!beam) return;
-    if (!running || paused || help.open || over()) { stopBeam(true); return; }
+    if (!running || menuOpen || help.open || over()) { stopBeam(true); return; }
     if (beam.tool === 'vac') { vacTick(); return; }
     if (beam.tool === 'dust') { dustTick(); return; }
     var t = targets[selected];
@@ -2659,13 +2661,13 @@ function openRunLog() {
     runlog.idx = -1;
     keysDown = {};
     thrusterSync(null);
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Run log. Best ' + profile.runs.length + ' of up to 10. Up and down arrows browse, Escape closes.');
 }
 
 function closeRunLog() {
     runlog.open = false;
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     say('Run log closed.');
 }
 
@@ -2783,7 +2785,7 @@ function openMap() {
     keysDown = {};
     thrusterSync(null);
     updateStabilizers(0);
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Quadrant map. ' + map.items.length + ' points of interest. Up and down browse, ' +
         (mode === 'sector' ? 'Enter sets the nav target' : 'Enter departs for that point') +
         ', Escape closes.');
@@ -2791,7 +2793,7 @@ function openMap() {
 
 function closeMap(spoken) {
     map.open = false;
-    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     if (spoken) say(spoken);
 }
 
@@ -3248,8 +3250,14 @@ function onKeyDown(e) {
     // Docked at a station: the station menu captures everything.
     if (docked) { stationMenuKey(lname); return; }
 
-    // Mid-jump, the ship answers to nobody.
-    if (warping) { if (!e.repeat) say('Hyperwarp in progress.'); return; }
+    // Mid-jump, the ship answers to nobody — except Escape (SPEC 1.18): the
+    // flight and its sound keep going under the menu, so open it here too
+    // rather than blocking it like every other key.
+    if (warping) {
+        if (lname === 'escape') { if (!e.repeat) openMissionMenuOverlay(); return; }
+        if (!e.repeat) say('Hyperwarp in progress.');
+        return;
+    }
 
     // The mission menu: a Keyboard Commander style list. Nothing else fires.
     if (menuOpen) {
@@ -3262,7 +3270,7 @@ function onKeyDown(e) {
     // 'w' and would otherwise just be a held thrust key.
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
         if (e.repeat) return;
-        if (paused || over()) { say(paused ? 'Paused.' : 'Enter restarts.'); return; }
+        if (over()) { say('Enter restarts.'); return; }
         if (lname === 'w') toggleAutoThrust();
         else if (lname === 'r') radarPing();
         else cycleTarget(-1);
@@ -3281,29 +3289,29 @@ function onKeyDown(e) {
     switch (lname) {
         case ' ':
             if (mode === 'sector') say('Weapons are cold in open space. C calls a point of interest.');
-            else if (!paused && !over()) startBeam();
+            else if (!over()) startBeam();
             break;
         case 'f':
             if (mode === 'sector') say('Weapons are cold in open space. C calls a point of interest.');
-            else if (!paused && !over()) fireMissile();
+            else if (!over()) fireMissile();
             break;
         case '1': case '2': case '3': case '4': case '5': case '6':
-            if (!paused) selectSlot(parseInt(lname, 10) - 1);
+            selectSlot(parseInt(lname, 10) - 1);
             break;
-        case 'g':      if (!paused && !over()) shieldKey(); break;
+        case 'g':      if (!over()) shieldKey(); break;
         case 'd':
             if (mode === 'sector') say('Nothing shoots at you in open space. Chaff is for encounters.');
-            else if (!paused && !over()) fireChaff();
+            else if (!over()) fireChaff();
             break;
         case 'b':      beaconKey(); break;
-        case 'tab':    if (!paused && !over()) cycleTarget(); break;
+        case 'tab':    if (!over()) cycleTarget(); break;
         case 'r':      rangeReport(); break;
-        case 'e':      if (!paused && !over()) startExtract(); break;
-        case 'v':      if (!paused && !over()) startDustVac(); break;
-        case 'q':      if (!paused) openMap(); break;
-        case 'h':      if (!paused) startWarp(); break;
+        case 'e':      if (!over()) startExtract(); break;
+        case 'v':      if (!over()) startDustVac(); break;
+        case 'q':      openMap(); break;
+        case 'h':      startWarp(); break;
         case 'c':
-            if (mode === 'sector') { if (!paused) callPoi(); }
+            if (mode === 'sector') { callPoi(); }
             else say('C calls points of interest in open sector space.');
             break;
         case 'x':
@@ -3331,12 +3339,7 @@ function onKeyDown(e) {
             say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
             break;
         case 'escape':
-            paused = !paused;
-            if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, paused ? 0.0001 : CFG.masterGain, 0.2);
-            keysDown = {};
-            thrusterSync(null);
-            stopBeam(true);
-            say(paused ? 'Paused. Escape resumes.' : 'Resumed.');
+            openMissionMenuOverlay();
             break;
         case 'enter':
             if (lost && demo) {
@@ -3390,9 +3393,9 @@ function frame(now) {
 
 function simTick(dt) {
     // The delivery clock runs whenever the sim is live, hyperwarp included.
-    if (demo && !demo.delivered && running && !paused && !help.open && !map.open &&
+    if (demo && !demo.delivered && running && !help.open && !map.open &&
         !menuOpen && !over() && dt > 0) demo.elapsed += dt;
-    if (!running || paused || over() || help.open || map.open || menuOpen || warping || docked || dt <= 0) {
+    if (!running || over() || help.open || map.open || menuOpen || warping || docked || dt <= 0) {
         thrusterSync(null); updateStabilizers(0); return;
     }
 
@@ -3504,6 +3507,7 @@ window.__sim = {
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
             docked: docked ? { poiName: docked.poi.name } : null,
+            warping: warping, menuResumable: menuResumable,
             stationSubmenu: stationSubmenu,
             beacons: beaconMode,
             autoThrust: autoThrust,
@@ -3574,7 +3578,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; paused = false; locked = false;
+    won = false; lost = false; locked = false;
     warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -3662,6 +3666,16 @@ var MENU_ITEMS = [
       },
       run: function () { openRunLog(); } }
 ];
+// Resume (SPEC 1.18): appended after MENU_ITEMS, never spliced in, so every
+// other item keeps its own index whether or not Resume is showing — a
+// prepended Resume would shift every index by one and desync menuIdx the
+// moment the overlay closed. activeMenuItems() only appends it while
+// menuResumable is true (i.e. Escape opened the menu over a live mission,
+// not the plain boot list).
+var RESUME_ITEM = { label: 'Resume', desc: 'Back to the ship.',
+                     run: function () { resumeFromMenu(); } };
+function activeMenuItems() { return menuResumable ? MENU_ITEMS.concat([RESUME_ITEM]) : MENU_ITEMS; }
+
 var menuIdx = 0;
 var menuBusy = false;   // the beat between "selected" and the action
 
@@ -3670,12 +3684,42 @@ function menuSelectSound() { SIM.cues.play('menu_select'); }
 
 function itemLabel(item) { return typeof item.label === 'function' ? item.label() : item.label; }
 function itemDesc(item)  { return typeof item.desc  === 'function' ? item.desc()  : item.desc; }
-function menuItemText(i) { return itemLabel(MENU_ITEMS[i]) + '. ' + itemDesc(MENU_ITEMS[i]); }
+function menuItemText(i) { var items = activeMenuItems(); return itemLabel(items[i]) + '. ' + itemDesc(items[i]); }
 
 // Entering the menu: the full instruction plus the current item.
 function menuAnnounce(prefix) {
     say((prefix || '') + 'Mission menu. Use up and down arrows to navigate and Enter to select. ' +
         menuItemText(menuIdx));
+}
+
+// Escape, from the raw sim (SPEC 1.18): opens this same list over the live
+// mission, cursor landing on the appended Resume item, ducking audio to
+// match every other overlay — except mid-warp, where the flight and its
+// sound keep going underneath (nothing hostile waits at the far end of a
+// warp today, so it's safe to leave the ear on it).
+function openMissionMenuOverlay() {
+    menuResumable = true;
+    menuOpen = true;
+    menuIdx = MENU_ITEMS.length;   // the appended Resume slot
+    keysDown = {};
+    thrusterSync(null);
+    stopBeam(true);
+    if (!warping && SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    menuAnnounce();
+}
+
+// Resume: closes the overlay and hands control straight back to the ship,
+// wherever it now is (including mid-flight, if the warp finished while the
+// menu was open). If the cursor was sitting on the Resume slot itself
+// (index MENU_ITEMS.length, which does not exist in the plain boot list),
+// pull it back onto the last real item so a later exitToMenu() never reads
+// an out-of-range index.
+function resumeFromMenu() {
+    menuOpen = false;
+    menuResumable = false;
+    if (menuIdx >= MENU_ITEMS.length) menuIdx = MENU_ITEMS.length - 1;
+    if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    say('Resumed.');
 }
 
 function startMission(m) {
@@ -3688,13 +3732,17 @@ function startMission(m) {
 
 function menuKey(lname, name) {
     if (menuBusy) return;
-    var n = MENU_ITEMS.length;
+    // Escape again also resumes (accepted by default) — only when the menu
+    // was opened over a live mission; at the plain boot list it falls
+    // through to the generic hint below, same as any other unbound key.
+    if (lname === 'escape' && menuResumable) { resumeFromMenu(); return; }
+    var items = activeMenuItems(), n = items.length;
     if (lname === 'arrowdown') {
         menuClick(); menuIdx = (menuIdx + 1) % n; say(menuItemText(menuIdx));
     } else if (lname === 'arrowup') {
         menuClick(); menuIdx = (menuIdx - 1 + n) % n; say(menuItemText(menuIdx));
     } else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
-        var item = MENU_ITEMS[menuIdx];
+        var item = items[menuIdx];
         // The Difficulty line adjusts in place on Left/Right instead of
         // launching anything; Enter just re-states it (KC settings pattern).
         if (item.adjust) {
@@ -3725,13 +3773,13 @@ function menuKey(lname, name) {
         var next = -1;
         for (var i = 1; i <= n; i++) {
             var k = (menuIdx + i) % n;
-            if (itemLabel(MENU_ITEMS[k]).toLowerCase().charAt(0) === lname) { next = k; break; }
+            if (itemLabel(items[k]).toLowerCase().charAt(0) === lname) { next = k; break; }
         }
         if (next >= 0) { menuClick(); menuIdx = next; say(menuItemText(menuIdx)); }
         else { SIM.audio.blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
     } else {
         SIM.audio.blip(220, 80, 0.1);
-        say('Up and down arrows browse the mission menu, Enter selects. ' + itemLabel(MENU_ITEMS[menuIdx]) + '.');
+        say('Up and down arrows browse the mission menu, Enter selects. ' + itemLabel(items[menuIdx]) + '.');
     }
 }
 
@@ -3793,6 +3841,7 @@ function exitToMenu() {
     clearMission();
     sectorHome = null;
     demo = null;
+    menuResumable = false;
     menuOpen = true;
     if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     menuAnnounce();
