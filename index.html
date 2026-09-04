@@ -77,6 +77,7 @@ var CFG_DEFAULTS = {
 
     laserRange: 600,
     laserCloseMult: 1.6,     // damage x this at point-blank, tapering to x1 at laserRange
+    laserShipMult: 1,        // extra multiplier on ships only (not rocks); Rookie doubles it (SPEC 1.20)
     toolCooldownMs: 700,     // E / V re-trigger guard (lasers cool per slot, see LASERS)
     laserMissWindowMs: 11000, // two zero-damage bursts inside this window...
                               // (SPEC 1.9: a 5 s burst + 3 s cooldown puts the
@@ -196,13 +197,13 @@ window.CFG = CFG;   // audio_engine.js and audio_cues.js are separate top-level
 // SET (menu adjust or profile load), never re-applied mid-mission, so a
 // zone the pilot picked with Z survives leaving and re-entering a mission.
 var TIERS = [
-    { name: 'Rookie',  alwaysHostile: false, zoneIdxDefault: 0, cfg: {} },
+    { name: 'Rookie',  alwaysHostile: false, zoneIdxDefault: 0, cfg: { laserShipMult: 2 } },
     { name: 'Veteran', alwaysHostile: true,  zoneIdxDefault: 0, cfg: {} },
     { name: 'Ace',     alwaysHostile: true,  zoneIdxDefault: 1,
       cfg: { shieldRaiseMs: 2500, laserMissWindowMs: 16000, missileMax: 6 } }
 ];
 var TIER_DESCS = [
-    'Ships hold their fire until you hit them. Standard shields and magazine.',
+    'Ships hold their fire until you hit them. Lasers do double damage to ships. Standard shields and magazine.',
     'Every ship is hostile from the start, the full training-drill pacing.',
     'Veteran pacing, a slower shield, a touchier laser, and a smaller magazine.'
 ];
@@ -649,7 +650,8 @@ var HELP_SECTIONS = [
         'Switching to another slot takes a moment: you hear the mechanism work, and the heavier the slot the longer it takes. Space is refused until it finishes, and the laser announces itself ready. Re-selecting the slot you are on just restates it.',
         'A burst is fire and forget: one press runs the whole burst, five ticks over five seconds, and it cannot be stopped. Then that slot recharges for a few seconds before it can fire again, and the refusal tells you how long.',
         'Every laser has its own damage shape. Mining laser one bites evenly on every tick; mining laser two lands two heavy ticks and then settles. The shape follows the sound, so you learn each laser by ear.',
-        'Each damage tick is also bigger the more centered the target is at that moment, and the number is spoken as it lands.',
+        function () { return 'Each damage tick is also bigger the more centered the target is at that moment, and the number is spoken as it lands.' +
+            (CFG.laserShipMult > 1 ? ' At this difficulty, that damage against ships is doubled.' : ''); },
         'The beam\'s voice rises slightly with your aim quality, so you can steer into a better burn mid-shot.',
         'You cannot raise shields during a burst. Commit to the burst, then shield.',
         'The laser reaches ' + CFG.laserRange + '. If your aim is true but the target is beyond that, the beam tells you to thrust closer instead of a mystery miss.',
@@ -1681,7 +1683,9 @@ function beamTick() {
             if (t.hp <= 0) { rockEvent(t); return; }   // rockEvent stops the beam
             say(String(actual));
         } else {
-            dmg = Math.ceil(dmg * L.hullMult);
+            // SPEC 1.20: Rookie doubles laser damage against ships (not
+            // rocks) via CFG.laserShipMult, so the spoken number reflects it.
+            dmg = Math.ceil(dmg * L.hullMult * CFG.laserShipMult);
             beam.totalDamage += dmg;
             if (damageTarget(t, dmg)) { stopBeam(true); return; }
             say(String(dmg));

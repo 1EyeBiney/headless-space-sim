@@ -573,7 +573,7 @@ test), 1.20 (one number per tier), 1.16 (a test, nothing to build),
 commit per item, machine-test at a local server with beacons off, docs
 in sync, push, re-test at Pages, close every tab.
 
-1.19 is DONE (Sonnet, Round 13) — see below. 1.20 next.
+1.19 and 1.20 are DONE (Sonnet, Round 13) — see below. 1.16 next.
 
 #### 1.16 Chaff is instant, any time (ideas4)
 
@@ -725,17 +725,23 @@ docking-computer module idea from 1.7/A.5 goes with it.
   is gone), velocity zero, as today otherwise.
 - Planet and the other points: unchanged (`poiInteract` stays for them).
 
-#### 1.20 Lasers do double damage against ships at Rookie (ideas4)
+#### 1.20 Lasers do double damage against ships at Rookie (ideas4) — DONE, needs Brian's ear
+
+Built and machine-tested: `CFG.laserShipMult` is 2 at Rookie, 1 at
+Veteran and Ace (`TIERS[0].cfg`); the same tick fired point-blank at a
+Rookie ship spoke 54, at a Veteran ship 27 — exactly double, confirmed
+directly; a rock tick under the same conditions (29, inside its normal
+random-hardness range) confirmed the rock branch is untouched, since
+the multiplier only lives in the ship branch of `beamTick`. The
+Difficulty line's Rookie description now reads "...Lasers do double
+damage to ships. Standard shields and magazine."; the Weapons help
+section's damage-tick line appends "At this difficulty, that damage
+against ships is doubled." only when the multiplier is above 1 —
+confirmed present at Rookie, absent at Veteran. No console errors. Not
+yet heard.
 
 Brian: "make lasers do 2x damage on enemy ships at this difficulty."
-- A per-tier number, `laserShipMult` in `TIERS[].cfg` (Rookie 2,
-  Veteran 1, Ace 1), multiplied into the ship branch of `beamTick` only
-  (`dmg * L.hullMult * CFG.laserShipMult`); rocks and the per-laser
-  `hullMult` character are untouched. Spoken damage numbers double with
-  it, so the pilot hears the change.
-- Rookie confirmed (Brian, same evening) — the tier he is testing at.
-- Help (Weapons line about lasers), README combat paragraph, the
-  Difficulty descriptions (`TIER_DESCS`) mention it.
+Rookie confirmed (Brian, same evening) — the tier he is testing at.
 
 ### Phase 2 — a living sector, smarter enemies, the second resource
 

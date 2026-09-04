@@ -519,7 +519,10 @@ passive-until-hit enemies at Rookie (always-on pacing kept for Veteran/Ace),
 delivery run with a saved run log, missile magazine + rearm, semi-active
 missile cone, laser range/close bonus/overheat, enemy fire with telegraphs,
 the shield damage-pool + disrepair rework, evade + counterattack, ore ×1.5 /
-dust ×0.75, difficulty tiers, no-warp zone, saved profile. Still awaiting his
+dust ×0.75, difficulty tiers, no-warp zone, saved profile. Rookie also
+does double laser damage against ships (SPEC 1.20, `CFG.laserShipMult`,
+`TIERS[0].cfg` — the ship branch of `beamTick` only, rocks untouched).
+Still awaiting his
 ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon balance,
 warp drama. SPEC.md 1.6 (docking corridor) and 1.7 (station economy)
 were the two large pieces deferred out of Round 10–11 — both built this
@@ -575,7 +578,12 @@ bullet above for what changed and what was removed; machine-tested (a
 hail at 400, a refusal at 1200, an instant dock at 100, the delivery
 handover through it, undock landing at exactly 250 out from two
 different approach angles, F12, no console errors), not yet heard.
-1.20 is next, then 1.16, 1.18, 1.17.
+
+Round 13 also built 1.20: Rookie's `laserShipMult` 2 doubles ship
+damage only (confirmed 54 vs Veteran's 27 on the identical tick; a rock
+tick at 29 confirmed untouched), and the Difficulty/help text reflect it
+only when the multiplier is above 1. Machine-tested, not yet heard.
+1.16 is next, then 1.18, 1.17.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

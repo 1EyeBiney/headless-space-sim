@@ -23,7 +23,8 @@ status line, but the game does not need it.
 
 Difficulty on the mission menu is adjusted with left and right arrows right
 there on the menu line: **Rookie** (ships hold their fire until you hit
-them — the easiest way to learn the controls), **Veteran** (every ship is
+them — the easiest way to learn the controls, and your laser does double
+damage to ships), **Veteran** (every ship is
 hostile and watching from the moment an encounter starts), and **Ace**
 (Veteran, plus a slower shield, a touchier laser, and a smaller missile
 magazine). It's saved to your browser and remembered next time you play.
