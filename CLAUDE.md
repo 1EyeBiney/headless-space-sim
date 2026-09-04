@@ -31,8 +31,10 @@ expands.
 
 ## Game states
 
-Mission menu → `D` delivery run / `S` sector (the hub) / `C` combat drill /
-`M` mining drill.
+Mission menu (Keyboard Commander style list: Up/Down wrap, click per move,
+Enter/Left/Right select with a two-note sound + "X selected" + 600 ms beat,
+first-letter jump, Tab repeats, cursor remembered; `MENU_ITEMS` in SHELL) →
+Delivery run / Sector (the hub) / Combat training / Mining / Help.
 
 - **Delivery run (the demo)**: sector with a clock (`demo` state; counts while
   the sim is live, warp included; pauses/help/map stop it). Order enforced:
@@ -50,8 +52,11 @@ Mission menu → `D` delivery run / `S` sector (the hub) / `C` combat drill /
   placeholder hail. Weapons/tools cold in open space. Ore, hull, and missile
   count persist across a sector run (menu starts reset them).
 - **Combat**: 5 ships with Brian's recorded engine loops (`shipAsset` on the
-  roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies
-  shoot back** (one attack at a time, `threat`): within `enemyLaserRange` 600
+  roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies are
+  passive until hit**: `provoke(t)` in `damageTarget` sets `t.hostile` (fuse
+  `enemyProvokedS` 4 s); only hostile ships join the attack pool, so a ship
+  killed in one burst never fires. Hostile ships shoot back (one attack at a
+  time, `threat`): within `enemyLaserRange` 600
   they telegraph (3 rising chirps at THEIR position + "X locking on!") for
   1.2 s then a 5 s beam, 6 dmg/s; farther out they launch a missile with its
   own HRTF voice (25 dmg). Grace 8 s at start, gap 7–12 s. Player hull 100;
@@ -85,7 +90,7 @@ Arrows yaw/pitch · W thrust / S brake · Space laser beam · F missile · G shi
 · T cycle targets · Tab repeat bearing · R radar · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · I status (adds hull, missiles, shields,
 laser heat, demo clock + objective) · X leave · F1 help · F12 explore · Escape
-pause. Menu: D delivery run, S sector, C combat, M mining.
+pause. Menu: arrows + Enter (first letters D/S/C/M/H jump).
 
 ## Accessibility architecture (non-negotiable)
 
@@ -130,14 +135,16 @@ pause. Menu: D delivery run, S sector, C combat, M mining.
 
 ## Where we left off (2026-09-03)
 
-Round 10 built and machine-tested, NOT yet heard by Brian: delivery run,
+Round 10 built and machine-tested, NOT yet heard by Brian: KC-style arrow
+menu, passive-until-hit enemies (Brian: the always-on attacks were far too
+hard for a starting player; keep that pacing for a later-game tier), delivery run,
 missile magazine + rearm, semi-active missile cone, laser range/close bonus/
 overheat, enemy fire (laser + missile) with telegraphs, shields, evade +
 counterattack, ore ×1.5 / dust ×0.75, README, git + GitHub. Still awaiting
 his ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon
 balance, warp drama.
 
-Tuning questions for play-test: enemy damage pacing (30 per beam, 25 per
+Tuning questions for play-test: provoked-retaliation fuse (4 s), enemy damage pacing (30 per beam, 25 per
 missile vs hull 100 — four unshielded attacks kill), attack gap 7–12 s,
 shield spool 1.5 s / hold 10 s, overheat window 8 s, and whether the "Shields,
 G" coaching (first two warnings only) is enough for newcomers.

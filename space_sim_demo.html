@@ -150,6 +150,7 @@ var CFG = {
 
     // enemy fire (combat only, one attack in progress at a time)
     enemyFirstAttackS: 8,    // grace after the encounter starts
+    enemyProvokedS: 4,       // a ship hit for the first time waits at least this long to fire back
     enemyAttackMinS: 7, enemyAttackMaxS: 12,   // gap between attacks
     enemyAlertAttackS: 2.5,  // a missile survivor strikes back this soon
     enemyLaserRange: 600,
@@ -380,7 +381,8 @@ var HELP_SECTIONS = [
         'R sounds a radar ping of every surviving target in order, nearest first.'
     ] },
     { heading: 'Shields and enemy fire', items: [
-        'Enemies shoot back. Your hull starts at ' + CFG.shipHull + ' percent, and I reports it.',
+        'Every ship holds its fire until you hit it. From the first hit on, that ship is hostile and shoots back. Your hull starts at ' + CFG.shipHull + ' percent, and I reports it.',
+        'So pick your fights: a ship killed in one burst never fires at all, and a wounded ship is an angry ship.',
         'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
         'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
         'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.',
@@ -392,14 +394,14 @@ var HELP_SECTIONS = [
         'If your hull reaches zero the encounter is lost. Enter tries again.'
     ] },
     { heading: 'Delivery run', items: [
-        'D at the mission menu starts the timed delivery run, the shareable demo. The clock starts at once and I reads it.',
+        'The delivery run is the first item on the mission menu, and the shareable demo. The clock starts at once and I reads it.',
         'First, clear the Contested Zone. Asteroid Field Kappa refuses mining rights while hostiles hold the zone.',
         'Then mine ' + CFG.demoOreGoal + ' ore. Cores are the rich haul, dust is the top-up, and Enter after a cloud is cleared spawns a fresh one.',
         'Finally, call Station Meridian with the ore aboard. The station always repairs your hull and rearms your missiles, and takes the delivery when the hold reads ' + CFG.demoOreGoal + '.',
         'Your run time is spoken on delivery. Losing your ship fails the run; Enter restarts it from the beginning.'
     ] },
     { heading: 'Mining', items: [
-        'From the mission menu, D starts the delivery run, S the sector, C combat training, and M space mining. X leaves any mission and returns to the menu.',
+        'The mission menu lists the delivery run, the sector, combat training, space mining, and help. Up and down arrows browse it, Enter selects, and a first letter jumps to an item. X leaves any mission and returns to the menu.',
         'Asteroids drift inside a cloud, and each type sings its own looping sound: Ice is soft and splits easily, Iron is hard and chips, Stone is in between.',
         'The mining laser chips away at a rock, but you never know exactly how much a stage needs — every rock rolls its strength in secret.',
         'When a stage gives way you hear a real blast: the rock may break in two, or be chipped down a size with a higher voice.',
@@ -497,12 +499,12 @@ var KEY_DESCRIPTIONS = {
     arrowup: 'Pitch the nose up. Hold to keep turning.',
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
     w: 'Thrust forward along the nose. Hold to accelerate.',
-    s: 'Brake. Hold to slow to a stop. At the mission menu, enters the sector.',
+    s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector.',
     ' ': 'Fire the laser beam. It burns for two seconds, bites harder up close, and each spoken damage tick depends on how centered the target is. Two empty bursts overheat it.',
     f: 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up, and keep your weapons offline.',
-    d: 'At the mission menu, starts the timed delivery run.',
-    m: 'At the mission menu, starts space mining.',
+    d: 'At the mission menu, jumps to the delivery run.',
+    m: 'At the mission menu, jumps to space mining.',
     t: 'Cycle to the next target and speak its bearing.',
     tab: 'Repeat the selected target\'s bearing and distance without cycling.',
     r: 'Radar ping. Plays each surviving target at its true position, nearest first.',
@@ -513,8 +515,8 @@ var KEY_DESCRIPTIONS = {
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space.',
-    c: 'At the mission menu, starts combat training. In open sector space, calls the selected point of interest.',
-    enter: 'After a victory or a lost ship, starts a fresh run of the same mission.',
+    c: 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest.',
+    enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
     escape: 'Pauses and resumes the simulation.',
@@ -1228,8 +1230,18 @@ function hullPercent(t) {
     return Math.max(0, Math.round(t.hp / t.maxHp * 100));
 }
 
+// Every ship is passive until the pilot hits it: the first hit makes it
+// hostile for good (it joins the attack pool), with a short fuse so the
+// retaliation never lands in the same breath as the hit.
+function provoke(t) {
+    if (t.hostile) return;
+    t.hostile = true;
+    threatIn = Math.max(threatIn, CFG.enemyProvokedS);
+}
+
 // Apply damage; returns true if the target died (kill speech handled here).
 function damageTarget(t, dmg) {
+    provoke(t);
     t.hp -= dmg;
     if (t.hp <= 0) {
         var name = t.name;
@@ -1703,7 +1715,7 @@ function updateEnemies(dt) {
     threatIn -= dt;
     if (threatIn > 0) return;
     var cands = aliveTargets().filter(function (t) {
-        return !t.kind && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
+        return !t.kind && t.hostile && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
     });
     if (!cands.length) { threatIn = 2; return; }
     var alert = cands.filter(function (t) { return t.alert; });
@@ -2559,38 +2571,10 @@ function onKeyDown(e) {
     // Mid-jump, the ship answers to nobody.
     if (warping) { if (!e.repeat) say('Hyperwarp in progress.'); return; }
 
-    // The mission menu: pick a mode, nothing else fires.
+    // The mission menu: a Keyboard Commander style list. Nothing else fires.
     if (menuOpen) {
         if (e.repeat) return;
-        if (lname === 'd') {
-            startDemo();
-        } else if (lname === 's') {
-            menuOpen = false;
-            ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
-            newGame('sector');
-            say(sectorIntro());
-        } else if (lname === 'c') {
-            menuOpen = false;
-            ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
-            newGame('combat');
-            say(combatIntro());
-        } else if (lname === 'm') {
-            if (!assetsReady()) {
-                say('The asteroid sounds are still loading. Try again in a moment.');
-            } else {
-                menuOpen = false;
-                ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
-                newGame('mining');
-                say(miningIntro());
-            }
-        } else if (lname === 'f1') {
-            openHelp();
-        } else if (lname === 'f12') {
-            describeMode = true;
-            say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
-        } else {
-            say(MENU_LINE);
-        }
+        menuKey(lname, name);
         return;
     }
 
@@ -2776,7 +2760,8 @@ function updateStatusLine() {
 window.__sim = {
     state: function () {
         return {
-            mode: mode, menu: menuOpen, ore: ore, won: won, lost: lost,
+            mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
+            hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, laserHot: laserHot(),
             shield: { up: shield.up, raising: shield.raising, recharge: shield.recharge },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
@@ -2864,7 +2849,99 @@ function newGame(m) {
     if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
 }
 
-var MENU_LINE = 'Mission menu. Press D for the timed delivery run, S to enter the sector, C for combat training, or M for space mining. F1 for help.';
+// ---- mission menu -----------------------------------------------------------
+// Ported from Keyboard Commander (c:\nbs\kc, kc_hub.js renderGameMenu /
+// kc_input.js MENU_NAV): a wrap-around list, a click on every move, the
+// item and its description spoken on arrival, Enter (or Left/Right) picks
+// with a two-note select sound, "X selected" and a short beat before the
+// action, and a first letter jumps to the next item starting with it. The
+// cursor position survives a trip out and back, like KC's menuSelection.
+var MENU_ITEMS = [
+    { label: 'Delivery run',
+      desc: 'The timed challenge. Clear the Contested Zone, mine ' + CFG.demoOreGoal +
+            ' ore, and deliver it to Station Meridian.',
+      run: function () { startDemo(); } },
+    { label: 'Sector',
+      desc: 'Open space with four points of interest. Free flight, no clock.',
+      run: function () { startMission('sector'); } },
+    { label: 'Combat training',
+      desc: 'Five ships in a training zone. They hold their fire until you hit them.',
+      run: function () { startMission('combat'); } },
+    { label: 'Mining',
+      desc: 'An asteroid cloud to laser apart, vacuum, and extract.',
+      ready: function () {
+          if (assetsReady()) return true;
+          say('The asteroid sounds are still loading. Try again in a moment.');
+          return false;
+      },
+      run: function () { startMission('mining'); } },
+    { label: 'Help',
+      desc: 'The help screen. F1 also opens it anywhere.',
+      run: function () { openHelp(); } }
+];
+var menuIdx = 0;
+var menuBusy = false;   // the beat between "selected" and the action
+
+function menuClick()  { sfxTone({ type: 'sine', f1: 800, f2: 1200, dur: 0.05, vol: 0.3 }); }
+function menuSelectSound() {
+    sfxTone({ type: 'square', f1: 200, dur: 0.1, vol: 0.05 });
+    sfxTone({ type: 'square', f1: 300, dur: 0.1, vol: 0.05, at: 0.1 });
+}
+
+function menuItemText(i) { return MENU_ITEMS[i].label + '. ' + MENU_ITEMS[i].desc; }
+
+// Entering the menu: the full instruction plus the current item.
+function menuAnnounce(prefix) {
+    say((prefix || '') + 'Mission menu. Use up and down arrows to navigate and Enter to select. ' +
+        menuItemText(menuIdx));
+}
+
+function startMission(m) {
+    menuOpen = false;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+    newGame(m);
+    say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());
+}
+
+function menuKey(lname, name) {
+    if (menuBusy) return;
+    var n = MENU_ITEMS.length;
+    if (lname === 'arrowdown') {
+        menuClick(); menuIdx = (menuIdx + 1) % n; say(menuItemText(menuIdx));
+    } else if (lname === 'arrowup') {
+        menuClick(); menuIdx = (menuIdx - 1 + n) % n; say(menuItemText(menuIdx));
+    } else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
+        var item = MENU_ITEMS[menuIdx];
+        if (item.ready && !item.ready()) return;
+        menuSelectSound();
+        say(item.label + ' selected.');
+        menuBusy = true;
+        setTimeout(function () {
+            menuBusy = false;
+            if (!menuOpen) return;            // (a browser reload in the gap)
+            item.run();
+        }, 600);
+    } else if (lname === 'f1') {
+        openHelp();
+    } else if (lname === 'f12') {
+        describeMode = true;
+        say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
+    } else if (lname === 'tab') {
+        say(menuItemText(menuIdx));
+    } else if (lname.length === 1 && /[a-z]/.test(lname)) {
+        // First-letter jump, cycling from the item after the cursor.
+        var next = -1;
+        for (var i = 1; i <= n; i++) {
+            var k = (menuIdx + i) % n;
+            if (MENU_ITEMS[k].label.toLowerCase().charAt(0) === lname) { next = k; break; }
+        }
+        if (next >= 0) { menuClick(); menuIdx = next; say(menuItemText(menuIdx)); }
+        else { blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
+    } else {
+        blip(220, 80, 0.1);
+        say('Up and down arrows browse the mission menu, Enter selects. ' + MENU_ITEMS[menuIdx].label + '.');
+    }
+}
 
 function exitToMenu() {
     clearMission();
@@ -2872,13 +2949,14 @@ function exitToMenu() {
     demo = null;
     menuOpen = true;
     if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
-    say(MENU_LINE);
+    menuAnnounce();
 }
 
 function combatIntro() {
     return 'Combat training. Five targets detected. The Freighter is dead ahead. ' +
-           'T cycles targets, Space fires when the tone goes solid. They shoot back: ' +
-           'when you hear the lock-on chirps, G raises the shields. F1 for help.';
+           'T cycles targets, Space fires when the tone goes solid. Ships hold their fire ' +
+           'until you hit them, then they shoot back: when you hear the lock-on chirps, ' +
+           'G raises the shields. F1 for help.';
 }
 
 function sectorIntro() {
@@ -2913,8 +2991,7 @@ function init() {
         // The container's label is read when it takes focus; wait so the
         // intro does not talk over it.
         setTimeout(function () {
-            say((ctx ? '' : 'Audio is unavailable in this browser, speech only. ') +
-                MENU_LINE);
+            menuAnnounce(ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
         }, 800);
     });
 

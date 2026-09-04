@@ -11,17 +11,18 @@ Download `space_sim_demo.html` and double-click it. It is a single file with
 the sound bank inlined, so it runs from disk in Chrome or Edge with no server.
 Wear headphones: the whole game is in the stereo image.
 
-Press Enter to begin, then pick a mission from the menu. Everything is
+Press Enter to begin, then pick a mission from the menu: up and down arrows
+browse it, Enter selects, and a first letter jumps to an item. Everything is
 announced through an ARIA live region, so a screen reader (NVDA, JAWS,
 VoiceOver, Narrator) reads it. Sighted players can follow the small text
 status line, but the game does not need it.
 
-## The timed delivery run (press D)
+## The timed delivery run (first item on the menu)
 
 The shareable challenge. The clock starts at once.
 
-1. Fly or hyperwarp to the Contested Zone and clear it. Five hostiles, and
-   they shoot back.
+1. Fly or hyperwarp to the Contested Zone and clear it. Five ships. Each
+   one holds its fire until you hit it, then it shoots back.
 2. Mine 15,000 ore at Asteroid Field Kappa. Laser rocks apart, vacuum the
    dust, extract the glowing cores.
 3. Deliver the ore to Station Meridian. Your run time is spoken on delivery.
@@ -53,9 +54,10 @@ Right hand on the arrows, left hand on everything else.
 
 ## How combat works
 
-Enemies within 600 paint you with three rising chirps from their position and
-a spoken warning, then burn a five-second beam that bites once a second.
-Enemies farther out launch a missile you hear fly in. The answer to both is
+Every ship is passive until you hit it, and hostile from then on. A hostile
+ship within 600 paints you with three rising chirps from its position and a
+spoken warning, then burns a five-second beam that bites once a second. A
+hostile ship farther out launches a missile you hear fly in. The answer to both is
 G: shields take 1.5 seconds to come up, hold for at most 10 seconds, and
 recharge in proportion to how long they were held. Get them up two seconds
 into a beam and only two bites land. A ship that survives one of your
