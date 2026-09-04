@@ -120,14 +120,39 @@ people; nothing in Phase 2+ starts without his go.
 
 Done, live on Pages (Rounds 10–12): 1.0 hosting + `?run=delivery`, 1.1
 difficulty tiers, 1.2 Rookie Cruiser, 1.3 shield damage pool + disrepair,
-1.4 saved profile + run log, 1.5 no-warp zone, and the audio split
+1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots
+(machine-tested, not yet heard by Brian — see below), and the audio split
 (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md "Audio architecture").
 
-Suggested order for the rest — lasers first because they change the feel
-of the thing being shown, then the station because everything else hangs
-off it:
+Suggested order for the rest — the station next, since everything else
+hangs off it:
 
-#### 1.9 Laser slots and fire-and-forget (from A.2) — NEW, decided
+#### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
+
+Built and machine-tested (slot select 1–6 including empty slots, fire-and-
+forget with `G` refused mid-burst, both damage profiles firing in the right
+shape, per-slot cooldown with spoken recharge, overheat still reachable,
+mining and combat both exercised, `E`/`V` unaffected) — not yet heard.
+Real per-tick numbers are still placeholders; Brian sets them by ear.
+
+One gotcha found in testing, already fixed: `laserMissWindowMs` (the "two
+misses overheat it" window) was still 8000 ms from the old 2 s beam. A 5 s
+burst plus the 3 s cooldown puts the natural gap between two misses at
+~8 s, so the old window made overheat unreachable. Moved to 11000 (Ace
+16000, keeping the same proportional tightening) — first candidate to
+retune once Brian has heard the new rhythm.
+
+- `LASERS` data table; each entry `{ id, name, asset, ticks: [..],
+  tickS, cooldownS, hullMult, rockMult }`. **Damage is a per-tick
+  profile, not one number**: the laser hits harder on some ticks than
+  others, and the profile matches the shape of that laser's sound (Brian:
+  "a laser might hit 5, 5, 25, 20, 10, 5, 5"). Five ticks per burst. The
+  ship starts with the first two mining-laser recordings: slot 1 =
+  `Mining_laser 1`, steady damage every tick; slot 2 = `Mining_laser 2`,
+  two heavy ticks then steady. Placeholder totals match today's burst (100
+  at point-blank, perfect aim); Brian sets the real per-tick numbers by
+  ear once he's heard each recording against its profile. Slots 3–6 empty:
+  "Slot 3 is empty. Fit a laser at the station."
 
 - `LASERS` data table; each entry `{ id, name, asset, ticks: [..],
   tickS, cooldownS, hullMult, rockMult }`. **Damage is a per-tick

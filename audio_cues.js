@@ -181,6 +181,8 @@ SIM.cues = (function () {
                   } },
                 { id: 'refusal_dud', name: 'Refusal (short)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.06, vol: 0.08 } },
+                { id: 'slot_select', name: 'Laser Slot Select', source: 'v12-lasers',
+                  recipe: 'tone', args: { type: 'triangle', f1: 500, f2: 750, dur: 0.06, vol: 0.12 } },
                 { id: 'refusal_wait', name: 'Refusal (recharging/blocked)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.12, vol: 0.1 } },
                 { id: 'win_fanfare', name: 'Victory Fanfare', source: 'v11-extraction',

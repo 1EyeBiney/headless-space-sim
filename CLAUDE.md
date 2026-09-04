@@ -225,12 +225,32 @@ static once tiers exist.
   chime. A manual drop (`G` while up, pool not empty) skips disrepair
   entirely — whatever charge is left just regenerates at `shieldRegenPerS`
   3/s like any other down-and-not-full shield.
-- **Weapons**: laser range 600, damage ×1.6 at point-blank tapering to ×1 at
-  range (`laserRangeMult`); two zero-damage bursts inside 8 s = overheat 5 s
-  (hiss + slowing hot-metal pings + ready chime). Missiles: magazine 8
-  (`missiles`), count spoken on launch, speed 130 / life 11 s (~1400 reach);
-  SEMI-ACTIVE: target must stay inside the missile zone for the whole flight
-  (0.5 s grace) or it goes ballistic.
+- **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
+  `LASERS` data table), keys `1`-`6` select (`selectSlot`), Space fires the
+  selected laser via `startBeam('laser')`. Ship starts with `mining1` (slot
+  1, steady 20/20/20/20/20 damage profile) and `mining2` (slot 2, front-
+  loaded 35/35/10/10/10); slots 3-6 empty until the station sells more.
+  **Fire-and-forget, cannot be stopped**: a burst runs all 5 ticks
+  (`L.ticks[beam.tick]`, 1 s apart) to completion; `G` is refused mid-burst
+  ("Laser burst in progress... Shields after") — commit to the burst, then
+  shield. Each tick still scales by aim quality and `laserRangeMult`
+  (×1.6 point-blank tapering to ×1 at `laserRange` 600); `hullMult`/
+  `rockMult` per laser (both 1 for now) are where "good in combat" vs "good
+  at mining" will live. Then `cooldownS` (3 s) per SLOT before it fires
+  again, tracked in `laserReadyAt[]`, cleared on mission reset. The
+  recording (`laser_mining1`/`laser_mining2` in `audio_assets.js`) plays as
+  the burst's voice with a small aim-quality playback-rate nudge; the old
+  synthesized carrier is the fallback if the asset is missing. Damage
+  numbers are placeholders (100/burst point-blank, matching the old single
+  beam's total) until Brian sets each laser's real per-tick profile by ear.
+  **Gotcha**: `laserMissWindowMs` had to move 8000→11000 (Ace 12000→16000)
+  — a burst (5 s) + cooldown (3 s) puts the natural gap between two misses
+  at ~8 s, so the old window made "two misses overheat it" unreachable
+  under the new timing; two zero-damage bursts inside the window still
+  = overheat 5 s (hiss + slowing hot-metal pings + ready chime). Missiles:
+  magazine 8 (`missiles`), count spoken on launch, speed 130 / life 11 s
+  (~1400 reach); SEMI-ACTIVE: target must stay inside the missile zone for
+  the whole flight (0.5 s grace) or it goes ballistic.
 - **Mining**: 3 rock types (Ice soft/splitty, Iron hard/chippy, Stone middle)
   × 4 sizes, HIDDEN per-stage hp rolls. Core ore 3000/6750/4500 (×1.5 as of
   Round 10); all dust ×0.75 via `CFG.debrisScale` in `addDebris`. Laser ticks
@@ -242,10 +262,12 @@ static once tiers exist.
 
 ## Key map (left-hand doctrine — right hand stays on arrows)
 
-Arrows yaw/pitch · W thrust / S brake · Space laser beam · F missile · G shields
+Arrows yaw/pitch · W thrust / S brake · 1-6 select laser slot · Space fires
+selected laser (fire-and-forget, cannot be stopped) · F missile · G shields
 · Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
-zone size · Q map · H warp · C call · I status (adds hull, missiles, shields,
-laser heat, demo clock + objective) · X leave · F1 help · F12 explore · Escape
+zone size · Q map · H warp · C call · I status (adds hull, missiles, laser
+slot, shields, laser heat, demo clock + objective) · X leave · F1 help ·
+F12 explore · Escape
 pause. Menu: arrows + Enter (first letters D/S/C/M/H jump); Left/Right on
 the Difficulty line cycles Rookie/Veteran/Ace in place.
 

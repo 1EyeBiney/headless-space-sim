@@ -58,7 +58,8 @@ Right hand on the arrows, left hand on everything else.
 | --- | --- |
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake |
-| Space | Laser beam, 2 seconds. Harder up close. Two empty bursts overheat it |
+| 1-6 | Select a laser slot |
+| Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
 | Tab / T | Cycle targets / report the selected target. The distance is spoken the moment the lock tone comes on |
@@ -88,6 +89,10 @@ and whatever charge is left keeps recovering. A ship that survives one of
 your missiles breaks away hard and hits back within seconds — except a
 Rookie-tier Cruiser, which only ever answers by missile and never bothers
 with the dramatic evade.
+
+Your own laser burst locks you in too: once you fire, it runs the full
+five seconds and G is refused until it's done — commit to the shot, then
+shield.
 
 ## Files
 

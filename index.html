@@ -77,11 +77,11 @@ var CFG_DEFAULTS = {
 
     laserRange: 600,
     laserCloseMult: 1.6,     // damage x this at point-blank, tapering to x1 at laserRange
-    beamTicks: 4,            // damage ticks per beam burst
-    beamTickMs: 500,         // one tick every half second (2 s beam)
-    beamMaxDamage: 25,       // per tick when the target is dead center
-    beamCooldownMs: 700,     // recharge after the beam ends
-    laserMissWindowMs: 8000, // two zero-damage bursts inside this window...
+    toolCooldownMs: 700,     // E / V re-trigger guard (lasers cool per slot, see LASERS)
+    laserMissWindowMs: 11000, // two zero-damage bursts inside this window...
+                              // (SPEC 1.9: a 5 s burst + 3 s cooldown puts the
+                              // natural gap between two misses at ~8 s, so the
+                              // window has to clear that or overheat is unreachable)
     laserOverheatMs: 5000,   // ...and the laser is down for this long (audible)
 
     // mining
@@ -175,7 +175,7 @@ var TIERS = [
     { name: 'Rookie',  alwaysHostile: false, zoneIdxDefault: 0, cfg: {} },
     { name: 'Veteran', alwaysHostile: true,  zoneIdxDefault: 0, cfg: {} },
     { name: 'Ace',     alwaysHostile: true,  zoneIdxDefault: 1,
-      cfg: { shieldRaiseMs: 2500, laserMissWindowMs: 12000, missileMax: 6 } }
+      cfg: { shieldRaiseMs: 2500, laserMissWindowMs: 16000, missileMax: 6 } }
 ];
 var TIER_DESCS = [
     'Ships hold their fire until you hit them. Standard shields and magazine.',
@@ -199,7 +199,8 @@ var PROFILE_KEY = 'hss_profile';
 var profile = null;
 
 function defaultProfile() {
-    return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [] };
+    return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
+             slots: STARTING_SLOTS.slice(), laserSlot: 0 };
 }
 
 function loadProfile() {
@@ -212,12 +213,18 @@ function loadProfile() {
         }
     } catch (e) { /* no persistence this session; profile stays default */ }
     if (!Array.isArray(profile.runs)) profile.runs = [];
+    // Laser slots: exactly LASER_SLOTS entries, unknown ids become empty.
+    if (!Array.isArray(profile.slots)) profile.slots = STARTING_SLOTS.slice();
+    profile.slots = profile.slots.slice(0, LASER_SLOTS).map(function (id) { return laserById(id) ? id : null; });
+    while (profile.slots.length < LASER_SLOTS) profile.slots.push(null);
+    laserSlot = (profile.laserSlot >= 0 && profile.laserSlot < LASER_SLOTS) ? profile.laserSlot | 0 : 0;
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
 }
 
 function saveProfile() {
     if (!profile) return;
     profile.tier = tierIdx;
+    profile.laserSlot = laserSlot;
     try {
         if (window.localStorage) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
     } catch (e) { /* can't persist; the session still plays fine */ }
@@ -234,6 +241,28 @@ function recordRun(seconds) {
     profile.runs = profile.runs.slice(0, 10);
     saveProfile();
     return prevBest === undefined || seconds < prevBest;
+}
+
+// Lasers (SPEC 1.9). Keys 1-6 select a slot, Space fires the fitted laser.
+// A burst is fire-and-forget — it runs every tick to the end and cannot be
+// stopped — then the slot cools for cooldownS. Damage is a PER-TICK PROFILE
+// that follows the shape of that laser's recording, not one number: laser
+// one bites evenly, laser two lands two heavy ticks then settles. The
+// numbers are placeholders (100 per burst at point-blank, perfect aim, the
+// old beam's total) until Brian sets each profile by ear against its sound.
+// hullMult/rockMult are where "good in combat" vs "good at mining" will live.
+var LASERS = [
+    { id: 'mining1', name: 'mining laser one', asset: 'laser_mining1',
+      ticks: [20, 20, 20, 20, 20], tickS: 1, cooldownS: 3, hullMult: 1, rockMult: 1 },
+    { id: 'mining2', name: 'mining laser two', asset: 'laser_mining2',
+      ticks: [35, 35, 10, 10, 10], tickS: 1, cooldownS: 3, hullMult: 1, rockMult: 1 }
+];
+var LASER_SLOTS = 6;
+var STARTING_SLOTS = ['mining1', 'mining2'];   // slots 3-6 empty until the station sells more
+
+function laserById(id) {
+    for (var i = 0; i < LASERS.length; i++) if (LASERS[i].id === id) return LASERS[i];
+    return null;
 }
 
 // Target roster. Each voice is a distinct timbre so identity survives motion.
@@ -345,6 +374,8 @@ var lost = false;        // hull breached: the encounter is over, like won
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
+var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
+var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
 var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
 var shieldRepairTimer = null;   // the ratchet tick loop while in disrepair
 var threat = null;       // the one enemy attack in progress (combat only)
@@ -457,9 +488,12 @@ var HELP_SECTIONS = [
         'Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.'
     ] },
     { heading: 'Weapons', items: [
-        'Space fires the laser beam. It burns for two seconds and ticks damage four times.',
-        'Each damage tick is bigger the more centered the target is at that moment, and the number is spoken as it lands.',
-        'The beam\'s pitch rises with your aim quality, so you can steer into a better burn mid-shot.',
+        'Your ship has six laser slots. Keys 1 through 6 select a slot and speak what is fitted there; Space fires the selected laser. You start with mining laser one in slot 1 and mining laser two in slot 2; the rest are empty until the station sells more.',
+        'A burst is fire and forget: one press runs the whole burst, five ticks over five seconds, and it cannot be stopped. Then that slot recharges for a few seconds before it can fire again, and the refusal tells you how long.',
+        'Every laser has its own damage shape. Mining laser one bites evenly on every tick; mining laser two lands two heavy ticks and then settles. The shape follows the sound, so you learn each laser by ear.',
+        'Each damage tick is also bigger the more centered the target is at that moment, and the number is spoken as it lands.',
+        'The beam\'s voice rises slightly with your aim quality, so you can steer into a better burn mid-shot.',
+        'You cannot raise shields during a burst. Commit to the burst, then shield.',
         'The laser reaches ' + CFG.laserRange + '. If your aim is true but the target is beyond that, the beam tells you to thrust closer instead of a mystery miss.',
         'The laser bites harder up close: at point-blank range every tick does up to ' + Math.round((CFG.laserCloseMult - 1) * 100) + ' percent more. Closing in is worth it, but it shortens your warning time when the enemy fires back.',
         'Two bursts in a row that do no damage overheat the laser. It hisses and pings while it cools for ' + (CFG.laserOverheatMs / 1000) + ' seconds, and a chime tells you it is ready again.',
@@ -594,7 +628,10 @@ var KEY_DESCRIPTIONS = {
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
     w: 'Thrust forward along the nose. Hold to accelerate.',
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector.',
-    ' ': 'Fire the laser beam. It burns for two seconds, bites harder up close, and each spoken damage tick depends on how centered the target is. Two empty bursts overheat it.',
+    ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
+    '1': 'Select laser slot 1 and speak what is fitted there.',
+    '2': 'Select laser slot 2.', '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
+    '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
@@ -1155,6 +1192,37 @@ function damageTarget(t, dmg) {
 // and a vibrato LFO plus a noise shimmer keep the cue alive over its length.
 var beam = null;   // { nodes, ticksLeft, totalDamage, timer }
 
+// ---- laser slots ----------------------------------------------------------
+function currentLaser() { return profile ? laserById(profile.slots[laserSlot]) : null; }
+function capFirst(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function laserSlotText(i) {
+    var L = profile ? laserById(profile.slots[i]) : null;
+    return 'Slot ' + (i + 1) + (L ? ', ' + L.name : ' is empty');
+}
+
+// Seconds until slot i may fire again (0 = ready).
+function laserCooldownLeft(i) {
+    return Math.max(0, ((laserReadyAt[i] || 0) - Date.now()) / 1000);
+}
+
+function selectSlot(i) {
+    laserSlot = i;
+    saveProfile();
+    var L = currentLaser();
+    if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+    SIM.cues.play('slot_select');
+    var left = laserCooldownLeft(i);
+    say(laserSlotText(i) + (left > 0 ? ', recharging, ' + Math.ceil(left) + ' seconds.' : '.'));
+}
+
+function laserStatusText() {
+    var L = currentLaser();
+    if (!L) return laserSlotText(laserSlot) + '. ';
+    var left = laserCooldownLeft(laserSlot);
+    return laserSlotText(laserSlot) + (left > 0 ? ', recharging, ' + Math.ceil(left) + ' seconds. ' : ', ready. ');
+}
+
 function beamQuality() {
     var t = targets[selected];
     if (!t || !t.alive) return 0;
@@ -1199,6 +1267,7 @@ function laserMiss() {
 function startBeam(tool) {
     tool = tool || 'laser';
     if (beam) return;                              // already firing (audible)
+    var L = null;
     if (tool === 'laser') {
         if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
         if (laserHot()) {
@@ -1206,19 +1275,40 @@ function startBeam(tool) {
             say('Laser overheated. ' + Math.ceil((laser.hotUntil - Date.now()) / 1000) + ' seconds.');
             return;
         }
-    }
-    if (Date.now() - lastLaserAt < CFG.beamCooldownMs) {
-        SIM.cues.play('refusal_dud');                       // recharging: a dud click,
-        return;                                    // never a silent nothing
+        L = currentLaser();
+        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(laserSlot) + '. Fit a laser at the station.'); return; }
+        var left = laserCooldownLeft(laserSlot);
+        if (left > 0) {
+            SIM.cues.play('refusal_dud');              // recharging: a dud click,
+            say(capFirst(L.name) + ' recharging, ' + Math.ceil(left) + ' seconds.');
+            return;                                    // never a silent nothing
+        }
+    } else if (Date.now() - lastLaserAt < CFG.toolCooldownMs) {
+        SIM.cues.play('refusal_dud');
+        return;
     }
     var nodes = null;
+    // A fitted laser's voice is its recording, played once through the
+    // instrument bus. Aim quality nudges its playback rate a little each
+    // tick (see beamTick) so a trace of the old pitch narration survives;
+    // the synthesized carrier below is the fallback if the asset isn't
+    // decoded (or for the E/V tools, which have no recording).
+    if (L && SIM.audio.ctx && SIM.audio.assetBufs[L.asset]) {
+        var ag = SIM.audio.ctx.createGain(); ag.gain.value = 0.0001;
+        var asrc = SIM.audio.ctx.createBufferSource();
+        asrc.buffer = SIM.audio.assetBufs[L.asset];
+        asrc.connect(ag); ag.connect(SIM.audio.uiBus);
+        asrc.start();
+        SIM.audio.ramp(ag.gain, 0.5, 0.05);
+        nodes = { g: ag, src: asrc, isAsset: true };
+    }
     // Per-tool voices: laser = bright wobbling saw with high shimmer;
     // vac (E, core extractor) = deep fast pulse with low rumble;
     // dust (V, particulate vacuum) = airy slow breath with mid hiss.
     var P = tool === 'vac'  ? { type: 'sine', f: 140, lp: 900,  vibF: 9,   vibD: 25, shT: 'lowpass',  shF: 400,  shG: 0.05, vol: 0.14 }
           : tool === 'dust' ? { type: 'sine', f: 90,  lp: 600,  vibF: 4,   vibD: 15, shT: 'lowpass',  shF: 1200, shG: 0.07, vol: 0.13 }
           :                   { type: 'sawtooth', f: 900, lp: 2600, vibF: 6.5, vibD: 45, shT: 'highpass', shF: 3800, shG: 0.03, vol: 0.16 };
-    if (SIM.audio.ctx) {
+    if (!nodes && SIM.audio.ctx) {
         var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
         var lp = SIM.audio.ctx.createBiquadFilter(); lp.type = 'lowpass';
         lp.frequency.value = P.lp;
@@ -1237,11 +1327,16 @@ function startBeam(tool) {
         SIM.audio.ramp(g.gain, P.vol, 0.06);
         nodes = { g: g, o: o, vib: vib, sh: sh, shg: shg };
     }
-    beam = { tool: tool, nodes: nodes,
-             ticksLeft: tool === 'laser' ? CFG.beamTicks : 999,
+    beam = { tool: tool, nodes: nodes, laser: L, slot: laserSlot, tick: 0,
+             ticksLeft: L ? L.ticks.length : 999,
              totalDamage: 0, timer: null };
     beam.timer = setTimeout(beamTick,
-        tool === 'vac' ? CFG.vacTickMs : tool === 'dust' ? CFG.dustVacTickMs : CFG.beamTickMs);
+        tool === 'vac' ? CFG.vacTickMs : tool === 'dust' ? CFG.dustVacTickMs : L.tickS * 1000);
+}
+
+// Seconds of burst still to run (for the "can't stop it" refusals).
+function beamSecondsLeft() {
+    return beam && beam.laser ? beam.ticksLeft * beam.laser.tickS : 0;
 }
 
 function stopBeam(silent) {
@@ -1249,7 +1344,12 @@ function stopBeam(silent) {
     var b = beam; beam = null;
     clearTimeout(b.timer);
     lastLaserAt = Date.now();
-    if (b.nodes) {
+    // The slot cools from whenever the burst ended, natural or interrupted.
+    if (b.laser) laserReadyAt[b.slot] = Date.now() + b.laser.cooldownS * 1000;
+    if (b.nodes && b.nodes.isAsset) {
+        SIM.audio.ramp(b.nodes.g.gain, 0.0001, 0.15);
+        setTimeout(function () { try { b.nodes.src.stop(); b.nodes.g.disconnect(); } catch (e) {} }, 300);
+    } else if (b.nodes) {
         SIM.audio.ramp(b.nodes.g.gain, 0.0001, 0.1);
         SIM.audio.ramp(b.nodes.shg.gain, 0.0001, 0.1);
         setTimeout(function () {
@@ -1269,10 +1369,15 @@ function beamTick() {
     if (beam.tool === 'vac') { vacTick(); return; }
     if (beam.tool === 'dust') { dustTick(); return; }
     var t = targets[selected];
+    var L = beam.laser;
     var q = beamQuality();
-    var dmg = Math.ceil(CFG.beamMaxDamage * q *
+    var base = L.ticks[beam.tick];      // this tick's slot in the laser's damage profile
+    var dmg = Math.ceil(base * q *
                         (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1));
-    if (beam.nodes) {
+    if (beam.nodes && beam.nodes.isAsset) {
+        // The recording's rate narrates aim quality, gently.
+        SIM.audio.ramp(beam.nodes.src.playbackRate, 0.92 + 0.16 * q, 0.15);
+    } else if (beam.nodes) {
         // The carrier pitch narrates the same quality the number reports.
         SIM.audio.ramp(beam.nodes.o.frequency, 700 + 700 * q, 0.15);
     }
@@ -1298,7 +1403,7 @@ function beamTick() {
         } else if (t.kind === 'rock') {
             // Hidden hardness roll obscures the stage threshold, and every
             // tick shoves the rock along the beam line.
-            var actual = Math.ceil(dmg * t.type.hardness * (0.7 + Math.random() * 0.6));
+            var actual = Math.ceil(dmg * L.rockMult * t.type.hardness * (0.7 + Math.random() * 0.6));
             beam.totalDamage += actual;
             pushRock(t, scale(norm(sub(t.pos, ship.pos)), CFG.beamPush * rockPush(t)));
             if (t.resource) { shatterCore(t); stopBeam(true); return; }
@@ -1308,6 +1413,7 @@ function beamTick() {
             if (t.hp <= 0) { rockEvent(t); return; }   // rockEvent stops the beam
             say(String(actual));
         } else {
+            dmg = Math.ceil(dmg * L.hullMult);
             beam.totalDamage += dmg;
             if (damageTarget(t, dmg)) { stopBeam(true); return; }
             say(String(dmg));
@@ -1315,9 +1421,10 @@ function beamTick() {
     } else {
         SIM.audio.blip(140, 90, 0.06, 0, 'sine');       // scorching empty space
     }
+    beam.tick++;
     beam.ticksLeft--;
     if (beam.ticksLeft <= 0) stopBeam(false);
-    else beam.timer = setTimeout(beamTick, CFG.beamTickMs);
+    else beam.timer = setTimeout(beamTick, L.tickS * 1000);
 }
 
 // One extractor tick: recheck the hold conditions, then pull ore. The
@@ -1796,9 +1903,14 @@ function shieldKey() {
         say('Shields in disrepair. Damage control needs ' + Math.ceil(shield.repairing) + ' seconds.');
         return;
     }
+    if (beam && beam.tool === 'laser') {
+        SIM.cues.play('refusal_dud');
+        say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Shields after.');
+        return;
+    }
     shield.raising = 0;
     shield.warnedLow = false;
-    stopBeam(true);
+    stopBeam(true);                                // an E/V tool yields to the shield
     var secs = CFG.shieldRaiseMs / 1000;
     SIM.cues.play('shield_raise', { dur: secs });
     say('Raising shields.');
@@ -2197,6 +2309,7 @@ function statusReport() {
     if (mode !== 'mining') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ');
     }
+    if (mode === 'combat' || mode === 'mining') line += laserStatusText();
     if (mode === 'combat') {
         line += shield.up ? 'Shields up, ' + Math.round(shield.pool / CFG.shieldPool * 100) + ' percent. '
               : shield.raising >= 0 ? 'Shields coming up. '
@@ -2580,6 +2693,9 @@ function onKeyDown(e) {
             if (mode === 'sector') say('Weapons are cold in open space. C calls a point of interest.');
             else if (!paused && !over()) fireMissile();
             break;
+        case '1': case '2': case '3': case '4': case '5': case '6':
+            if (!paused) selectSlot(parseInt(lname, 10) - 1);
+            break;
         case 'g':      if (!paused && !over()) shieldKey(); break;
         case 'tab':    if (!paused && !over()) cycleTarget(); break;
         case 'r':      if (!paused && !over()) radarPing(); break;
@@ -2758,7 +2874,7 @@ function updateStatusLine() {
                (missile ? '   missile in flight' + (missile.guided ? '' : ' (ballistic)') : ''));
     lines.push('Hull ' + hull + '   missiles ' + missiles +
                '   shields ' + (shield.up ? 'UP ' + Math.round(shield.pool / CFG.shieldPool * 100) + '%' : shield.raising >= 0 ? 'raising' : shield.repairing > 0 ? 'disrepair' : 'down') +
-               (laserHot() ? '   LASER HOT' : '') +
+               '   ' + laserSlotText(laserSlot) + (laserHot() ? '   LASER HOT' : '') +
                (threat ? '   threat: ' + threat.type + ' from ' + threat.t.name : '') +
                (demo ? '   clock ' + Math.floor(demo.elapsed) + 's' : ''));
     statusEl.textContent = lines.join('\n');
@@ -2772,6 +2888,9 @@ window.__sim = {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, laserHot: laserHot(),
+            laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
+                     readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
+                     burstLeft: beamSecondsLeft() },
             shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
@@ -2818,6 +2937,7 @@ window.__sim = {
         if (o && o.hull !== undefined) hull = o.hull;
         if (o && o.combatCleared !== undefined && demo) demo.combatCleared = o.combatCleared;
         if (o && o.enemyHp !== undefined) targets.forEach(function (t) { if (!t.kind && t.alive) t.hp = o.enemyHp; });
+        if (o && o.laserReady) laserReadyAt = [];
     }
 };
 
@@ -2837,7 +2957,7 @@ function clearMission() {
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();
-    laser.misses = []; laser.hotUntil = 0;
+    laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
