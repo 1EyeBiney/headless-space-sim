@@ -2967,19 +2967,32 @@ function init() {
     liveEl = document.getElementById('announce');
     statusEl = document.getElementById('status');
 
+    // ?run=delivery in the URL skips the menu and jumps straight into the
+    // timed delivery run after the Press-Enter gesture — a shareable link
+    // for the demo, e.g. https://.../?run=delivery
+    var params = new URLSearchParams(location.search);
+    var autoRun = params.get('run');
+
     initBtn.addEventListener('click', function () {
         audioStart();                    // must live inside the user gesture
         initBtn.style.display = 'none';
         container.hidden = false;
         container.focus();
         running = true;
-        menuOpen = true;
         scheduleTick();
         // The container's label is read when it takes focus; wait so the
         // intro does not talk over it.
-        setTimeout(function () {
-            menuAnnounce(ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
-        }, 800);
+        if (autoRun === 'delivery') {
+            setTimeout(function () {
+                if (!ctx) say('Audio is unavailable in this browser, speech only. ');
+                startDemo();
+            }, 800);
+        } else {
+            menuOpen = true;
+            setTimeout(function () {
+                menuAnnounce(ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
+            }, 800);
+        }
     });
 
     // Keep focus inside the container. If anything steals it, take it back.

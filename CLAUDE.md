@@ -26,7 +26,10 @@ expands.
   loops, 3 asteroid explosions, missile-firing mp3, `audio/ships/` = 18 ship
   loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far).
   `audio/Backups`, `audio/Media`, `audio/peaks` are REAPER scratch: gitignored.
-- Git repo, pushed to GitHub (see Where we left off).
+- Git repo, public on GitHub: https://github.com/1EyeBiney/headless-space-sim
+  Served live via GitHub Pages at
+  https://1eyebiney.github.io/headless-space-sim/ — this URL is the
+  reference build; `?run=delivery` skips the menu into the timed run.
 - Plan from the original build: `~\.claude\plans\you-said-do-not-functional-hammock.md`.
 
 ## Game states
@@ -117,6 +120,12 @@ pause. Menu: arrows + Enter (first letters D/S/C/M/H jump).
 
 ## Working agreements
 
+- Test at the GitHub Pages URL, not file://, as of Round 11: navigate the
+  browser pane to https://1eyebiney.github.io/headless-space-sim/ , wait
+  ~60-90 s after a push for the pages-build-deployment workflow (`gh run
+  list`) before testing, and hard-reload if a test shows stale behavior.
+  The double-click `index.html` / `space_sim_demo.html` files must still
+  work standalone, but the URL is the reference.
 - Test silently: boot via JS `.click()` (suspended context = no sound) and
   ALWAYS close every browser-pane tab + kill the local server when done —
   leftover audio fights Brian's screen reader.

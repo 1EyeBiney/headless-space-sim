@@ -7,9 +7,13 @@ full audio-only game.
 
 ## Play it
 
-Download `space_sim_demo.html` and double-click it. It is a single file with
-the sound bank inlined, so it runs from disk in Chrome or Edge with no server.
-Wear headphones: the whole game is in the stereo image.
+**[Play in your browser](https://1eyebiney.github.io/headless-space-sim/)**
+— hosted on GitHub Pages, no download. Add `?run=delivery` to the link to
+skip the menu and jump straight into the timed delivery run.
+
+Or download `space_sim_demo.html` and double-click it: a single file with
+the sound bank inlined, so it runs from disk in Chrome or Edge with no
+server. Wear headphones either way: the whole game is in the stereo image.
 
 Press Enter to begin, then pick a mission from the menu: up and down arrows
 browse it, Enter selects, and a first letter jumps to an item. Everything is
