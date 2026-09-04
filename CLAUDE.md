@@ -1138,11 +1138,19 @@ be a flipped yaw sign in `undock()` since SPEC 1.19 — the ship faced the
 station and W flew it into the hull — fixed; held keys also now answer
 whenever the sim is holding the ship, so a frozen ship is never silent.
 
-Next, per Brian (2026-09-04 evening): write the Phase 3 spec — the
-moving world, SPEC.md's Part A.10 and 3.10–3.17 — in rounds of
-questions to give the macro areas real definition before any of it is
-built. Nothing in Phase 3 is scoped to per-round detail yet the way
-Phase 2 was.
+The **Phase 3 spec is written** (Fable, Round 16, three rounds of
+questions with Brian the same night — answers in SPEC.md Part C):
+SPEC.md's "Phase 3 — the moving world, the ports, the hauling" is now a
+buildable list in order — 3.10 the hand-authored quadrant with spawning
+zones and typed, drifting fields on a persistent game clock and a
+transition-saved quadrant state → 3.18 containers and hydrogen (the old
+2.8) → 3.11 ports and F4 → 3.19 planets as ports (land, market, fuel,
+no shipyard) → 3.14 the cargo limit → 3.12 the price levers → 3.20
+hauling (buy low, sell high; hydrogen sell-only) → 3.21 threat
+escalation that decays with play → 3.13 salvage gates and the drone
+swarm; then Phase 3b (3.16, 3.17). Stop for Brian's ears after 3.10 and
+after 3.20. Nothing in Phase 3 is built; the names are placeholders he
+will replace. The vortex demo stays lab-only until he has heard it.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

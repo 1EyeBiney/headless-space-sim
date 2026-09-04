@@ -1702,7 +1702,7 @@ local server and on Pages, not yet heard back.
 - Gentle flying and listening, the opposite of combat. Variants later: a
   miner adrift (tow a core), a freighter under attack (combat, then tow).
 
-#### 2.8 Loot containers and hydrogen (from A.3/A.4) — NEW
+#### 2.8 Loot containers and hydrogen (from A.3/A.4) — moved into Phase 3 as 3.18
 
 - A destroyed ship drops a container (target kind `'loot'`, a soft
   intermittent beacon at the wreck, drifts slowly, fades after
@@ -1771,84 +1771,266 @@ It is the sector's exit and hydrogen's sink; opening it is Phase 4.
 (HRTF), then "Iron. Rich." / "Ice. Lean." A hint, never a number — hidden
 thresholds stay hidden. Later a module tells you which laser suits it.
 
-### Phase 3 — the moving world, the markets, the gates (after Sunday)
+### Phase 3 — the moving world, the ports, the hauling (after the demo is heard)
 
-From A.9–A.12. Numbers are placeholders in CFG; order is a suggestion.
+Scoped with Brian in three rounds of questions on the night of
+2026-09-04, right after ideas6 (2.20) landed; his answers are in Part C.
+From A.9–A.12. Nothing here is built. Same rules as Phase 2: one commit
+per numbered item, machine-test at a local server with beacons off, docs
+in sync, push, re-test at Pages, close every tab. Every number is a
+placeholder in CFG or a data table for Brian's ear and hands.
 
-#### 3.10 The moving, spawning world (A.10)
+**Build order**: 3.10 the quadrant → 3.18 containers and hydrogen →
+3.11 ports and F4 → 3.19 planets as ports → 3.14 the cargo limit →
+3.12 the price levers → 3.20 hauling → 3.21 threat escalation → 3.13
+salvage gates and the drone swarm. Then **Phase 3b**: 3.16 verbosity and
+the journal, 3.17 tutorials — once the world has been flown, so the
+tutorials teach what is actually there. Stop for Brian's ears after
+3.10 (the first thing that *moves*) and again after 3.20 (the first
+thing that *pays*).
 
-- The sector becomes a quadrant: a star (a beacon at the center, no
-  interaction yet), 2–3 planets on orbits, 2–3 stations, one gate, one
-  combat zone, 1–3 clouds. `QUADRANT` replaces `SECTOR_POIS` for the open
-  campaign; the delivery run keeps a fixed layout of its own.
-- **Orbits**: planets and clouds are `{ ring radius, angular speed, phase }`
-  around the star; position is computed from the game clock every frame.
-  Cloud drift `cloudDriftPerS` 5 (≈300 a minute, a third of an orbit an
-  hour). The map reads live positions; leaving a cloud's encounter puts
-  the pilot at the cloud's CURRENT position (`returnToSector` follows the
-  cloud instead of the snapshot).
-- **Spawning**: a replacement combat zone or cloud spawns when the old one
-  is cleared/depleted AND exited: `spawnMinFromPilot` 5,000,
-  `spawnMaxFromPilot` 11,000, `spawnMinGap` 4,000 from any other point,
-  within `spawnMaxFromStation` 11,000 of at least one station, inside
-  `quadrantRadius` 16,000. Reject-and-retry up to 50 times, then relax the
-  pilot band. Announced: "Contested Zone reported, bearing ... distance
-  ...". Rules: one combat zone active; 1–3 clouds, never zero.
-- **Depletion**: a cloud has `cloudOreBudget` 40,000 spoken roughly at its
-  hail ("plenty" / "thinning" / "nearly worked out"); at zero it's
-  depleted and vanishes on exit.
-- **Beacons**: default audible only within `beaconAudibleDist` 8,000 plus
-  the selected target; B's On mode overrides to all. Tab cycles nearest
-  first as now; the map lists everything with distance and warp reach.
-- **The game clock**: `profile.clock` in play seconds, advancing only
-  while the sim is live (the delivery clock's own rule). Every orbit,
-  market, cooldown, and respawn keys off it. The whole quadrant state is
-  saved (instances, positions, phases, budgets), so a save at night
-  reloads to exactly the same sky.
+**What Phase 3 is, in one paragraph.** Today the sector is four fixed
+points and one flat clock. Phase 3 makes it a quadrant: a star at the
+center, planets that creep on orbits, ports with their own prices, one
+combat zone and one to three asteroid fields that come and go, all on a
+game clock that is saved and reloaded so tomorrow's sky is today's. The
+delivery run keeps its fixed sector untouched. The pilot's new loops:
+pick a field by what it holds, pick a port by what it pays, haul between
+ports, and clear zones that harden the more you fight and soften the
+longer you don't.
 
-#### 3.11 Stations, planets, and F4 trading (A.10)
+#### 3.10 The quadrant: a hand-authored sky with moving parts (A.10)
 
-- Two or three stations per quadrant, each with its own market: `MARKETS`
-  `{ station, base prices per category, demand weights }`. Planets buy a
-  couple of categories at better prices (salvage and hydrogen first) and
-  sell nothing until agriculture. Hailing any of them opens the hail
-  menu; **Prices** on it opens **F4**, also reachable directly by F4
-  when within comm range of a market: one line per category with the
-  price and whether it's high, normal, or low here.
-- Landing services differ only in prices for now; every station docks,
-  repairs, refits.
+- **`QUADRANT`** replaces `SECTOR_POIS` for the open campaign (the Sector
+  menu item and everything reached from it). `SECTOR_POIS` stays exactly
+  as it is for the delivery run — its legs are hand-tuned (A.10).
+  Placeholder names (Brian: "placeholders for now"; rename in the table
+  any time — Station Meridian keeps its name, it's already known):
+
+  | Name | Kind | Ring | Rate | Notes |
+  | --- | --- | --- | --- | --- |
+  | The Star | star | 0 | — | beacon only, no C; the quadrant's compass |
+  | Station Meridian | station | 3,500 | 0 | the first port; the shipyard |
+  | Planet A | planet | 6,000 | `planetDegPerHour` 6 | a port (3.19), no shipyard |
+  | Station Two | station | 9,500, opposite side | 0 | the second port; the shipyard |
+  | Planet B | planet | 11,000 | 6 | a port (3.19), no shipyard |
+  | Jump Gate | gate | 14,000 | 0 | sealed (2.6's text); hydrogen's sink in Phase 4 |
+
+  Each row: `{ name, kind, desc, ring, degPerHour, phaseDeg, voice }`.
+  Stations hold station (accepted by default: fixed, so the run to a
+  known market is a known run); planets creep — a full orbit in 60
+  play-hours, enough that a regular's route drifts over weeks, never
+  enough to lose one in a session. Position is `polar(ring, phaseDeg +
+  degPerHour × clockHours)` computed **every frame from the clock** —
+  no velocity integration, so the save is nothing but rates and phases.
+- **The star**: a beacon at the origin, a deep 30 Hz drone with a slow
+  flicker, audible everywhere (`starAudibleDist` 16,000 — the one point
+  a pilot can always hear, so nobody is ever lost). C at it: "The star.
+  Nothing answers." Nothing else until Phase 4 makes it a hydrogen
+  source.
+- **Spawned entries** — the moving parts: one combat zone and one to
+  three asteroid fields, spawned by the A.10 rules: `spawnMinFromPilot`
+  5,000, `spawnMaxFromPilot` 11,000 (one clean jump — leaving any
+  encounter refills the tank), `spawnMinGap` 4,000 from every other
+  point, within `spawnMaxFromStation` 11,000 of at least one station,
+  inside `quadrantRadius` 16,000; reject-and-retry 50 times, then relax
+  the pilot band. A replacement spawns when the old one is
+  cleared/depleted AND exited. Rules: exactly one zone active; one to
+  three fields, never zero. Announced once, from the pilot's frame:
+  "Contested Zone reported. Bearing 40 left, distance 7,200." /
+  "Asteroid Field Rho sighted, iron-rich. Bearing..." Spawned names:
+  fields walk the Greek alphabet from Rho (Kappa is the delivery run's);
+  the zone is always "Contested Zone" — there is only ever one.
+- **Fields drift**: `cloudDriftPerS` 5 along a circle around the star at
+  the ring they spawned on (prograde; about 300 a minute, a third of an
+  orbit an hour on the inner rings). Position from the clock like the
+  planets. `returnToSector` follows the field: leaving its encounter puts
+  the pilot at the field's CURRENT position, not the snapshot. Combat
+  zones do not move.
+- **Typed fields** (Brian): a field spawns `ice` / `iron` / `mixed`
+  by `cloudTypeWeights` {0.3, 0.3, 0.4}; the type shapes
+  `makeMiningRoster`'s rock draw (ice-rich: 60 % ice rocks; iron-rich:
+  60 % iron; mixed: today's spread). Named on the map, at its beacon
+  hail, and in the sighting line ("iron-rich"). Depletion: `cloudOreBudget`
+  40,000 per field, spoken roughly at the hail — "plenty" above 60 %,
+  "thinning" above 25 %, "nearly worked out" below; at zero the field
+  is depleted and vanishes on exit ("Asteroid Field Rho is worked out.").
+  Hidden per-rock thresholds stay hidden; only the field's total is
+  ever characterized, never numbered.
+- **The game clock**: 2.17's session-only `simClock` becomes
+  **`profile.clock`** — loaded at boot, advanced on the same gate (live,
+  not under an overlay), saved with the quadrant. Everything keys off it:
+  orbits, drift, respawns, mission cooldowns (which thereby start
+  persisting), saturation decay (3.12), threat decay (3.21). Never
+  wall-clock (A.10).
+- **The quadrant save** (Brian: on every transition): `profile.quadrant`
+  = `{ clock, threat, zone, fields: [{ id, name, type, ring, phaseDeg,
+  spawnedAt, budget }], ports: { name: { saturation: {...} } } }`,
+  written by `saveQuadrant()` on dock, undock, land, launch, entering or
+  leaving an encounter, warp arrival, every spawn, every sale — plus a
+  quiet timer every `quadrantSaveEveryS` 30 of open flight. **Never
+  mid-encounter** (an encounter is its own little space; its rocks and
+  ships aren't saved — leaving one is the transition). A crash costs at
+  most half a minute of flight. Created the first time a profile picks
+  Sector: the first field and the first zone spawned by the rules with
+  the pilot at `placeAtStationStart`. `PROFILE_VERSION` → 3; a v2 save
+  gets an empty quadrant and the clock at 0 (2.18's migration path).
+- **Beacons at ten points**: audible only within `beaconAudibleDist`
+  8,000 plus the selected target (accepted by default in ideas5); B's
+  On overrides to all. Tab cycles nearest first as now.
+- **The map, grouped by kind** (Brian): headings *Stations*, *Planets*,
+  *Asteroid fields*, *Contested zone*, *Gate*, *Star*; nearest first
+  within a group; a heading is its own line ("Stations, 2."); first
+  letter jumps to a group (S, P, A, C, G); every entry line keeps
+  bearing, distance, and warp reach, plus the typed detail (a field's
+  type and fullness, a zone's threat word). Enter sets the nav target
+  as now; inside an encounter the lines read as chart entries as now.
+- **`__sim`**: `state().quadrant` (clock, threat, every point with its
+  live position), `poke({ clock, spawnZone, spawnField, budget })`.
+- **Test**: positions move with a stepped clock; a save then reload
+  gives identical positions to the unit; 200 forced spawns all satisfy
+  every rule; leaving a field's encounter lands at its current position
+  (not its entry position) after a stepped clock; the delivery run's
+  four points do not move.
+
+#### 3.11 Ports: stations, prices, and F4 trading (A.10)
+
+- **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', prices: {
+  ore, salvage, alloy, hydrogen }, bias: { category: +0.3 | −0.3 | 0 },
+  shipyard: bool }`. `price` = base × (1 + bias); a port's bias is its
+  character and the guarantee that prices *diverge*: Station Meridian
+  buys ore dear and sells alloy cheap, Station Two the reverse, the
+  planets pay for salvage and hydrogen (3.19). Base prices are today's
+  (`oreCreditRate`, `salvageCredit`, `alloyCredit`) plus `hydrogenCredit`
+  25.
+- **F4** = the trading screen (A.12): the same browsable shell as F2/F3.
+  One line per category: "Ore. Buys at 0.13 a unit, sells at 0.16. High
+  here." — buy price, sell price, and the word (high / normal / low
+  against base). Reachable by F4 within comm range of any port and from
+  the hail menu's new **Prices** line; outside comm range F4 shows the
+  **last-seen** prices at every port, each dated in play-minutes ("Station
+  Two, 14 minutes ago: ore low") — accepted by default, the pilot's
+  memory, since a blind trader can't glance at a chart.
+- Both stations dock, repair, refit, rearm exactly as Meridian does
+  today; only prices and the interior sound differ (Brian is collecting
+  ambience sets — `station_interior1` is Meridian's, a second gets a
+  key when it exists). The hail menu's Sell lines already name the
+  amount; they now name the *price* too.
+
+#### 3.19 Planets as ports (Brian: land like a station; market and fuel, no shipyard)
+
+- A planet has `planetCommRange` 800 and `planetLandRange` 300 (it's
+  big) and a `planetHullRadius` 200 for the collision check. C inside
+  the land range → `dockAtStation(poi)` with `docked.kind = 'planet'`:
+  the same held-still state, its own menu: **Sell** lines, **Buy**
+  lines (3.20), **Launch**. Repairs and the reaction-mass refill are
+  free as at a station (collision damage billed as ever); missiles and
+  decoys are NOT restocked (no armory — accepted by default, one thing
+  a station has that a planet doesn't besides the shipyard); no
+  Modules; the warp tank refills (the core cools anywhere you're
+  parked). Launch = `undock()` at `undockDist`, the same no-warp-zone
+  line.
+- The planet's interior loop: `planet_interior1` when Brian records one;
+  until then a synthesized wind bed (`planet_wind`, a slow-filtered noise
+  on the music bus at `stationAmbientVol`) so landing still *feels*
+  different — accepted by default, replaced the day a recording exists.
+- Planets pay: salvage and hydrogen at `bias` +0.4, ore −0.3 (they sell
+  it cheap, having plenty), alloy 0. Planet Auren in the delivery run's
+  sector keeps its placeholder hail — the run is untouched.
+
+#### 3.14 Cargo limit (A.12) — builds before 3.20, since hauling needs a hold
+
+- `CFG.cargoMax` 20,000 ore-equivalent; ore fills it 1:1, alloy 20 per
+  unit, hydrogen 10 per unit; salvage is small and never counts. The
+  hold refuses more ("Hold full. Sell, or extract no more."); I / F3
+  read "Hold 14,200 of 20,000". A `cargo_bay` module (+10,000, mass 20,
+  needs 3 alloy — the first 3.13 gate) at the shipyard.
+- The tug gains the experience lever only once experience exists (A.11,
+  still deferred).
 
 #### 3.12 The price levers (A.9)
 
-- Per station per category: `saturation` rises `satPerSale` 0.1 per unit
-  sold (scaled per category) and decays `satDecayPerMin` 0.05 per game
-  minute; price = base × clamp(1.5 − saturation, 0.5, 1.5). Sell a lot of
-  ore in one place and it drops toward half; neglect a category for ten
-  minutes of play and it drifts to half again over base. The lever is
-  audible before the sale: the hail menu's Sell line names the price.
+- Per port per category: `saturation` rises `satPerSale` 0.1 per unit
+  sold (scaled per category so 10,000 ore and 20 salvage move it about
+  the same), decays `satDecayPerMin` 0.05 per play-minute on the game
+  clock; the port's price for that category = base × (1 + bias) ×
+  clamp(1.5 − saturation, 0.5, 1.5). Sell a lot in one place and it
+  drops toward half; neglect a category ten minutes and it drifts back
+  past base. **Buying** into a port lowers its saturation (`satPerBuy`
+  0.1 per unit) — a port you've bought out pays more to restock. The
+  lever is audible before the sale: the Sell line names the price it
+  will actually pay for the whole lot.
 
-#### 3.13 Salvage gates and the easy drone missions (A.9)
+#### 3.20 Hauling: buy low, sell high (Brian)
+
+- Every port **buys and sells** ore, alloy, and salvage; hydrogen is
+  sell-only until the gate exists (Phase 4). Buy price = sell price ×
+  `buySpread` 1.25 at that port, so a same-port round trip always loses
+  and the profit is in the divergence between ports (3.11's biases,
+  moved by 3.12's saturation). **Buy** lines on the hail and port menus:
+  "Buy ore. 0.20 a unit here, 4,000 credits fills the hold." — Enter
+  buys as much as credits and the hold allow, in one go, and says the
+  result. Bought goods are just cargo; a haul is: buy where the word is
+  *low*, fly, sell where it's *high*, F4's last-seen memory being the
+  planning tool.
+- Bought ore in the hold delivers on the delivery run exactly like mined
+  ore would — except the delivery run has no hauling (its sector has one
+  port and no Buy line), so the shortcut doesn't exist there.
+- Test: a full loop (buy at Meridian, sell at Two) makes money when the
+  biases oppose and loses it same-port; saturation from a big sale is
+  audible on the next Sell line; the hold cap holds.
+
+#### 3.21 Threat escalation, and its decay (Brian)
+
+- `profile.quadrant.threat` 0..`threatMax` 6: +1 each time a combat zone
+  is cleared; −1 per `threatDecayMin` 20 play-minutes without a clear.
+  A new zone spawns sized by threat: roster size `3 + floor(threat / 2)`
+  (capped at 5), class weights shifting toward cruisers as it rises
+  (`ZONE_CLASS_WEIGHTS[threat]`), hull × (1 + 0.1 × threat) at Veteran
+  and Ace only — Rookie feels the count, not the hardness. Spoken at the
+  zone's beacon hail and on the map as a word: light (0–1), moderate
+  (2–3), heavy (4–5), severe (6). Salvage scales with what spawned
+  (it already does, per kill). The delivery run's zone is always today's
+  five. The first zone on a fresh profile is threat 0: three ships.
+- A pilot who mines and trades for a stretch finds the next zone easier;
+  a pilot who chains fights finds them harder — where a pilot spends
+  their hours is the strategic choice (A.9), now in combat's own terms.
+
+#### 3.18 Loot containers and hydrogen (the old 2.8, moved into Phase 3 — the market's fourth good)
+
+- A destroyed ship drops a **container** (target kind `'loot'`): a soft
+  intermittent double-click beacon at the wreck's position, drifting at
+  `lootDriftSpeed` 5, fading after `lootLifeS` 90. Not Tab-cycled;
+  found by ear and by the radar sweep (Shift+R names containers last).
+  Fly within `lootPickupDist` 100 and **V** collects it: "Container:
+  40 hydrogen." Contents from `LOOT` by class: interceptor 10–20
+  hydrogen, corvette 15–30, cruiser 40–60 plus one alloy in three.
+  Uncollected containers are lost on leaving the encounter.
+- **Hydrogen** is the seventh resource line (F3), persistent like
+  salvage and alloy (`profile.resources.hydrogen`), sold at ports
+  (3.11), sell-only, cargo weight 10 (3.14). The hydrogen-extractor
+  module (mining ticks yield it) waits for a reason to exist — Phase 4.
+
+#### 3.13 Salvage gates and the drone swarm (A.9) — as written, with 2.17 in mind
 
 - `MODULES` entries gain optional `salvage` and `alloy` costs on top of
-  credits; the first: shield plating needs 4 alloy, the missile rack
-  needs 3 salvage. "Need 2 more salvage" refusals name the resource.
-- **Easy combat**: "Clear the drone swarm" — 4 drones that never fire,
-  each tier faster and jinkier (harder to hit, `droneEvadeTier`). Offered
-  only where influence ≥ threshold, costs `easyMissionOre` 2,000 ore to
-  accept, one per station per `missionCooldownS`. Pays salvage only.
-
-#### 3.14 Cargo limit and death cost (A.12)
-
-- `CFG.cargoMax` 20,000 ore (a cargo module raises it); the hold refuses
-  more ("Hold full. Sell or extract no more."). Salvage and alloy are
-  small counts and don't count against it.
-- The tug (2.16) gains the experience lever once experience exists.
+  credits; the first: `cargo_bay` needs 3 alloy (3.14), shield plating
+  needs 4 alloy, the missile rack needs 3 salvage. "Need 2 more salvage"
+  refusals name the resource.
+- **Easy combat**: "Clear the drone swarm" — a third line in the hail
+  menu's Missions list (2.17's shell): four drones that never fire, each
+  tier faster and jinkier (`droneEvadeTier`). Offered only where
+  influence ≥ threshold, costs `easyMissionOre` 2,000 ore to accept, one
+  per port per `missionCooldownS` (now on the persistent clock). Pays
+  salvage only — the gate for the miner who won't fight.
 
 #### 3.15 Lazy-load audio — superseded by 2.19
 
 - Promoted into the Sunday phase as 2.19 the moment Brian decided to
   drop `file://` (2026-09-04); there is no base64 fallback to keep, which
   is what made it small enough to do now.
+
+### Phase 3b — verbosity, the journal, the tutorials (after Phase 3 has been flown)
 
 #### 3.16 Verbosity and the journal (A.12)
 
@@ -1861,9 +2043,16 @@ From A.9–A.12. Numbers are placeholders in CFG; order is a suggestion.
 #### 3.17 Contextual tutorials (A.12, folds in the old 3.1)
 
 - `TUTORIALS` keyed by first-time events: first sector entry, first hail,
-  first dock, first warp, first F2, first quadrant exit, first galactic
-  map. Each is three to five spoken steps with an expected key, Escape
-  skips, "seen" flags in the profile. The Tutorial menu item replays any.
+  first dock, first landing, first warp, first sale, first F2/F3/F4,
+  first quadrant exit, first galactic map. Each is three to five spoken
+  steps with an expected key, Escape skips, "seen" flags in the profile.
+  The Tutorial menu item replays any.
+
+**Open for Brian before 3.10 starts** (DECIDE, Part C): the real names;
+whether stations should creep too (fixed by default); the star's voice
+(the vortex layers were his own suggestion for "an interesting 3D space"
+— he chose to keep them lab-only for now, so the star gets a plain
+drone until he says otherwise).
 
 ### Phase 3, continued — teaching and hosting (the existing 3.1–3.2)
 
@@ -1988,6 +2177,32 @@ the delivery run keeps a fixed layout while the open campaign gets the
 moving world (A.10); beacons audible within 8,000 by default once the
 quadrant has ten points (3.10); salvage collected on the kill for now,
 containers later (2.15); J for the journal (3.16).
+
+Decided (Brian, the Phase 3 questions, night of 2026-09-04, three
+rounds): Phase 3 is **the world and its markets** — 3.10–3.14 plus the
+old 2.8 (now 3.18) — with verbosity, the journal, and tutorials as a
+Phase 3b after it has been flown; the first quadrant is
+**hand-authored** (a `QUADRANT` table like `SECTOR_POIS`) with only
+combat zones and asteroid fields spawning by the rules, and the
+delivery run keeps its own fixed sector; **planets are ports you land
+at** — market and fuel, no shipyard; the **vortex stays in the sound
+lab** for now; every category is **bought and sold at every port** so
+hauling is an income (hydrogen sell-only until the gate); combat zones
+**escalate with play and decay** one step per 20 play-minutes without a
+clear; the quadrant **saves on every transition** plus a 30-second timer
+in open flight, never mid-encounter; **fields are typed** (ice-rich /
+iron-rich / mixed) and say so; the **map is grouped by kind**; the
+names are **placeholders** until he chooses.
+
+Accepted by default (say otherwise), Phase 3: stations hold station,
+planets creep at 6° per play-hour; the star sits at the origin and is
+audible everywhere; Station Meridian stays the first port's name;
+hydrogen is persistent like salvage and alloy; F4 remembers the
+last-seen prices at every other port, dated in play-minutes; a planet
+restocks nothing (no armory) and gets a synthesized wind bed until a
+recording exists; buying at a port lowers its saturation; the first
+zone of a fresh profile is three ships; Rookie feels escalation as ship
+count only.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
