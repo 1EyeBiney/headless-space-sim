@@ -167,6 +167,8 @@ var CFG_DEFAULTS = {
 
     missileMax: 8,                    // magazine; Station Meridian rearms
     chaffMax: 4,                      // decoys (D); Station Meridian restocks (SPEC 1.8)
+    laserMatchupStrong: 1.3,          // family-vs-target multiplier (SPEC 2.12), replaces hullMult/rockMult
+    laserMatchupWeak: 0.7,
     enemyChaffFollowUpS: 2,           // Veteran/Ace: a spoofed missile brings the next attack this soon
     missileDamage: 75,
     missileSpeed: 130,                // u/s
@@ -316,22 +318,56 @@ function recordRun(seconds) {
     return prevBest === undefined || seconds < prevBest;
 }
 
-// Lasers (SPEC 1.9). Keys 1-6 select a slot, Space fires the fitted laser.
-// A burst is fire-and-forget — it runs every tick to the end and cannot be
-// stopped — then the slot cools for cooldownS. Damage is a PER-TICK PROFILE
-// that follows the shape of that laser's recording, not one number: laser
-// one bites evenly, laser two lands two heavy ticks then settles. The
-// numbers are placeholders (100 per burst at point-blank, perfect aim, the
-// old beam's total) until Brian sets each profile by ear against its sound.
-// hullMult/rockMult are where "good in combat" vs "good at mining" will live.
-var LASERS = [
-    { id: 'mining1', name: 'mining laser one', asset: 'laser_mining1',
-      ticks: [20, 20, 20, 20, 20], tickS: 1, cooldownS: 3, hullMult: 1, rockMult: 1 },
-    { id: 'mining2', name: 'mining laser two', asset: 'laser_mining2',
-      ticks: [35, 35, 10, 10, 10], tickS: 1, cooldownS: 3, hullMult: 1, rockMult: 1 }
+// Lasers (SPEC 1.9, families SPEC 2.12). Slots 1 and 2 are the two laser
+// FAMILIES; each carries all eight versions aboard (a per-family carry
+// limit comes later). Keys 1/2 select their slot, then select again (or
+// Shift) cycles the version within the family — same switch time and clip
+// either way (Brian: decided). A burst is fire-and-forget — it runs every
+// tick to the end and cannot be stopped — then the slot cools for
+// cooldownS. Damage is a PER-TICK PROFILE, not one number, and the burst
+// length follows each family's own recording (Mining clips run 8 s,
+// Rapid-pulse 5 s) rather than a fixed five ticks. Placeholder per-tick
+// numbers until Brian sets them by ear; version n is tickBase x 1.1^(n-1).
+var LASER_FAMILIES = [
+    { id: 'mining', label: 'mining', tickBase: 15, tickCount: 8, tickS: 1, cooldownS: 3,
+      strong: ['iron', 'cruiser'], weak: ['ice', 'interceptor'],
+      matchupSpoken: { strong: 'iron and cruisers', weak: 'ice and interceptors' } },
+    { id: 'rapid', label: 'rapid', tickBase: 6, tickCount: 10, tickS: 0.5, cooldownS: 1.5,
+      strong: ['ice', 'interceptor'], weak: ['iron', 'cruiser'],
+      matchupSpoken: { strong: 'ice and interceptors', weak: 'iron and cruisers' } }
 ];
+var LASER_FAMILIES_BY_ID = {};
+LASER_FAMILIES.forEach(function (f) { LASER_FAMILIES_BY_ID[f.id] = f; });
+
+var LASERS = [];
+LASER_FAMILIES.forEach(function (fam) {
+    for (var v = 1; v <= 8; v++) {
+        var perTick = Math.round(fam.tickBase * Math.pow(1.1, v - 1));
+        var ticks = [];
+        for (var k = 0; k < fam.tickCount; k++) ticks.push(perTick);
+        LASERS.push({ id: fam.id + v, family: fam.id, version: v,
+                      name: fam.label + ' ' + v, asset: 'laser_' + fam.id + v,
+                      ticks: ticks, tickS: fam.tickS, cooldownS: fam.cooldownS });
+    }
+});
+
+// Ship classes for the laser matchup table (same split 2.2 will use).
+var SHIP_CLASS = { Freighter: 'cruiser', Raider: 'interceptor', Scout: 'interceptor',
+                    Drone: 'corvette', Cruiser: 'cruiser' };
+
+// Replaces the old per-laser hullMult/rockMult: the FAMILY decides whether
+// this shot is a good match for the target, a rock by type, a ship by class.
+function laserMatchupMult(L, t) {
+    var fam = LASER_FAMILIES_BY_ID[L.family];
+    if (!fam) return 1;
+    var key = t.kind === 'rock' ? t.type.name.toLowerCase() : (SHIP_CLASS[t.name] || 'corvette');
+    if (fam.strong.indexOf(key) >= 0) return CFG.laserMatchupStrong;
+    if (fam.weak.indexOf(key) >= 0) return CFG.laserMatchupWeak;
+    return 1;
+}
+
 var LASER_SLOTS = 6;
-var STARTING_SLOTS = ['mining1', 'mining2'];   // slots 3-6 empty until the station sells more
+var STARTING_SLOTS = ['mining1', 'rapid1'];   // slots 3-6 empty until the station sells more
 
 // Switching slots takes time (SPEC 1.14, Brian): the sound and the delay
 // belong to the SLOT (the hotkey), not the laser fitted in it. The delays
@@ -574,6 +610,7 @@ var lastCycleAt = 0;     // a cycle already spoke the distance; lock stays quiet
 var demo = null;         // the timed delivery run, while active
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
 var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
+var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
 var beaconMode = 'on';   // 'on' | 'off' | 'target' — live; profile.beacons is the saved copy
 function over() { return won || lost; }
@@ -833,9 +870,11 @@ var KEY_DESCRIPTIONS = {
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
-    '1': 'Select laser slot 1 and speak what is fitted there. Switching slots takes a moment, longer for the heavier slots.',
-    '2': 'Select laser slot 2.', '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
+    '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles to the next of its eight versions; shift 1 cycles back. Switching or cycling takes a moment, longer for the heavier slots.'; },
+    '2': 'Select laser slot 2. Shift 1 or shift 2 cycles the version backward.',
+    '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
+    f2: 'Ship status: hull, shields, warp charge, cargo, missiles, chaff, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
@@ -1501,28 +1540,15 @@ function stopLaserSwitch() {
     }
 }
 
-// Keys 1-6. Switching to another slot takes SLOT_SWITCH[i].s seconds: the
-// slot's recording plays, stretched to fill exactly that window, Space is
-// refused until it ends, then the laser announces itself. Re-selecting the
-// current slot just restates it; an empty slot refuses with no delay; a
-// burst in progress refuses (it can't be stopped, SPEC 1.9).
-function selectSlot(i) {
-    var L = profile ? laserById(profile.slots[i]) : null;
-    if (beam && beam.tool === 'laser') {
-        SIM.cues.play('refusal_dud');
-        say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Switch after.');
-        return;
-    }
-    if (i === laserSlot) {
-        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
-        SIM.cues.play('slot_select');
-        say(laserStatusText());
-        return;
-    }
-    stopLaserSwitch();
-    laserSlot = i;
-    saveProfile();
-    if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+// Keys 1-6, Shift+1-6 (SPEC 2.12). Switching to another slot takes
+// SLOT_SWITCH[i].s seconds: the slot's recording plays, stretched to fill
+// exactly that window, Space is refused until it ends, then the laser
+// announces itself. Re-selecting the current slot cycles to the next
+// version in its family (Shift = previous) — same switch time and clip,
+// since it takes the ship just as long to bring another version online.
+// An empty slot refuses with no delay; a burst in progress refuses (it
+// can't be stopped, SPEC 1.9).
+function startSlotSwitch(i, L) {
     var sw = SLOT_SWITCH[i], secs = sw.s, A = SIM.audio, src = null, g = null;
     if (A.ctx && A.assetBufs[sw.asset]) {
         var buf = A.assetBufs[sw.asset];
@@ -1545,6 +1571,38 @@ function selectSlot(i) {
         say(capFirst(L.name) + (left > 0 ? ' recharging, ' + Math.ceil(left) + ' seconds.' : ' ready.'));
     }, secs * 1000);
     say(laserSlotText(i) + ', switching.');
+}
+
+// Cycles slot i's laser to the next (dir +1) or previous (dir -1) version
+// within its family, wrapping 1-8, and writes it back into profile.slots.
+function cycleLaserVersion(i, dir) {
+    var L = laserById(profile.slots[i]);
+    if (!L) return null;
+    var newVersion = ((L.version - 1 + dir + 8) % 8) + 1;
+    var newId = L.family + newVersion;
+    profile.slots[i] = newId;
+    return laserById(newId);
+}
+
+function selectSlot(i, reverse) {
+    var L = profile ? laserById(profile.slots[i]) : null;
+    if (beam && beam.tool === 'laser') {
+        SIM.cues.play('refusal_dud');
+        say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Switch after.');
+        return;
+    }
+    if (i === laserSlot) {
+        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+        L = cycleLaserVersion(i, reverse ? -1 : 1);
+        saveProfile();
+        startSlotSwitch(i, L);
+        return;
+    }
+    stopLaserSwitch();
+    laserSlot = i;
+    saveProfile();
+    if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+    startSlotSwitch(i, L);
 }
 
 function laserStatusText() {
@@ -1740,7 +1798,7 @@ function beamTick() {
         } else if (t.kind === 'rock') {
             // Hidden hardness roll obscures the stage threshold, and every
             // tick shoves the rock along the beam line.
-            var actual = Math.ceil(dmg * L.rockMult * t.type.hardness * (0.7 + Math.random() * 0.6));
+            var actual = Math.ceil(dmg * laserMatchupMult(L, t) * t.type.hardness * (0.7 + Math.random() * 0.6));
             beam.totalDamage += actual;
             pushRock(t, scale(norm(sub(t.pos, ship.pos)), CFG.beamPush * rockPush(t)));
             if (t.resource) { shatterCore(t); stopBeam(true); return; }
@@ -1752,7 +1810,7 @@ function beamTick() {
         } else {
             // SPEC 1.20: Rookie doubles laser damage against ships (not
             // rocks) via CFG.laserShipMult, so the spoken number reflects it.
-            dmg = Math.ceil(dmg * L.hullMult * CFG.laserShipMult);
+            dmg = Math.ceil(dmg * laserMatchupMult(L, t) * CFG.laserShipMult);
             beam.totalDamage += dmg;
             if (damageTarget(t, dmg)) { stopBeam(true); return; }
             say(String(dmg));
@@ -2823,6 +2881,67 @@ function oreGained() {
     }, 500);
 }
 
+// ---- F2 ship screen (SPEC 2.13) --------------------------------------------
+// Same browsable-overlay shell as the run log: build the lines once at
+// open time, arrows step through them, Escape closes. The per-slot line is
+// the point of the screen — the family matchup in words, never numbers,
+// so a pilot learns which laser suits which rock or ship by ear.
+function buildShipLines() {
+    var lines = [];
+    lines.push('Your hull ' + hull + ' percent.');
+    lines.push('Shields ' + (shield.up ? 'up' : 'down') + ', pool ' +
+                Math.round(shield.pool) + ' of ' + Math.round(CFG.shieldPool) +
+                (shield.repairing ? ', repairing' : '') + '.');
+    lines.push('Warp charge ' + warpPct() + ' percent.');
+    lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
+    lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.'));
+    lines.push(chaff + (chaff === 1 ? ' chaff.' : ' chaff remaining.'));
+    for (var i = 0; i < LASER_SLOTS; i++) {
+        var L = profile ? laserById(profile.slots[i]) : null;
+        if (!L) { lines.push('Slot ' + (i + 1) + ' is empty.'); continue; }
+        var fam = LASER_FAMILIES_BY_ID[L.family];
+        var left = laserCooldownLeft(i);
+        lines.push('Slot ' + (i + 1) + ', ' + L.name + (left > 0 ? ', recharging' : ', ready') + '. ' +
+                   'Bites ' + fam.matchupSpoken.strong + '. Weak on ' + fam.matchupSpoken.weak + '.');
+    }
+    ownedModules().forEach(function (id) {
+        var m = moduleById(id);
+        if (m) lines.push(m.name + ' fitted.');
+    });
+    lines.push('Total mass ' + shipMass().toFixed(2) + '.');
+    return lines;
+}
+
+function openShipScreen() {
+    shipScreen.open = true;
+    shipScreen.idx = -1;
+    shipScreen.lines = buildShipLines();
+    keysDown = {};
+    thrusterSync(null);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    say('Ship status. ' + shipScreen.lines.length + ' lines. Down arrow reads line by line, Escape closes.');
+}
+
+function closeShipScreen() {
+    shipScreen.open = false;
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    say('Ship status closed.');
+}
+
+function shipScreenKey(lname) {
+    if (lname === 'escape' || lname === 'f2') { closeShipScreen(); return; }
+    var n = shipScreen.lines.length;
+    if (lname === 'arrowdown') {
+        if (shipScreen.idx < n - 1) { shipScreen.idx++; say(shipScreen.lines[shipScreen.idx]); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
+    } else if (lname === 'arrowup') {
+        if (shipScreen.idx > 0) { shipScreen.idx--; say(shipScreen.lines[shipScreen.idx]); }
+        else { shipScreen.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+    } else {
+        say('Up and down arrows read ship status, Escape closes.');
+    }
+}
+
 // ============================== 8B. SECTOR ==================================
 // The quadrant map (Q): a browsable overlay in the help-screen style. The
 // sim freezes and the world ducks while it is open; Enter sets the nav
@@ -3392,6 +3511,9 @@ function onKeyDown(e) {
     // The run log captures everything the same way.
     if (runlog.open) { runLogKey(lname); return; }
 
+    // F2 ship status, same shell.
+    if (shipScreen.open) { shipScreenKey(lname); return; }
+
     // The Sound settings list, same shell (reached from the mission menu).
     if (soundMenu.open) { soundKey(lname); return; }
 
@@ -3451,7 +3573,7 @@ function onKeyDown(e) {
             else if (!over()) fireMissile();
             break;
         case '1': case '2': case '3': case '4': case '5': case '6':
-            selectSlot(parseInt(lname, 10) - 1);
+            selectSlot(parseInt(lname, 10) - 1, e.shiftKey);
             break;
         case 'g':      if (!over()) shieldKey(); break;
         case 'd':
@@ -3489,6 +3611,7 @@ function onKeyDown(e) {
                 ' degrees, missile needs ' + ZONES[zoneIdx].missile + '.');
             break;
         case 'f1':     openHelp(); break;
+        case 'f2':     openShipScreen(); break;
         case 'f12':
             describeMode = true;
             say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
@@ -3937,6 +4060,8 @@ function menuKey(lname, name) {
         }, 600);
     } else if (lname === 'f1') {
         openHelp();
+    } else if (lname === 'f2') {
+        openShipScreen();
     } else if (lname === 'f12') {
         describeMode = true;
         say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');

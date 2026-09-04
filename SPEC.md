@@ -935,7 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 and 2.11 are DONE (Sonnet). 2.12/2.13 next.
+2.10, 2.11, 2.12, and 2.13 are DONE (Sonnet). 2.14 next.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1021,7 +1021,24 @@ missed. Not yet heard — Brian picks A, B, or C from the lab.
   = `{ combat: 'solid', sector: <pick>, mining: <pick> }`. Until Brian
   picks, ship A as the default so the irritant is gone on Sunday.
 
-#### 2.12 Sixteen lasers, cycling on 1 and Shift+1 (ideas5)
+#### 2.12 Sixteen lasers, cycling on 1 and Shift+1 (ideas5) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: pressing 1 while slot 1 is
+already selected cycles mining1 → mining2 → mining3 (confirmed via
+`profile.slots`), Shift+1 cycles back (mining3 → mining2), each cycle
+runs the same switch clip/delay as changing slots; pressing 2 switches
+to the Rapid family at its current version ("Slot 2, rapid 1,
+switching." → "Rapid 1 ready."); an empty slot (3–6) still refuses with
+no delay and doesn't cycle. The F2 ship screen (2.13) confirms both
+families' matchup text is correctly wired from the same data table.
+`laserMatchupMult()` was checked directly for logic correctness (a
+plain array-membership lookup) rather than by a noise-free live A/B —
+aim quality and range vary too much shot to shot to isolate the 1.3×/
+0.7× difference cleanly in a fired-beam test. All 14 remaining
+recordings are embedded (mono 48k 96k, ~1.6 MB added — slightly over
+the ~1.4 MB estimate). No console errors. Not yet heard — the ×1.1
+per-version curve and the family matchup assignments are both by-ear
+candidates for Brian.
 
 - **Slots become families.** Slot 1 is the Mining family, slot 2 the
   Rapid-pulse family, slots 3–6 stay empty. Each family carries all eight
@@ -1063,7 +1080,18 @@ missed. Not yet heard — Brian picks A, B, or C from the lab.
 - Help, KEY_DESCRIPTIONS for 1–6 and Shift, README, `I` ("Slot 1, mining
   3, ready"), all updated.
 
-#### 2.13 F2, the ship screen (ideas5; was 1.11)
+#### 2.13 F2, the ship screen (ideas5; was 1.11) — DONE (partial), needs Brian's ear
+
+Built and machine-tested: F2 opens from any live mission AND from the
+mission menu (`menuKey`'s F2 branch), freezes/ducks like help, browses
+line by line (confirmed all 13 lines on a fresh profile: hull, shields,
+warp charge, cargo/credits, missiles, chaff, six slot lines — 2 fitted
+with their matchup sentence, 4 "is empty" — then total mass), Escape or
+a second F2 closes it, top/bottom-of-list blips work, no console
+errors. Built now with what exists today (hull/shields/warp/ore/
+credits/missiles/chaff/lasers/modules/mass); the reaction-mass and
+salvage/alloy lines get added when 2.14/2.15 land rather than blocking
+this screen on unbuilt systems. Not yet heard.
 
 - Same shell as the run log: F2 opens it anywhere a key works (freezes
   and ducks like help), arrows read line by line, Escape closes, F12

@@ -37,6 +37,10 @@ expands.
   spaces `encodeURI`'d). Native HTML buttons/audio elements, not the
   game's custom key-trap shell — Tab and Enter/Space already work.
   Test at the local server (`soundlab.html`, not `index.html`).
+- (F2, the ship status screen, SPEC 2.13 — same browsable shell as the run
+  log, listing hull/shields/warp/cargo/missiles/chaff, one line per laser
+  slot with its family matchup in words, fitted modules, and total mass;
+  works from any live mission or the mission menu.)
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's source recordings (never read at runtime, organized by
   category as of Round 12's housekeeping pass — `audio_assets.js` embeds by
@@ -492,15 +496,36 @@ static once tiers exist.
   entirely — whatever charge is left just regenerates at `shieldRegenPerS`
   3/s like any other down-and-not-full shield.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
-  `LASERS` data table), keys `1`-`6` select (`selectSlot` — as of SPEC 1.14 a switch to
-  ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2 by slot, Brian's
-  per-slot clip mapping 3/4/5/1/2/6; the slot's `laser_switch` recording
-  plays on the UI bus time-stretched via `playbackRate = clip length / s`
-  to fill exactly that window, Space is refused meanwhile, `laserSwitch`
-  holds the state and `stopLaserSwitch()` runs in `clearMission`;
-  re-selecting the current slot just restates it, an empty slot refuses
-  with no delay and cancels any switch in progress, a burst in progress
-  refuses the switch), Space fires the
+  `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)` — as of SPEC
+  1.14 a switch to ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2
+  by slot, Brian's per-slot clip mapping 3/4/5/1/2/6; the slot's
+  `laser_switch` recording plays on the UI bus time-stretched via
+  `playbackRate = clip length / s` to fill exactly that window, Space is
+  refused meanwhile, `laserSwitch` holds the state and `stopLaserSwitch()`
+  runs in `clearMission`; an empty slot refuses with no delay and cancels
+  any switch in progress, a burst in progress refuses the switch).
+  **SPEC 2.12 (Round 14)**: slots 1 and 2 are now FAMILIES rather than
+  individually-fitted lasers — `LASER_FAMILIES` (`mining`: 8 ticks/8 s
+  burst, tickBase 15; `rapid`: 10 ticks/5 s burst, tickBase 6) generates
+  all 16 `LASERS` entries (`mining1`-`8`, `rapid1`-`8`), each version's
+  per-tick damage `tickBase × 1.1^(version-1)`, rounded. Re-selecting the
+  CURRENT slot no longer just restates it — `cycleLaserVersion(i, dir)`
+  advances (plain key) or retreats (Shift) to the next/previous version,
+  wrapping 1–8, and rewrites `profile.slots[i]` to the new id; it runs
+  through the exact same `startSlotSwitch(i, L)` (same clip, same delay)
+  as changing slots, per Brian: "it takes the same amount of time and
+  uses the same sound triggers." `hullMult`/`rockMult` are gone from the
+  `LASERS` entries — `laserMatchupMult(L, t)` replaces them, reading each
+  family's `strong`/`weak` arrays against the target (a rock's
+  `t.type.name.toLowerCase()`, a ship's class via a new `SHIP_CLASS` map
+  — Freighter/Cruiser = cruiser, Raider/Scout = interceptor, Drone =
+  corvette) for `CFG.laserMatchupStrong` 1.3 / `CFG.laserMatchupWeak` 0.7
+  / 1 in between; `CFG.laserShipMult` (Rookie, 1.20) still multiplies on
+  top for ships only. `STARTING_SLOTS` is now `['mining1', 'rapid1']`.
+  All 14 remaining laser recordings are embedded (mono 48k 96k like the
+  rest, ~1.6 MB added) — every laser slot in the game now has real
+  recorded audio, no synthesized carrier fallback needed for these two
+  families. Space fires the
   selected laser via `startBeam('laser')`. Ship starts with `mining1` (slot
   1, steady 20/20/20/20/20 damage profile) and `mining2` (slot 2, front-
   loaded 35/35/10/10/10); slots 3-6 empty until the station sells more.
