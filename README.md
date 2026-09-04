@@ -44,10 +44,16 @@ The shareable challenge. The clock starts at once.
    already your nav target — H jumps you there.
 2. Mine 15,000 ore at Asteroid Field Kappa. Laser rocks apart, vacuum the
    dust, extract the glowing cores.
-3. Deliver the ore to Station Meridian. Your run time is spoken on delivery.
+3. Dock at Station Meridian to deliver the ore. Your run time is spoken on
+   delivery.
 
-The station repairs your hull and rearms your eight missiles whenever you
-call it. Losing your ship fails the run.
+Calling the station starts a docking approach: a corridor flown by
+instrument, not by ear on the world around you. A centerline tone tells
+you which way to steer, its pitch says whether you're high or low, and a
+voice reads your position every few seconds. Slow down as you close in —
+coming in too fast resets you to the start of the corridor, no damage,
+just try again. Docking repairs your hull, rearms your eight missiles,
+and refills the warp tank. Losing your ship fails the run.
 
 The warp drive has a tank, measured in distance, and a jump spends it. A
 jump longer than the tank still goes — you drop out where the charge runs
@@ -75,9 +81,9 @@ Right hand on the arrows, left hand on everything else.
 | R | Radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Target zone size: wide, standard, narrow |
-| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest (sector) |
+| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — starts a docking approach at the station |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
-| X | Leave the mission |
+| X | Leave the mission, or cancel a docking approach in progress |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |
 | Escape | Pause |

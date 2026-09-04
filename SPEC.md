@@ -120,13 +120,13 @@ people; nothing in Phase 2+ starts without his go.
 
 Done, live on Pages (Rounds 10–12): 1.0 hosting + `?run=delivery`, 1.1
 difficulty tiers, 1.2 Rookie Cruiser, 1.3 shield damage pool + disrepair,
-1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots and 1.10
-warp charge (both machine-tested, not yet heard by Brian — see below), and
-the audio split
+1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots, 1.10 warp
+charge, and 1.6 the docking corridor (all machine-tested, not yet heard by
+Brian — see below), and the audio split
 (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md "Audio architecture").
 
-Suggested order for the rest — the docking corridor and station next,
-since everything else hangs off them, then chaff:
+Suggested order for the rest — 1.7's economy items (Sell ore, Modules)
+next, since the station menu shell is already up from 1.6, then chaff:
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -229,26 +229,48 @@ zone; both are one number.
 - `I` reads charge; the map lines read each point's distance and whether
   the tank reaches it. Bigger tank and faster cooling are modules (1.7).
 
-#### 1.6 Docking approach (the corridor)
+#### 1.6 Docking approach (the corridor) — DONE, needs Brian's ear
 
-The station is entered by flying a corridor, not by pressing C at 500. This
-is deliberately the HARDEST version now; a docking-computer module loosens
-it later.
+Built and machine-tested: calling the station starts the approach instead
+of instant service; the centerline tone and coaching guide a real flight
+in; too-fast aborts and resets cleanly to the corridor entry (confirmed
+lateral/vertical exactly zero on reset, i.e. genuinely back on axis); a
+slow, careful approach docks successfully, opens the station menu, holds
+the ship, and repairs/rearms/refuels; `X` cancels an approach in progress
+without exiting to the mission menu; C while already approaching restates
+range instead of restarting. Deliberately the HARDEST version now — a
+docking-computer module loosens it later (Phase 2). Not yet heard.
+
+One real bug found and fixed: `makeSectorRoster()` rebuilds each POI as a
+fresh target object every time the sector loads, and it wasn't copying
+`dockAxis` onto that object — so the corridor was silently flying on the
+default `(0,0,1)` heading instead of the one set on `SECTOR_POIS`. The
+approach still worked end to end (confirmed by testing before the fix
+too); the heading was just wrong. Caught by checking the reset position's
+exact coordinates against hand-computed corridor geometry, not by
+anything breaking outright — worth remembering for any future POI data
+field: `makeSectorRoster`'s target literal only carries what it explicitly
+lists, nothing is copied implicitly.
+
 - Calling the station (C within `poiInteract`) answers "Meridian control:
   cleared to dock. Approach corridor active." and starts the approach.
 - Corridor = a line from a point `dockCorridorLen` 800 out to the station
-  door, on a fixed heading per station (data on `SECTOR_POIS`). Instruments
-  on the UI bus, NOT HRTF (a cockpit instrument, like the tick):
-  centerline tone panned by lateral offset (off to the right = tone on the
-  left = turn left, the tick's convention; dead center = mono); glide slope
-  as that tone's pitch (up = high); range as a click rate quickening toward
-  the door; over `dockMaxSpeed` 25 inside the last 300 = "Too fast. Abort."
-  and a reset to the corridor entry (no damage yet).
+  door, on a fixed heading per station (`dockAxis` on `SECTOR_POIS`).
+  Instruments on the UI bus, NOT HRTF (a cockpit instrument, like the
+  tick): centerline tone panned by lateral offset (off to the right = tone
+  on the left = turn left, the tick's convention; dead center = mono);
+  glide slope as that tone's pitch (up = high); range as a click rate
+  quickening toward the door; over `dockMaxSpeed` 25 inside the last 300 =
+  "Too fast. Abort." and a reset to the corridor entry (no damage).
 - Success inside `dockRadius` 40 at ≤ `dockMaxSpeed`: docking clunk,
   "Docked at Station Meridian.", the station menu opens. Ship held; thrust
-  keys answer "Docked. Undock from the station menu."
-- Coaching every ~3 s in the corridor: "Left 40, high 10, range 500"
+  keys don't move it (the station menu captures all input, same shell as
+  help/map).
+- Coaching every ~3 s in the corridor: "40 right, 10 high, range 500"
   (round10), silent when centered. All numbers in CFG.
+- The station menu itself, built this round as a shell (Undock only) —
+  1.7 adds the economy items on top of the same `STATION_ITEMS`/
+  `stationMenuKey`.
 
 #### 1.7 Station menu (the economy hook)
 

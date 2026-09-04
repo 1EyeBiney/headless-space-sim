@@ -211,9 +211,46 @@ static once tiers exist.
   3000, so the tank is sized against the best exit. Map lines read "in warp
   range" / "beyond warp range by N" (`warpReachText`). `C` call
   within 500 → combat/mining encounters (`sectorHome` snapshot; `X` returns
-  to open space at the POI) or station (repair/rearm/delivery) / planet
-  placeholder hail. Weapons/tools cold in open space. Ore, hull, and missile
+  to open space at the POI) or the station, which now **starts a docking
+  approach** instead of instant service (see below) / planet placeholder
+  hail. Weapons/tools cold in open space. Ore, hull, and missile
   count persist across a sector run (menu starts reset them).
+- **Docking (Round 12, SPEC 1.6)**: entering the station is a corridor, not
+  an instant `C`. `startDocking(poi)` builds a local frame off
+  `poi.dockAxis` (`corridorFrame`: `axis` = the unit vector the entry point
+  sits along, `right`/`up` via `cross()` against world-up) and speaks
+  "cleared to dock." `updateDocking(dt)` runs every frame from `simTick`
+  while `docking` is set (physics stay live — only `docked`, the SUCCESS
+  state, freezes movement, added to `simTick`'s early-return list alongside
+  `warping`): `dockOffsets()` decomposes the ship's position relative to
+  the door into `lateral`/`vertical`/`range`; inside `dockRadius` 40 at
+  ≤ `dockMaxSpeed` 25 → `finishDocking()`; inside `dockSpeedCheckDist` 300
+  and too fast → `abortToEntry()` (teleports back to `dockCorridorLen` 800
+  out, ON axis, no damage — confirmed by a real bug this round: see below).
+  Instruments are UI-bus, not HRTF, like the tick: a continuous centerline
+  tone (`dockToneNodes`) panned by `-lateral/dockPanWidth` (off the line to
+  the right → tone from the left → turn left, the tick's own "steer toward
+  the tone" convention) with pitch = 600 + vertical (glide slope: high =
+  sharp); a range click (`scheduleDockTick`, a real `setTimeout` chain
+  independent of rAF, like the lock tick) that quickens
+  `dockClickFastMs`80→`dockClickSlowMs`500 toward the door; spoken coaching
+  every `dockCoachIntervalMs` 3 s, silent under `dockCenterTol` 15.
+  `finishDocking()` is where the old instant repair/rearm/refuel +
+  delivery-handover logic moved to (now fires on ARRIVAL, not on `C`).
+  Docking also opens a **station menu shell**: `STATION_ITEMS` (currently
+  just Undock), `stationMenuKey` captures all input the same way
+  `help.open`/`map.open` do, gated in `onKeyDown` at that same priority.
+  Not yet the shared `listMenu` the plan describes — same deliberate
+  deferral as the run log (see below). `X` cancels an in-progress approach
+  instead of exiting to the mission menu. **Real bug this round**:
+  `makeSectorRoster()` builds fresh target objects from `SECTOR_POIS` but
+  wasn't copying `dockAxis` onto them, so `corridorFrame` silently fell
+  back to `(0,0,1)` — the mechanic worked, just not on the intended
+  heading. Caught by checking the reset position's `x` against hand
+  computed corridor geometry, not by the mechanic failing outright; fixed
+  by adding `dockAxis: p.dockAxis` to the target literal. Any future POI
+  data field needs the same check: `makeSectorRoster` only copies what it
+  explicitly lists.
 - **Combat**: 5 ships with Brian's recorded engine loops (`shipAsset` on the
   roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies are
   passive until hit**: `provoke(t)` in `damageTarget` sets `t.hostile` (fuse

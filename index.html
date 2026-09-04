@@ -103,6 +103,17 @@ var CFG_DEFAULTS = {
 
     // sector (open space between encounters)
     poiInteract: 500,        // call (C) range for a point of interest
+    // Docking (SPEC 1.6): the station is entered by flying a corridor, not
+    // by pressing C at range. Deliberately the HARDEST version now — a
+    // docking-computer module (Phase 2) widens it.
+    dockCorridorLen: 800,     // the corridor runs from this far out to the door
+    dockRadius: 40,           // inside this + slow enough = docked
+    dockSpeedCheckDist: 300,  // "too fast" is only checked this close to the door
+    dockMaxSpeed: 25,
+    dockPanWidth: 150,        // lateral offset that saturates the centerline pan
+    dockCoachIntervalMs: 3000,
+    dockCenterTol: 15,        // coaching goes silent under this many units off-axis
+    dockClickFastMs: 80, dockClickSlowMs: 500,  // range click speeds up toward the door
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
     warpChargeMs: 2000,      // spool-up before the jump
     warpMinDist: 1200,       // closer than this: just fly it
@@ -364,7 +375,11 @@ var SECTOR_POIS = [
     { name: 'Asteroid Field Kappa', poiType: 'mining',
       desc: 'mining area',   pos: v3(-9500, -800, -2800) },
     { name: 'Station Meridian',     poiType: 'station',
-      desc: 'space station', pos: v3(2000, 0, 7000) },
+      desc: 'space station', pos: v3(2000, 0, 7000),
+      // dockAxis points FROM the door AWAY — the direction ships approach
+      // from. Picked to run outward from the sector, away from the other
+      // points, so an undock doesn't drop the pilot facing back at them.
+      dockAxis: v3(0.28, 0, 0.96) },
     { name: 'Planet Auren',         poiType: 'planet',
       desc: 'planet',        pos: v3(-5000, 1500, 9000) }
 ];
@@ -397,6 +412,10 @@ var missiles = 0;        // magazine, set from CFG.missileMax
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var warpCoreNodes = null;// the core-cooling hiss while the tank refills in open flight
+var docking = null;      // { poi, axis, right, up, coachAt, tickTimer } while approaching
+var docked = null;       // { poi } once docked; ship held, station menu active
+var dockToneNodes = null;// the corridor's centerline tone
+var stationIdx = 0;      // cursor in the station menu (SPEC 1.7 extends the item list)
 var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
 var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
 var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
@@ -425,6 +444,7 @@ function dot(a, b)   { return a.x * b.x + a.y * b.y + a.z * b.z; }
 function len(a)      { return Math.sqrt(dot(a, a)); }
 function norm(a)     { var l = len(a); return l > 1e-9 ? scale(a, 1 / l) : v3(0, 0, -1); }
 function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+function cross(a, b) { return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 window.clamp = clamp;   // audio_engine.js (a separate top-level script, outside
                         // this closure) needs it for panning math.
 
@@ -573,9 +593,13 @@ var HELP_SECTIONS = [
         'The tank refills at the station and whenever you leave an encounter — the core cools while you fight and mine. In open flight it recovers slowly, and you can hear the core cooling until it is full.',
         'You start just outside Station Meridian with a full tank. It reaches the Contested Zone; the legs after that run it dry a little short, so expect to fly the last stretch into the asteroid field and back to the station.',
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
-        'Within 500, C calls the point: combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
+        'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
+        'Calling the station starts a docking approach instead: a corridor from 800 out to the door, flown by instrument, not HRTF. A centerline tone tells you which way to turn — it plays from the side you should steer toward, the same convention as the lock tick. Its pitch is your glide slope: high means you are above the line, low means below.',
+        'A click on the corridor speeds up as you close the range, and every few seconds a voice reads your position: how far left or right, how far high or low, and the range, going quiet once you are centered.',
+        'Slow down as you close in. Coming in too fast near the door aborts the approach and resets you to the start of the corridor — no damage, just start over.',
+        'Dock slowly enough and close enough and you are in: the station menu opens, your hull, missiles, and warp tank are full, and the ship is held until you undock.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
-        'Your ore hold, hull, and missile count ride with you for the whole sector run. Calling the station repairs and rearms you.',
+        'Your ore hold, hull, and missile count ride with you for the whole sector run. Docking repairs, rearms, and refuels.',
         'Weapons and mining tools are cold in open sector space.'
     ] },
     { heading: 'System', items: [
@@ -904,7 +928,7 @@ function buildPoiVoice(t) {
 function makeSectorRoster() {
     return SECTOR_POIS.map(function (p) {
         var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
-                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
+                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true, dockAxis: p.dockAxis };
         buildPoiVoice(t);
         return t;
     });
@@ -2598,6 +2622,191 @@ function warpCoreSound(on) {
     }
 }
 
+// ---- docking (SPEC 1.6) ---------------------------------------------------
+// A cockpit instrument like the tick, on the UI bus, not HRTF: a centerline
+// tone panned by lateral offset (drifted right of the line = tone from the
+// left = turn left, the tick's own "steer toward the tone" convention),
+// its pitch carrying glide slope (high = sharp, low = flat), and a range
+// click that quickens toward the door. Placeholder timbre for Brian's ear.
+function corridorFrame(poi) {
+    var axis = norm(poi.dockAxis || v3(0, 0, 1));
+    var right = norm(cross(v3(0, 1, 0), axis));
+    if (len(right) < 1e-6) right = v3(1, 0, 0);   // axis is near-vertical; fall back
+    return { axis: axis, right: right, up: cross(axis, right) };
+}
+
+function startDocking(poi) {
+    var f = corridorFrame(poi);
+    docking = { poi: poi, axis: f.axis, right: f.right, up: f.up, coachAt: 0, tickTimer: null };
+    scheduleDockTick();
+    say('Meridian control: cleared to dock. Approach corridor active.');
+}
+
+function stopDocking(silent) {
+    if (!docking) return;
+    var d = docking; docking = null;
+    clearTimeout(d.tickTimer);
+    dockToneOn(false);
+    if (!silent) say('Docking aborted.');
+}
+
+// Ship's offset from the ideal corridor line: lateral (+ = right of the
+// line), vertical (+ = high), and straight-line range to the door.
+function dockOffsets() {
+    var v = sub(ship.pos, docking.poi.pos);
+    return { lateral: dot(v, docking.right), vertical: dot(v, docking.up),
+             range: len(sub(docking.poi.pos, ship.pos)) };
+}
+
+function dockToneOn(on) {
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    if (on && !dockToneNodes) {
+        var g = A.ctx.createGain(); g.gain.value = 0.0001;
+        var o = A.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 600;
+        var pan = A.ctx.createStereoPanner ? A.ctx.createStereoPanner() : null;
+        o.connect(g);
+        if (pan) { g.connect(pan); pan.connect(A.uiBus); } else { g.connect(A.uiBus); }
+        o.start();
+        dockToneNodes = { o: o, g: g, pan: pan };
+        A.ramp(g.gain, 0.09, 0.2);
+    } else if (!on && dockToneNodes) {
+        var n = dockToneNodes; dockToneNodes = null;
+        A.ramp(n.g.gain, 0.0001, 0.2);
+        setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 400);
+    }
+}
+
+// The range click: a real setTimeout chain (like the lock tick), independent
+// of the rAF-driven frame loop, so it keeps time even if simTick stalls.
+function scheduleDockTick() {
+    if (!docking) return;
+    var frac = clamp(dockOffsets().range / CFG.dockCorridorLen, 0, 1);
+    SIM.audio.blip(1400, 40, 0.08, 0, 'square');
+    docking.tickTimer = setTimeout(scheduleDockTick,
+        CFG.dockClickFastMs + (CFG.dockClickSlowMs - CFG.dockClickFastMs) * frac);
+}
+
+function updateDocking(dt) {
+    if (!docking) return;
+    var o = dockOffsets();
+    if (o.range <= CFG.dockRadius && len(ship.vel) <= CFG.dockMaxSpeed) { finishDocking(); return; }
+    if (o.range <= CFG.dockSpeedCheckDist && len(ship.vel) > CFG.dockMaxSpeed) { abortToEntry(); return; }
+    dockToneOn(true);
+    var pan = clamp(-o.lateral / CFG.dockPanWidth, -1, 1);
+    var pitch = 600 + clamp(o.vertical, -400, 400);
+    if (dockToneNodes) {
+        SIM.audio.ramp(dockToneNodes.o.frequency, pitch, 0.15);
+        if (dockToneNodes.pan) SIM.audio.ramp(dockToneNodes.pan.pan, pan, 0.15);
+    }
+    var now = Date.now();
+    if (now - docking.coachAt > CFG.dockCoachIntervalMs) {
+        docking.coachAt = now;
+        var lat = Math.round(Math.abs(o.lateral) / 5) * 5, vert = Math.round(Math.abs(o.vertical) / 5) * 5;
+        if (lat > CFG.dockCenterTol || vert > CFG.dockCenterTol) {
+            var bits = [];
+            if (lat > CFG.dockCenterTol) bits.push(lat + (o.lateral > 0 ? ' right' : ' left'));
+            if (vert > CFG.dockCenterTol) bits.push(vert + (o.vertical > 0 ? ' high' : ' low'));
+            say(bits.join(', ') + ', range ' + round10(o.range) + '.');
+        }
+    }
+}
+
+function abortToEntry() {
+    var entry = add(docking.poi.pos, scale(docking.axis, CFG.dockCorridorLen));
+    ship.pos = entry; ship.vel = v3(0, 0, 0);
+    var dir = norm(sub(docking.poi.pos, entry));
+    ship.yaw = Math.atan2(dir.x, -dir.z);
+    ship.pitch = Math.asin(clamp(dir.y, -1, 1));
+    docking.coachAt = Date.now();
+    SIM.cues.play('dock_abort');
+    say('Too fast. Docking aborted. Resetting to the approach corridor.');
+}
+
+// Success: repair/rearm/refuel and the delivery handover move here from the
+// old instant-call flow — they now happen on ARRIVAL, not on the call.
+function finishDocking() {
+    var poi = docking.poi;
+    stopDocking(true);
+    ship.vel = v3(0, 0, 0);
+    SIM.cues.play('dock_clunk');
+    docked = { poi: poi };
+    stationIdx = 0;
+    var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
+        refueled = warpCharge < CFG.warpTankMax;
+    hull = CFG.shipHull; missiles = CFG.missileMax; refillWarp();
+    var service = (repaired ? 'Hull repaired. ' : '') +
+                  (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
+                  (refueled ? 'Warp tank filled. ' : '');
+    if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
+        var delivered = ore;
+        demo.delivered = true;
+        ore = 0;
+        var isBest = recordRun(demo.elapsed);
+        var bestLine = isBest === true ? 'New personal best!'
+                      : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
+                      : '';
+        setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
+        say('Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
+            'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service + stationMenuIntro());
+    } else {
+        say('Docked at ' + poi.name + '. ' + service +
+            (demo && !demo.delivered
+                ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
+                : 'Your cargo hold reads ' + ore + ' ore.') + ' ' + stationMenuIntro());
+    }
+}
+
+// ---- station menu shell (SPEC 1.7 fleshes out the item list) --------------
+// Same shell as the mission menu: arrows navigate, a click per move, Enter
+// selects with a beat, Escape (or X) undocks. Not yet the shared listMenu
+// the plan describes — see CLAUDE.md's note on the run log for why.
+var STATION_ITEMS = [
+    { label: 'Undock', desc: 'Back out along the approach corridor, clear of the station.',
+      run: function () { undock(); } }
+];
+
+function stationMenuIntro() {
+    return 'Station menu. Use up and down arrows to navigate and Enter to select. ' + stationItemText();
+}
+function stationItemText() {
+    var it = STATION_ITEMS[stationIdx];
+    return itemLabel(it) + '. ' + itemDesc(it);
+}
+
+function undock() {
+    var poi = docked.poi;
+    docked = null;
+    var dir = norm(poi.dockAxis || v3(0, 0, 1));
+    ship.pos = add(poi.pos, scale(dir, CFG.dockRadius + 100));
+    ship.vel = v3(0, 0, 0);
+    ship.yaw = Math.atan2(-dir.x, dir.z); ship.pitch = 0;   // face away from the door
+    say('Undocked. Clear of ' + poi.name + '.');
+}
+
+function stationMenuKey(lname) {
+    var n = STATION_ITEMS.length;
+    if (lname === 'escape' || lname === 'x') { undock(); return; }
+    if (lname === 'arrowdown') { menuClick(); stationIdx = (stationIdx + 1) % n; say(stationItemText()); }
+    else if (lname === 'arrowup') { menuClick(); stationIdx = (stationIdx - 1 + n) % n; say(stationItemText()); }
+    else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
+        var item = STATION_ITEMS[stationIdx];
+        if (item.adjust) {
+            if (lname !== 'enter') { menuClick(); item.adjust(lname === 'arrowright' ? 1 : -1); }
+            say(stationItemText());
+            return;
+        }
+        menuSelectSound();
+        say(itemLabel(item) + ' selected.');
+        item.run();
+    } else if (lname === 'tab') {
+        say(stationItemText());
+    } else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse the station menu, Enter selects, Escape undocks. ' + itemLabel(STATION_ITEMS[stationIdx]) + '.');
+    }
+}
+
 // H — hyperwarp to the nav target. Spool up, jump as far as the tank allows,
 // and drop out just beyond calling range — or wherever the charge runs dry —
 // so the last leg is always flown by ear.
@@ -2696,32 +2905,13 @@ function callPoi() {
         newGame('mining');
         say('Field Kappa control: mining rights confirmed. ' + miningIntro());
     } else if (t.poiType === 'station') {
-        // Docking: always a repair and a rearm; in the delivery run, the
-        // handover once the quota is aboard.
-        var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
-            refueled = warpCharge < CFG.warpTankMax;
-        hull = CFG.shipHull; missiles = CFG.missileMax; refillWarp();
-        var service = (repaired ? 'Hull repaired. ' : '') +
-                      (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
-                      (refueled ? 'Warp tank filled. ' : '');
-        if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
-            var delivered = ore;
-            demo.delivered = true;
-            ore = 0;
-            var isBest = recordRun(demo.elapsed);
-            var bestLine = isBest === true ? 'New personal best!'
-                          : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
-                          : '';
-            setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
-            say('Station Meridian control: cargo received, ' + delivered + ' ore. Delivery complete! ' +
-                'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service +
-                'X for the mission menu, or keep flying the sector.');
-        } else {
-            say('Station Meridian control: docking clearance granted. ' + service +
-                (demo && !demo.delivered
-                    ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
-                    : 'Your cargo hold reads ' + ore + ' ore. Trading opens soon, pilot.'));
+        if (docked) { say('Already docked. Escape or X undocks.'); return; }
+        if (docking) {
+            var o = dockOffsets();
+            say('Approach corridor active. Range ' + round10(o.range) + '.');
+            return;
         }
+        startDocking(t);
     } else {
         say('Planet Auren orbital relay: atmospheric operations are not yet available. ' +
             'The view is spectacular, though.');
@@ -2795,6 +2985,9 @@ function onKeyDown(e) {
     // The run log captures everything the same way.
     if (runlog.open) { runLogKey(lname); return; }
 
+    // Docked at a station: the station menu captures everything.
+    if (docked) { stationMenuKey(lname); return; }
+
     // Mid-jump, the ship answers to nobody.
     if (warping) { if (!e.repeat) say('Hyperwarp in progress.'); return; }
 
@@ -2832,7 +3025,8 @@ function onKeyDown(e) {
             else say('C calls points of interest in open sector space.');
             break;
         case 'x':
-            if (sectorHome && mode !== 'sector') returnToSector();
+            if (docking) stopDocking(false);
+            else if (sectorHome && mode !== 'sector') returnToSector();
             else exitToMenu();
             break;
         case 'i':      statusReport(); break;
@@ -2917,7 +3111,7 @@ function simTick(dt) {
     // The delivery clock runs whenever the sim is live, hyperwarp included.
     if (demo && !demo.delivered && running && !paused && !help.open && !map.open &&
         !menuOpen && !over() && dt > 0) demo.elapsed += dt;
-    if (!running || paused || over() || help.open || map.open || menuOpen || warping || dt <= 0) {
+    if (!running || paused || over() || help.open || map.open || menuOpen || warping || docked || dt <= 0) {
         thrusterSync(null); updateStabilizers(0); return;
     }
 
@@ -2960,6 +3154,7 @@ function simTick(dt) {
     updateShield(dt);
     updateEnemies(dt);
     updateWarpCore(dt);
+    updateDocking(dt);
     updateStatusLine();
 }
 
@@ -3022,6 +3217,8 @@ window.__sim = {
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
+            docking: docking ? Object.assign({ poiName: docking.poi.name }, dockOffsets()) : null,
+            docked: docked ? { poiName: docked.poi.name } : null,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
@@ -3087,6 +3284,7 @@ function clearMission() {
     shieldReset();
     laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
     warpCoreSound(false);                        // (the charge itself persists across a sector run)
+    stopDocking(true); docked = null; dockToneOn(false);
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
