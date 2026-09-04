@@ -21,6 +21,15 @@ announced through an ARIA live region, so a screen reader (NVDA, JAWS,
 VoiceOver, Narrator) reads it. Sighted players can follow the small text
 status line, but the game does not need it.
 
+## Difficulty
+
+The last item on the mission menu is Difficulty, adjusted with left and
+right arrows right there on the menu line: **Rookie** (ships hold their
+fire until you hit them — the easiest way to learn the controls), **Veteran**
+(every ship is hostile and watching from the moment an encounter starts),
+and **Ace** (Veteran, plus a slower shield, a touchier laser, and a smaller
+missile magazine). It sticks until you change it again.
+
 ## The timed delivery run (first item on the menu)
 
 The shareable challenge. The clock starts at once.

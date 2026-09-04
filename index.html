@@ -54,7 +54,7 @@
 'use strict';
 
 // ============================== 1. CONFIG ===================================
-var CFG = {
+var CFG_DEFAULTS = {
     turnRate:   Math.PI / 3,     // 60 deg/s yaw and pitch while arrow held
     pitchLimit: 85 * Math.PI / 180,
     thrust:     70,              // u/s^2 along the nose while W held
@@ -148,9 +148,47 @@ var CFG = {
     radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0   // +6 dB
 };
 
+// The live config: a fresh copy of the numeric baseline with the active
+// tier's overrides merged on top. Every CFG.xxx read elsewhere in the file
+// sees this object, so applyTier() re-tuning it in place is all a tier
+// change needs — nothing else in the code has to know tiers exist.
+var CFG = Object.assign({}, CFG_DEFAULTS);
+
+// Difficulty tiers. Rookie is the numeric baseline (its cfg overlay is
+// empty) with enemies passive until hit; Veteran and Ace make every ship
+// hostile from the start (the original, harder Round 10 pacing) and tune a
+// few numbers tighter. zoneIdxDefault only takes effect when the tier is
+// SET (menu adjust or profile load), never re-applied mid-mission, so a
+// zone the pilot picked with Z survives leaving and re-entering a mission.
+var TIERS = [
+    { name: 'Rookie',  alwaysHostile: false, zoneIdxDefault: 0, cfg: {} },
+    { name: 'Veteran', alwaysHostile: true,  zoneIdxDefault: 0, cfg: {} },
+    { name: 'Ace',     alwaysHostile: true,  zoneIdxDefault: 1,
+      cfg: { shieldRaiseMs: 2500, laserMissWindowMs: 12000, missileMax: 6 } }
+];
+var TIER_DESCS = [
+    'Ships hold their fire until you hit them. Standard shields and magazine.',
+    'Every ship is hostile from the start, the full training-drill pacing.',
+    'Veteran pacing, a slower shield, a touchier laser, and a smaller magazine.'
+];
+
+function applyTier(idx) {
+    tierIdx = idx;
+    Object.assign(CFG, CFG_DEFAULTS, TIERS[idx].cfg);
+    zoneIdx = TIERS[idx].zoneIdxDefault;
+}
+
+// Placeholder until 1.4 (profile persistence) lands: keeps the Difficulty
+// menu item's call site stable.
+function saveProfile() {}
+
 // Target roster. Each voice is a distinct timbre so identity survives motion.
+// The Cruiser carries a Rookie-only overlay (Brian: unbeatable at Rookie
+// otherwise — it orbits AND shoots back): slower orbit, less hull, missile
+// attacks only, and no evade burst on surviving a missile hit. Veteran and
+// Ace keep the harder Cruiser.
 function makeRoster() {
-    return [
+    var list = [
         // shipAsset = recorded engine loop (audio/ships), pitched per hull
         // class; the oscillator voice is the fallback if decoding fails.
         { name: 'Freighter', hp: 120, pos: v3(0, 0, -300),    voice: { type: 'sawtooth', freq: 55,  trem: 3 },
@@ -163,8 +201,19 @@ function makeRoster() {
           shipAsset: { name: 'ship_corvette_1', rate: 1.2 } },
         { name: 'Cruiser',   hp: 150, pos: v3(350, 60, 0),    voice: { type: 'detuned',  freq: 82,  trem: 2 },
           shipAsset: { name: 'ship_cruiser_3', rate: 0.95 },
-          orbit: { radius: 350, y: 60, degPerSec: 8, angle: 0 } }
+          orbit: { radius: 350, y: 60, degPerSec: 8, angle: 0 },
+          rookie: { hp: 120, orbitDegPerSec: 3, missileOnly: true, noEvadeBurst: true } }
     ];
+    if (TIERS[tierIdx].name === 'Rookie') {
+        list.forEach(function (t) {
+            if (!t.rookie) return;
+            if (t.rookie.hp !== undefined) t.hp = t.rookie.hp;
+            if (t.orbit && t.rookie.orbitDegPerSec !== undefined) t.orbit.degPerSec = t.rookie.orbitDegPerSec;
+            if (t.rookie.missileOnly) t.missileOnly = true;
+            if (t.rookie.noEvadeBurst) t.noEvadeBurst = true;
+        });
+    }
+    return list;
 }
 
 // Target zone presets. Beginners need a bigger center to land shots; later,
@@ -249,6 +298,7 @@ var threatIn = 0;        // seconds until the next enemy attack
 var coachedShield = 0;   // how many times the lock warning has said "G"
 var lastCycleAt = 0;     // a cycle already spoke the distance; lock stays quiet for a beat
 var demo = null;         // the timed delivery run, while active
+var tierIdx = 0;         // index into TIERS; 0 = Rookie
 function over() { return won || lost; }
 
 function zoneRad() {
@@ -357,7 +407,7 @@ var HELP_SECTIONS = [
         'The laser bites harder up close: at point-blank range every tick does up to ' + Math.round((CFG.laserCloseMult - 1) * 100) + ' percent more. Closing in is worth it, but it shortens your warning time when the enemy fires back.',
         'Two bursts in a row that do no damage overheat the laser. It hisses and pings while it cools for ' + (CFG.laserOverheatMs / 1000) + ' seconds, and a chime tells you it is ready again.',
         'Targets have different hull strengths. T and I report hull percent, and weak spots die to a single good burn.',
-        'F fires a homing missile for ' + CFG.missileDamage + ' damage. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.',
+        function () { return 'F fires a homing missile for ' + CFG.missileDamage + ' damage. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.'; },
         'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
         'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
         'Weapon and tool keys sit under the left hand — Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
@@ -368,7 +418,7 @@ var HELP_SECTIONS = [
         'So pick your fights: a ship killed in one burst never fires at all, and a wounded ship is an angry ship.',
         'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
         'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
-        'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.',
+        function () { return 'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.'; },
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
@@ -384,7 +434,8 @@ var HELP_SECTIONS = [
         'Your run time is spoken on delivery. Losing your ship fails the run; Enter restarts it from the beginning.'
     ] },
     { heading: 'Mining', items: [
-        'The mission menu lists the delivery run, the sector, combat training, space mining, and help. Up and down arrows browse it, Enter selects, and a first letter jumps to an item. X leaves any mission and returns to the menu.',
+        'The mission menu lists the delivery run, the sector, combat training, space mining, help, and difficulty. Up and down arrows browse it, Enter selects, and a first letter jumps to an item. X leaves any mission and returns to the menu.',
+        'Difficulty is Rookie, Veteran, or Ace: left and right arrows change it right there on the menu line. Rookie ships hold their fire until hit; Veteran and Ace are hostile from the moment an encounter starts.',
         'Asteroids drift inside a cloud, and each type sings its own looping sound: Ice is soft and splits easily, Iron is hard and chips, Stone is in between.',
         'The mining laser chips away at a rock, but you never know exactly how much a stage needs — every rock rolls its strength in secret.',
         'When a stage gives way you hear a real blast: the rock may break in two, or be chipped down a size with a higher voice.',
@@ -421,7 +472,9 @@ function buildHelpLines() {
     var lines = [];
     HELP_SECTIONS.forEach(function (s) {
         lines.push({ text: s.heading + ', heading.', heading: true });
-        s.items.forEach(function (it) { lines.push({ text: it, heading: false }); });
+        s.items.forEach(function (it) {
+            lines.push({ text: typeof it === 'function' ? it() : it, heading: false });
+        });
     });
     return lines;
 }
@@ -484,7 +537,7 @@ var KEY_DESCRIPTIONS = {
     w: 'Thrust forward along the nose. Hold to accelerate.',
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector.',
     ' ': 'Fire the laser beam. It burns for two seconds, bites harder up close, and each spoken damage tick depends on how centered the target is. Two empty bursts overheat it.',
-    f: 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.',
+    f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
     m: 'At the mission menu, jumps to space mining.',
@@ -1612,12 +1665,18 @@ function stepMissile(dt) {
                 say(t.name + ' is blasted out of control and hurtles toward the edge of the cloud!');
             }
         } else if (!damageTarget(t, CFG.missileDamage)) {
-            // Survived: impact thump at the target plus a hull report — and
-            // now it KNOWS. It breaks away hard and comes back at you.
+            // Survived: impact thump at the target plus a hull report. A
+            // Rookie Cruiser just takes the hit and answers by missile; every
+            // other ship KNOWS now and breaks away hard.
             noiseBurst(t.pos, 350, 0.5, 1800);
-            var dirWord = alertTarget(t);
-            say(t.name + ' hit. Hull ' + hullPercent(t) + ' percent. It breaks away hard' +
-                (dirWord ? ', ' + dirWord : '') + '!');
+            if (t.noEvadeBurst) {
+                threatIn = Math.min(threatIn, CFG.enemyAlertAttackS);
+                say(t.name + ' hit. Hull ' + hullPercent(t) + ' percent.');
+            } else {
+                var dirWord = alertTarget(t);
+                say(t.name + ' hit. Hull ' + hullPercent(t) + ' percent. It breaks away hard' +
+                    (dirWord ? ', ' + dirWord : '') + '!');
+            }
         }
     } else if (m.age > CFG.missileLifeS) {
         noiseBurst(m.pos, 300, 0.35, 1200);
@@ -1709,7 +1768,7 @@ function updateEnemies(dt) {
     var pool = alert.length ? alert : cands;
     var t = pool[Math.floor(Math.random() * pool.length)];
     t.alert = false;
-    if (len(sub(t.pos, ship.pos)) <= CFG.enemyLaserRange) startEnemyLaser(t);
+    if (!t.missileOnly && len(sub(t.pos, ship.pos)) <= CFG.enemyLaserRange) startEnemyLaser(t);
     else startEnemyMissile(t);
 }
 
@@ -2543,7 +2602,10 @@ function onKeyDown(e) {
             say('Explore mode off.');
         } else {
             say(prettyKey(name) + '. ' +
-                (KEY_DESCRIPTIONS[lname === ' ' ? ' ' : lname] || 'Does nothing here.'));
+                (function () {
+                    var d = KEY_DESCRIPTIONS[lname === ' ' ? ' ' : lname];
+                    return (typeof d === 'function' ? d() : d) || 'Does nothing here.';
+                })());
         }
         return;
     }
@@ -2825,6 +2887,7 @@ function newGame(m) {
         targets.forEach(function (t) {
             t.alive = true;
             t.maxHp = t.hp;
+            t.hostile = TIERS[tierIdx].alwaysHostile;
             if (t.orbit) {
                 t.pos = v3(Math.cos(t.orbit.angle) * t.orbit.radius, t.orbit.y,
                            Math.sin(t.orbit.angle) * t.orbit.radius);
@@ -2852,7 +2915,11 @@ var MENU_ITEMS = [
       desc: 'Open space with four points of interest. Free flight, no clock.',
       run: function () { startMission('sector'); } },
     { label: 'Combat training',
-      desc: 'Five ships in a training zone. They hold their fire until you hit them.',
+      desc: function () {
+          return 'Five ships in a training zone. ' + (TIERS[tierIdx].alwaysHostile
+              ? 'Every ship is hostile from the start.'
+              : 'They hold their fire until you hit them.');
+      },
       run: function () { startMission('combat'); } },
     { label: 'Mining',
       desc: 'An asteroid cloud to laser apart, vacuum, and extract.',
@@ -2864,7 +2931,13 @@ var MENU_ITEMS = [
       run: function () { startMission('mining'); } },
     { label: 'Help',
       desc: 'The help screen. F1 also opens it anywhere.',
-      run: function () { openHelp(); } }
+      run: function () { openHelp(); } },
+    { label: function () { return 'Difficulty: ' + TIERS[tierIdx].name; },
+      desc: function () { return TIER_DESCS[tierIdx]; },
+      adjust: function (dir) {
+          applyTier((tierIdx + dir + TIERS.length) % TIERS.length);
+          saveProfile();
+      } }
 ];
 var menuIdx = 0;
 var menuBusy = false;   // the beat between "selected" and the action
@@ -2875,7 +2948,9 @@ function menuSelectSound() {
     sfxTone({ type: 'square', f1: 300, dur: 0.1, vol: 0.05, at: 0.1 });
 }
 
-function menuItemText(i) { return MENU_ITEMS[i].label + '. ' + MENU_ITEMS[i].desc; }
+function itemLabel(item) { return typeof item.label === 'function' ? item.label() : item.label; }
+function itemDesc(item)  { return typeof item.desc  === 'function' ? item.desc()  : item.desc; }
+function menuItemText(i) { return itemLabel(MENU_ITEMS[i]) + '. ' + itemDesc(MENU_ITEMS[i]); }
 
 // Entering the menu: the full instruction plus the current item.
 function menuAnnounce(prefix) {
@@ -2899,9 +2974,16 @@ function menuKey(lname, name) {
         menuClick(); menuIdx = (menuIdx - 1 + n) % n; say(menuItemText(menuIdx));
     } else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
         var item = MENU_ITEMS[menuIdx];
+        // The Difficulty line adjusts in place on Left/Right instead of
+        // launching anything; Enter just re-states it (KC settings pattern).
+        if (item.adjust) {
+            if (lname !== 'enter') { menuClick(); item.adjust(lname === 'arrowright' ? 1 : -1); }
+            say(menuItemText(menuIdx));
+            return;
+        }
         if (item.ready && !item.ready()) return;
         menuSelectSound();
-        say(item.label + ' selected.');
+        say(itemLabel(item) + ' selected.');
         menuBusy = true;
         setTimeout(function () {
             menuBusy = false;
@@ -2920,13 +3002,13 @@ function menuKey(lname, name) {
         var next = -1;
         for (var i = 1; i <= n; i++) {
             var k = (menuIdx + i) % n;
-            if (MENU_ITEMS[k].label.toLowerCase().charAt(0) === lname) { next = k; break; }
+            if (itemLabel(MENU_ITEMS[k]).toLowerCase().charAt(0) === lname) { next = k; break; }
         }
         if (next >= 0) { menuClick(); menuIdx = next; say(menuItemText(menuIdx)); }
         else { blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
     } else {
         blip(220, 80, 0.1);
-        say('Up and down arrows browse the mission menu, Enter selects. ' + MENU_ITEMS[menuIdx].label + '.');
+        say('Up and down arrows browse the mission menu, Enter selects. ' + itemLabel(MENU_ITEMS[menuIdx]) + '.');
     }
 }
 
@@ -2940,10 +3022,13 @@ function exitToMenu() {
 }
 
 function combatIntro() {
-    return 'Combat training. Five targets detected. The Freighter is dead ahead. ' +
-           'Tab cycles targets, T reports the selected one, Space fires when the tone goes solid. Ships hold their fire ' +
-           'until you hit them, then they shoot back: when you hear the lock-on chirps, ' +
-           'G raises the shields. F1 for help.';
+    var stance = TIERS[tierIdx].alwaysHostile
+        ? 'Every ship is hostile and watching.'
+        : 'Ships hold their fire until you hit them.';
+    return 'Combat training, ' + TIERS[tierIdx].name + ' difficulty. Five targets detected. ' +
+           'The Freighter is dead ahead. Tab cycles targets, T reports the selected one, ' +
+           'Space fires when the tone goes solid. ' + stance + ' When you hear the lock-on ' +
+           'chirps, G raises the shields. F1 for help.';
 }
 
 function sectorIntro() {

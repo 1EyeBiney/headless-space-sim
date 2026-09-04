@@ -37,7 +37,26 @@ expands.
 Mission menu (Keyboard Commander style list: Up/Down wrap, click per move,
 Enter/Left/Right select with a two-note sound + "X selected" + 600 ms beat,
 first-letter jump, Tab repeats, cursor remembered; `MENU_ITEMS` in SHELL) →
-Delivery run / Sector (the hub) / Combat training / Mining / Help.
+Delivery run / Sector (the hub) / Combat training / Mining / Help / Difficulty.
+
+**Difficulty tiers (Round 11)**: `TIERS` in CONFIG (Rookie/Veteran/Ace).
+`CFG_DEFAULTS` is the frozen numeric baseline; `CFG` is a live copy
+`applyTier(idx)` rebuilds from `CFG_DEFAULTS` + `TIERS[idx].cfg` — every
+`CFG.xxx` read elsewhere sees the same mutated object, so nothing else in
+the file needs to know tiers exist. The Difficulty menu item is `adjust`-
+typed (Left/Right cycle it in place, Enter just re-states it) rather than
+`run`-typed. Rookie = enemies **passive until hit** (`t.hostile` set by
+`provoke()` in `damageTarget`, fuse `enemyProvokedS` 4 s) + the Cruiser's
+`rookie` overlay in `makeRoster` (hp 150→120, orbit 8→3 deg/s, missile
+attacks only via `t.missileOnly`, no evade burst via `t.noEvadeBurst` — it
+was unbeatable otherwise, since it orbits AND shoots back). Veteran/Ace =
+every ship spawns `hostile: true` (the original harder Round 10 pacing);
+Ace also tightens `shieldRaiseMs`, `laserMissWindowMs`, `missileMax`, and
+defaults the zone to Standard. **Gotcha**: any help/description string that
+interpolates a tier-varying `CFG` value must be a function re-evaluated at
+speak time (`HELP_SECTIONS` items, `KEY_DESCRIPTIONS.f`, both wrapped
+already), not a plain string baked in at parse time — `CFG` is no longer
+static once tiers exist.
 
 - **Delivery run (the demo)**: sector with a clock (`demo` state; counts while
   the sim is live, warp included; pauses/help/map stop it). Order enforced:
@@ -93,7 +112,8 @@ Arrows yaw/pitch · W thrust / S brake · Space laser beam · F missile · G shi
 · Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
 zone size · Q map · H warp · C call · I status (adds hull, missiles, shields,
 laser heat, demo clock + objective) · X leave · F1 help · F12 explore · Escape
-pause. Menu: arrows + Enter (first letters D/S/C/M/H jump).
+pause. Menu: arrows + Enter (first letters D/S/C/M/H jump); Left/Right on
+the Difficulty line cycles Rookie/Veteran/Ace in place.
 
 ## Accessibility architecture (non-negotiable)
 
