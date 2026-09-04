@@ -29,14 +29,22 @@ expands.
   tag with that file's contents inline, in order (see git history for the
   exact script; do not hand-edit the demo file).
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
-- `audio/` — Brian's source recordings (never read at runtime): 3 asteroid
-  loops, 3 asteroid explosions, missile-firing mp3, `audio/ships/` = 18 ship
-  loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far).
-  `audio/Backups`, `audio/Media`, `audio/peaks` are REAPER scratch: gitignored.
-  `audio/Explosions`, `audio/missiles`, `audio/warp`, `audio/weapons` are
-  new (Round 12) recordings Brian is auditioning — NOT yet decoded into
-  audio_assets.js or referenced anywhere. Leave them unconnected until told
-  otherwise; see "Audio architecture" for how they eventually get wired in.
+- `audio/` — Brian's source recordings (never read at runtime, organized by
+  category as of Round 12's housekeeping pass — `audio_assets.js` embeds by
+  ASSET KEY, not by path, so none of these moves touch runtime code):
+  `audio/mining/` = 3 asteroid loops + 3 asteroid explosions (all 6 already
+  embedded in `audio_assets.js`); `audio/ships/` = 18 ship loops
+  (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
+  `audio/ships/warp/` = a warp-drama candidate recording; `audio/weapons/
+  missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
+  = 16 new unintegrated laser candidates; `audio/Explosions/` = 8 new
+  unintegrated hull-breach/explosion candidates. Everything under
+  `audio/mining/` and `audio/weapons/missiles/` (the embedded ones) is
+  already wired in by key name; everything else Brian is auditioning is
+  NOT yet decoded into `audio_assets.js` or referenced anywhere — leave it
+  unconnected until told otherwise; see "Audio architecture" for how it
+  eventually gets wired in. `audio/z.old/` (Backups/Media/peaks, REAPER
+  scratch) is gitignored.
 - `.claude/launch.json` — a static-file server config (`npx serve`, port
   8934) for `preview_start`, same convention as `ag`'s and `kc`'s own
   `.claude/launch.json`. Needed now that the game is split across four
