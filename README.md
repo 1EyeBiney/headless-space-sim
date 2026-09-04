@@ -74,16 +74,23 @@ magazine, a bigger warp tank, faster core cooling. Every module adds a
 little mass, and mass is the tradeoff: no friction in space, so a heavier
 ship just turns and thrusts a little slower. Escape undocks.
 
-The warp drive has a tank, measured in distance, and a jump spends it. A
-jump longer than the tank still goes — you drop out where the charge runs
-dry and thrust the rest. The tank refills at the station and whenever you
-leave an encounter, and recovers slowly in open flight — the ship
-reports the core at 50 and 75 percent, and again when it's full; the
-quadrant map says whether each point is in range. Expect the legs into the asteroid
+The warp drive has a tank, measured in distance, and a jump spends it —
+you need at least a quarter tank to jump at all. A jump longer than the
+tank still goes — you drop out where the charge runs dry and thrust the
+rest. The tank refills at the station and whenever you leave an
+encounter, and recovers slowly in open flight — the ship reports the
+core at 50 and 75 percent, and again when it's full; the quadrant map
+says whether each point is in range. Expect the legs into the asteroid
 field and back to the station to run it dry a little short. The drive
 also won't spool within 1,500 of any point of interest, so after a visit
 you'll need to fly clear before jumping onward — and which way you fly
 out changes how far the next jump reaches.
+
+A jump takes real time — the ship sits still while the drive spools,
+then flies the distance in one continuous run, arriving to the sound of
+the drive winding down. Longer jumps take longer, up to about 12
+seconds. You can still open the mission menu with Escape mid-flight;
+the jump keeps going and you'll hear it arrive.
 
 ## Keys
 

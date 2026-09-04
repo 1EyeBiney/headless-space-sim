@@ -112,8 +112,25 @@ var CFG_DEFAULTS = {
     oreCreditRate: 10,        // 1 credit per this many ore
     influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
-    warpChargeMs: 2000,      // spool-up before the jump
     warpMinDist: 1200,       // closer than this: just fly it
+    // Warp drama (SPEC 1.17): a jump takes real time and flies the ship
+    // continuously, scored by three recorded phases played at their own
+    // rate, never trimmed or time-stretched. warpEdgeClipS/warpEngagedS are
+    // the measured lengths of the recordings themselves (audio/ships/warp),
+    // not independently tunable — change them only if the clips are re-cut.
+    // The shortest allowed jump is exactly one pass of all three
+    // (4 + 1.5 + 4 = 9.5s); warpJumpLongDist is calibrated (see SECTOR_POIS)
+    // so the delivery run's station -> Contested Zone leg on a full tank
+    // takes exactly warpJumpMaxS. Anything past that distance is still
+    // warpJumpMaxS — the engaged loop just repeats longer in between.
+    warpEdgeClipS: 4,        // length of every warp_startN / warp_finishN clip
+    warpEngagedS: 1.5,       // length of a warp_engagedNr loop
+    warpJumpMinS: 9.5,
+    warpJumpMaxS: 12,
+    warpJumpLongDist: 10606, // travel distance (see SPEC 1.17) mapping to warpJumpMaxS
+    warpMinChargePct: 25,    // refuse a jump under this % of the tank
+    warpEngine: 1,           // 1-6; a drive module will pick this later (A.5) — only
+                              // engine 1's clips are embedded in audio_assets.js so far
     warpInhibitDist: 1500,   // this close to ANY point of interest, the drive won't spool at all
     // The warp tank (SPEC 1.10) is measured in DISTANCE: a jump spends charge
     // by distance flown, and a jump that outreaches the tank drops the pilot
@@ -484,6 +501,9 @@ var ROCK_SIZES = [
 // clear toward Kappa the jump needs ~12900, so the tank runs dry ~1000
 // short and the last stretch is flown. Kappa -> station is ~15100, the
 // same shape. Move a point and the legs move with it — check all three.
+// SPEC 1.17: the station -> Contested Zone leg's travel distance (from
+// placeAtStationStart's 1800-out entry point, on a full tank) is ~10606,
+// which is CFG.warpJumpLongDist — move either point and re-measure it.
 var SECTOR_POIS = [
     { name: 'Contested Zone',       poiType: 'combat',
       desc: 'combat area',   pos: v3(5200, 400, -5600) },
@@ -519,6 +539,8 @@ var zoneIdx = 0;         // start Wide: a big center for first-time pilots
 var help = { open: false, idx: -1, lines: [] };
 var map = { open: false, idx: -1 };   // the Q quadrant map overlay
 var warping = false;
+var warpFlight = null;   // { poi, dir, fromPos, travel, dry, totalTime, elapsed, engine, phase }
+var warpEngagedNode = null;
 var sectorHome = null;   // set while inside an encounter entered from the sector
 var lost = false;        // hull breached: the encounter is over, like won
 var hull = 100;          // set from CFG.shipHull at mission start
@@ -3085,6 +3107,39 @@ function nearbyPoi() {
     return best;
 }
 
+// Warp drama (SPEC 1.17): three phases, all on the UI bus like every other
+// ship-own sound (thrusters, shield hum) — there's no HRTF position for the
+// listener's own engine. If an engine's clips aren't decoded (only engine 1
+// is, for now), the old synthesized warp_charge cue fills in for the start;
+// the engaged loop and finish clip simply go quiet rather than crash, and
+// the arrival sting (warp_arrive/warp_dry) always plays regardless.
+function playWarpStart(engine) {
+    if (!SIM.audio.playAsset('warp_start' + engine, 0.5)) {
+        SIM.cues.play('warp_charge', { dur: CFG.warpEdgeClipS });
+    }
+}
+function startWarpEngagedLoop(engine) {
+    var A = SIM.audio, name = 'warp_engaged' + engine + 'r';
+    if (!A.ctx || !A.assetBufs[name]) return;
+    var src = A.ctx.createBufferSource();
+    src.buffer = A.assetBufs[name];
+    src.loop = true;
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    src.connect(g); g.connect(A.uiBus);
+    src.start();
+    A.ramp(g.gain, 0.4, 0.15);
+    warpEngagedNode = { src: src, g: g };
+}
+function stopWarpEngagedLoop() {
+    if (!warpEngagedNode) return;
+    var n = warpEngagedNode; warpEngagedNode = null;
+    SIM.audio.ramp(n.g.gain, 0.0001, 0.15);
+    setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+}
+function playWarpFinish(engine) {
+    SIM.audio.playAsset('warp_finish' + engine, 0.5);
+}
+
 function startWarp() {
     if (mode !== 'sector') { say('Hyperwarp needs open sector space.'); return; }
     if (warping) return;
@@ -3100,42 +3155,83 @@ function startWarp() {
         say('Too close for hyperwarp. Just fly it. Distance ' + round10(d) + '.');
         return;
     }
-    if (warpCharge <= 0) {
+    var chargePct = warpCharge / CFG.warpTankMax * 100;
+    if (chargePct < CFG.warpMinChargePct) {
         SIM.cues.play('refusal_wait');
-        say('Warp charge exhausted. Fly it, or let the core cool. Q for the map.');
+        say('Warp core below ' + CFG.warpMinChargePct + ' percent. Let it cool, or fly it.');
         return;
     }
     var autoOff = autoThrust ? 'Auto-thrust off. ' : '';
     autoThrust = false;
+    var dir = norm(sub(t.pos, ship.pos));
+    var need = warpNeed(d);
+    var travel = Math.min(need, warpCharge);
+    var dry = travel < need;
+    // Flight time scales with the distance actually flown: warpJumpMinS at
+    // the shortest allowed travel (a jump right at warpMinDist), up to
+    // warpJumpMaxS at warpJumpLongDist and beyond. A dry jump (travel <
+    // need) simply takes less time — it's still flying the same distance,
+    // just less of it (SPEC 1.17).
+    var minTravel = CFG.warpMinDist - CFG.warpDropout;
+    var frac = clamp((travel - minTravel) / (CFG.warpJumpLongDist - minTravel), 0, 1);
+    var totalTime = CFG.warpJumpMinS + (CFG.warpJumpMaxS - CFG.warpJumpMinS) * frac;
     warping = true;
     keysDown = {};
     thrusterSync(null);
     updateStabilizers(0);
+    ship.vel = v3(0, 0, 0);
+    warpFlight = { poi: t, dir: dir, fromPos: v3(ship.pos.x, ship.pos.y, ship.pos.z),
+                    travel: travel, dry: dry, totalTime: totalTime, elapsed: 0,
+                    engine: CFG.warpEngine, phase: 'start' };
+    playWarpStart(warpFlight.engine);
     say(autoOff + 'Hyperwarp charging.');
-    SIM.cues.play('warp_charge', { dur: CFG.warpChargeMs / 1000 });
+}
+
+// Runs every frame from simTick while warping — the automated flight itself.
+// The ship sits still through the start clip (the spool), then moves at a
+// constant rate for the rest of the flight (through the engaged loop AND
+// the finish clip, arriving exactly as the finish clip ends).
+function updateWarpFlight(dt) {
+    var f = warpFlight;
+    f.elapsed += dt;
+    var moveStart = CFG.warpEdgeClipS;
+    var p = clamp((f.elapsed - moveStart) / (f.totalTime - moveStart), 0, 1);
+    ship.pos = add(f.fromPos, scale(f.dir, f.travel * p));
+
+    if (f.phase === 'start' && f.elapsed >= CFG.warpEdgeClipS) {
+        f.phase = 'engaged';
+        startWarpEngagedLoop(f.engine);
+    }
+    var finishAt = f.totalTime - CFG.warpEdgeClipS;
+    if (f.phase === 'engaged' && f.elapsed >= finishAt) {
+        f.phase = 'finish';
+        stopWarpEngagedLoop();
+        playWarpFinish(f.engine);
+    }
+    if (f.elapsed >= f.totalTime) finishWarpFlight();
+}
+
+function finishWarpFlight() {
+    var f = warpFlight;
+    stopWarpEngagedLoop();
+    ship.pos = add(f.fromPos, scale(f.dir, f.travel));
+    warpCharge -= f.travel;
+    ship.vel = v3(0, 0, 0);
+    ship.yaw = Math.atan2(f.dir.x, -f.dir.z);
+    ship.pitch = Math.asin(clamp(f.dir.y, -1, 1));
+    warping = false;
+    var dry = f.dry, poi = f.poi;
+    warpFlight = null;
+    SIM.cues.play(dry ? 'warp_dry' : 'warp_arrive');
     setTimeout(function () {
-        if (!running || mode !== 'sector') { warping = false; return; }
-        var dir = norm(sub(t.pos, ship.pos));
-        var need = warpNeed(len(sub(t.pos, ship.pos)));
-        var travel = Math.min(need, warpCharge);
-        var dry = travel < need;
-        SIM.cues.play(dry ? 'warp_dry' : 'warp_arrive');
-        ship.pos = add(ship.pos, scale(dir, travel));
-        warpCharge -= travel;
-        ship.vel = v3(0, 0, 0);
-        ship.yaw = Math.atan2(dir.x, -dir.z);
-        ship.pitch = Math.asin(clamp(dir.y, -1, 1));
-        warping = false;
-        setTimeout(function () {
-            var rem = round10(len(sub(t.pos, ship.pos)));
-            say(dry
-                ? 'Warp charge exhausted. ' + t.name + ' dead ahead, distance ' + rem +
-                  '. Thrust the rest; C calls it within ' + CFG.poiInteract + '.'
-                : 'Hyperwarp complete. ' + t.name + ' dead ahead, distance ' + rem +
-                  '. C calls it once you are within ' + CFG.poiInteract +
-                  '. Warp charge ' + warpPct() + ' percent.');
-        }, 350);
-    }, CFG.warpChargeMs);
+        var rem = round10(len(sub(poi.pos, ship.pos)));
+        say(dry
+            ? 'Warp charge exhausted. ' + poi.name + ' dead ahead, distance ' + rem +
+              '. Thrust the rest; C calls it within ' + CFG.poiInteract + '.'
+            : 'Hyperwarp complete. ' + poi.name + ' dead ahead, distance ' + rem +
+              '. C calls it once you are within ' + CFG.poiInteract +
+              '. Warp charge ' + warpPct() + ' percent.');
+    }, 350);
 }
 
 // C — call the selected point of interest (within range).
@@ -3250,19 +3346,26 @@ function onKeyDown(e) {
     // Docked at a station: the station menu captures everything.
     if (docked) { stationMenuKey(lname); return; }
 
-    // Mid-jump, the ship answers to nobody — except Escape (SPEC 1.18): the
-    // flight and its sound keep going under the menu, so open it here too
-    // rather than blocking it like every other key.
-    if (warping) {
-        if (lname === 'escape') { if (!e.repeat) openMissionMenuOverlay(); return; }
-        if (!e.repeat) say('Hyperwarp in progress.');
-        return;
-    }
-
-    // The mission menu: a Keyboard Commander style list. Nothing else fires.
+    // The mission menu: a Keyboard Commander style list. Nothing else fires
+    // — checked BEFORE the warping guard below, since Escape (SPEC 1.18) can
+    // open this menu mid-warp and every key from then on (arrows, Enter,
+    // first-letter jumps, Escape-again-resumes) has to actually reach
+    // menuKey() rather than being swallowed by "Hyperwarp in progress."
     if (menuOpen) {
         if (e.repeat) return;
         menuKey(lname, name);
+        return;
+    }
+
+    // Mid-jump with no menu open, the ship answers to nobody — except
+    // Escape (SPEC 1.18): the flight and its sound keep going under the
+    // menu, so open it here too rather than blocking it like every other
+    // key. Reaching this branch means menuOpen was false, so this is the
+    // only place that opens it (menuKey() above handles Escape-again once
+    // it's up).
+    if (warping) {
+        if (lname === 'escape') { if (!e.repeat) openMissionMenuOverlay(); return; }
+        if (!e.repeat) say('Hyperwarp in progress.');
         return;
     }
 
@@ -3395,7 +3498,24 @@ function simTick(dt) {
     // The delivery clock runs whenever the sim is live, hyperwarp included.
     if (demo && !demo.delivered && running && !help.open && !map.open &&
         !menuOpen && !over() && dt > 0) demo.elapsed += dt;
-    if (!running || over() || help.open || map.open || menuOpen || warping || docked || dt <= 0) {
+    if (!running || over() || help.open || map.open || docked || dt <= 0) {
+        thrusterSync(null); updateStabilizers(0); return;
+    }
+
+    // A warp flight is automated — no manual control — but it keeps moving
+    // and sounding even under an open mission menu (SPEC 1.18's mid-warp
+    // exception), so it gets its own branch rather than the plain freeze
+    // menuOpen otherwise causes below.
+    if (warping) {
+        thrusterSync(null); updateStabilizers(0);
+        updateWarpFlight(dt);
+        updateListener();
+        updateTargeting();
+        updateStatusLine();
+        return;
+    }
+
+    if (menuOpen) {
         thrusterSync(null); updateStabilizers(0); return;
     }
 
@@ -3508,6 +3628,9 @@ window.__sim = {
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
             docked: docked ? { poiName: docked.poi.name } : null,
             warping: warping, menuResumable: menuResumable,
+            warpFlight: warpFlight ? { totalTime: Math.round(warpFlight.totalTime * 100) / 100,
+                elapsed: Math.round(warpFlight.elapsed * 100) / 100, travel: Math.round(warpFlight.travel),
+                dry: warpFlight.dry, phase: warpFlight.phase, engagedPlaying: !!warpEngagedNode } : null,
             stationSubmenu: stationSubmenu,
             beacons: beaconMode,
             autoThrust: autoThrust,
@@ -3579,7 +3702,7 @@ function clearMission() {
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
     won = false; lost = false; locked = false;
-    warping = false;
+    stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();

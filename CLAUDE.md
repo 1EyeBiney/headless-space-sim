@@ -35,8 +35,9 @@ expands.
   (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
   `audio/ships/warp/` = 18 warp recordings for SPEC 1.17 (`warp_start1-6`,
   `warp_finish1-6` at 4.0 s each, `warp_engaged1r-6r` loops at 1.5 s,
-  all stereo 48 kHz — none embedded yet; one set per future engine
-  type); `audio/weapons/
+  all stereo 48 kHz; engine 1's three clips embedded, the other five
+  stay on disk until a second drive exists — see "Sector" above);
+  `audio/weapons/
   missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
   = 16 laser candidates (Mining ×8, Rapid-pulse ×8; `mining1`/`mining2`
   embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, all
@@ -46,7 +47,9 @@ expands.
   `audio/mining/` and `audio/weapons/missiles/` (the embedded ones) is
   already wired in by key name; everything else Brian is auditioning is
   NOT yet decoded into `audio_assets.js` or referenced anywhere (the six
-  `laser_switch` clips are the exception, embedded for SPEC 1.14) — leave it
+  `laser_switch` clips, embedded for SPEC 1.14, and engine 1's three
+  `warp_start1`/`warp_engaged1r`/`warp_finish1`, embedded for SPEC 1.17,
+  are the exceptions) — leave the rest
   unconnected until told otherwise; see "Audio architecture" for how it
   eventually gets wired in. `audio/z.old/` (Backups/Media/peaks, REAPER
   scratch) is gitignored.
@@ -188,7 +191,7 @@ already), not a plain string baked in at parse time — `CFG` is no longer
 static once tiers exist.
 
 - **Delivery run (the demo)**: sector with a clock (`demo` state; counts while
-  the sim is live, warp included; pauses/help/map stop it). Order enforced:
+  the sim is live, warp included; help/map/the mission menu stop it). Order enforced:
   Field Kappa refuses mining rights until the Contested Zone is cleared;
   Station Meridian takes the delivery once ore ≥ `CFG.demoOreGoal` (15,000)
   and speaks the run time. Station always repairs hull + rearms missiles.
@@ -197,14 +200,44 @@ static once tiers exist.
   throb / Asteroid Field Kappa rumble / Station Meridian blinking 660 tone /
   Planet Auren 45 Hz drone). Long-range beacon panners (ref 800, rolloff 1.2,
   gain ×2) + distance-haze lowpass in `updateTargeting`. `Q` map overlay,
-  `H` hyperwarp (2 s charge, drops 600 out; interact range 500; refuses
+  `H` hyperwarp (drops 600 out; interact range 500; refuses
   within `warpInhibitDist` 1500 of ANY point of interest via `nearbyPoi()`,
   not just the nav target — Brian: fly clear of a station before jumping
-  anywhere, not just before jumping back to it). **Warp tank (Round 12,
-  SPEC 1.10)**: `warpCharge` in distance units, `warpTankMax` 12500; a
-  jump spends `warpNeed(dist)` = dist − 600, and a jump past the tank
-  still goes — the pilot drops out where the charge runs dry ("Warp charge
-  exhausted... Thrust the rest", cue `warp_dry`). `refillWarp()` on
+  anywhere, not just before jumping back to it). **Warp takes time (Round
+  13, SPEC 1.17, supersedes the instant 2 s-spool-then-teleport model)**:
+  a jump flies continuously and takes `warpJumpMinS` 9.5 – `warpJumpMaxS`
+  12 seconds, scored by three recorded phases played at their own rate,
+  never trimmed — `warp_startN` (4 s, doubles as the old spool: the ship
+  sits still through it), `warp_engagedNr` (a 1.5 s loop, native
+  `AudioBufferSourceNode.loop`, seamless), `warp_finishN` (4 s, ends
+  exactly at arrival). `startWarp()` snapshots `dir`/`travel`/`dry`/
+  `totalTime` into a `warpFlight` object once (POIs don't move, so this is
+  safe); `updateWarpFlight(dt)` runs every frame from `simTick` while
+  `warping`, moving `ship.pos` linearly from `fromPos` over
+  `[warpEdgeClipS, totalTime]` and flipping `warpFlight.phase` at the two
+  audio boundaries. `totalTime` is `warpJumpMinS` at `travel =
+  warpMinDist − warpDropout` (600), rising linearly to `warpJumpMaxS` at
+  `CFG.warpJumpLongDist` (10606 — measured from `placeAtStationStart`'s
+  actual entry point to the Contested Zone on a full tank, so the
+  delivery run's first leg is exactly 12 s) and clamped flat past that. A
+  dry jump (charge-capped `travel < need`) gets a proportionally shorter
+  `totalTime`, confirmed in testing (10.13 s for a 3125-unit travel). No
+  jump under `warpMinChargePct` 25 % ("Warp core below 25 percent. Let it
+  cool, or fly it."). Only engine 1's three clips are embedded
+  (`CFG.warpEngine` default 1); an un-decoded engine falls back to the old
+  synthesized `warp_charge` cue for the start phase and silence for
+  engaged/finish, while the arrival stings (`warp_arrive`/`warp_dry`)
+  always play regardless. **Real bug found and fixed**: `onKeyDown`
+  checked `if (warping)` before `if (menuOpen)`, so once SPEC 1.18's
+  mid-warp Escape opened the mission menu, every subsequent key (besides
+  Escape itself) still hit the warping guard first and got swallowed as
+  "Hyperwarp in progress." instead of reaching `menuKey()` — the menu
+  opened but couldn't be navigated. Fixed by checking `menuOpen` first;
+  confirmed after the fix that menu navigation, abandoning the warp via a
+  different mission item (which now also stops the engaged loop and clears
+  `warpFlight` — added to `clearMission()`), and Resume returning to a
+  still-flying ship (its `elapsed` continuing to advance afterward) all
+  work. `refillWarp()` on
   `returnToSector` (leaving any encounter) and at the station; slow regen
   in open flight (`warpRegenPerS` 40; as of SPEC 1.13 the regen is
   SILENT — Brian dropped the old core-cooling hiss — and `updateWarpCore`
@@ -640,9 +673,15 @@ tick at 29 confirmed untouched), and the Difficulty/help text reflect it
 only when the multiplier is above 1. Machine-tested, not yet heard.
 
 Round 13 also confirmed 1.16 (chaff instant/any time) needed no code
-change — see the chaff bullet above, and built 1.18 (Escape opens the
-mission menu) — see the "Escape / mission menu (Round 13, SPEC 1.18)"
-bullet below. 1.17 (warp takes time) is the last ideas4 item.
+change — see the chaff bullet above — and built 1.18 (Escape opens the
+mission menu, see the "Escape / mission menu" bullet above) and 1.17
+(warp takes time, see the "Sector" bullet's warp paragraph above). All
+five ideas4 items (1.16–1.20) are now built and machine-tested;
+Round 13's one real bug (the `warping`/`menuOpen` ordering in
+`onKeyDown`, found while testing 1.17 against 1.18) is documented in the
+warp paragraph. Nothing from Rounds 10–13 has been heard by Brian yet;
+that's the next step, then Phase 2 on his go (1.11, the ship window,
+stays deferred).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

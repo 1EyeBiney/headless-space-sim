@@ -573,8 +573,9 @@ test), 1.20 (one number per tier), 1.16 (a test, nothing to build),
 commit per item, machine-test at a local server with beacons off, docs
 in sync, push, re-test at Pages, close every tab.
 
-1.19, 1.20, 1.16, and 1.18 are DONE (Sonnet, Round 13) — see below. 1.17
-(warp takes time) is the last ideas4 item.
+1.19, 1.20, 1.16, 1.18, and 1.17 are all DONE (Sonnet, Round 13) — see
+below. ideas4 is fully built. Next: Brian's ear on Rounds 10–13, then
+Phase 2 on his go (1.11, the ship window, remains deferred).
 
 #### 1.16 Chaff is instant, any time (ideas4) — CONFIRMED, no code change
 
@@ -590,7 +591,47 @@ threat had started in the background, so the reply was correctly
 code changed; this is the rule going forward, not an accident of how
 1.8 happened to be written.
 
-#### 1.17 Warp takes time: a three-phase recorded warp, 25 % minimum charge (ideas4)
+#### 1.17 Warp takes time: a three-phase recorded warp, 25 % minimum charge (ideas4) — DONE, needs Brian's ear
+
+Built and machine-tested: the station → Contested Zone leg (measured
+from the actual `placeAtStationStart` entry point) comes out to exactly
+`warpJumpLongDist` 10606 travel units, which the calibration maps to
+`warpJumpMaxS` 12 — confirmed directly: a full-tank jump to the
+Contested Zone from the delivery run's start read `totalTime: 12` and
+`travel: 10606` before a frame had elapsed. Stepped through a whole
+flight with the phase reported every tick: position frozen through the
+4 s start clip, moving at a constant rate the instant the engaged loop
+starts (confirmed the exact frame it began, `phase` flipping
+'start'→'engaged'), the engaged loop stopping and the finish clip
+starting at exactly `totalTime − 4` (confirmed), arrival exactly at
+`totalTime` with the ship exactly `warpDropout` (600) from the target
+and `warpCharge` down by the full 10606 — "Hyperwarp complete. Contested
+Zone dead ahead, distance 600.... Warp charge 15 percent." A dry jump
+(travel capped by a low charge) produced a proportionally SHORTER
+`totalTime` (10.13 s for a 3125-unit travel) and the correct "Warp charge
+exhausted..." line, confirming "its time comes from the shortened
+travel." The 25 % gate: 24 % refused ("Warp core below 25 percent. Let
+it cool, or fly it."), exactly 25 % (3125/12500) allowed. Not yet heard.
+
+**A real bug found and fixed in testing**: the mid-warp Escape exception
+(1.18) opened the mission menu correctly, but `onKeyDown` checked
+`if (warping) {...}` BEFORE `if (menuOpen) {...}`, so once the menu was
+open every key except Escape itself still hit the warping guard first
+and got swallowed as "Hyperwarp in progress." — arrow keys couldn't
+navigate the menu that Escape had just opened. Fixed by moving the
+`menuOpen` check first (`onKeyDown` now checks it before the warping
+guard); the warping-blocks-input branch only matters once `menuOpen` is
+already false. Confirmed after the fix: menu navigation to Combat
+training worked mid-flight, selecting it correctly abandoned the warp
+(`clearMission()` now also stops the engaged loop and clears
+`warpFlight` — added in this round, see below); Resume mid-flight
+correctly returned to a STILL-flying ship, its `elapsed` continuing to
+advance afterward (4.3 s at pause, 5.3 s one second after resuming).
+
+Clips embedded: only engine 1's three assets (`warp_start1`,
+`warp_engaged1r`, `warp_finish1`, mono 48 kHz 96 kbps, ~155 KB total) —
+the other five engines' clips stay on disk until a second drive exists,
+per SPEC.
 
 Brian's ask: warping should take time — 10,000 distance ≈ 10 seconds on
 the current engine — and play three recorded phases: warp start, warp
