@@ -69,7 +69,7 @@ SIM.cues = (function () {
                 { id: 'lock_acquired', name: 'Target Lock Acquired', source: 'v11-extraction',
                   fn: function () {
                       SIM.audio.blip(660, 100, 0.15);
-                      setTimeout(function () { SIM.audio.blip(880, 120, 0.15); }, 110);
+                      SIM.audio.sfxTone({ type: 'sine', f1: 880, dur: 0.12, vol: 0.15, at: 0.11 });
                   } },
                 { id: 'lock_lost', name: 'Target Lock Lost', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 330, dur: 0.12, vol: 0.12 } },
@@ -110,7 +110,7 @@ SIM.cues = (function () {
                 { id: 'shield_failing_warn', name: 'Shields Failing Warning', source: 'v11-extraction',
                   fn: function () {
                       SIM.audio.blip(520, 70, 0.1);
-                      setTimeout(function () { SIM.audio.blip(520, 70, 0.1); }, 140);
+                      SIM.audio.sfxTone({ type: 'sine', f1: 520, dur: 0.07, vol: 0.1, at: 0.14 });
                   } },
                 { id: 'shield_drop_manual', name: 'Shields Dropped (manual)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'triangle', f1: 600, f2: 200, dur: 0.3, vol: 0.12 } },
@@ -194,7 +194,7 @@ SIM.cues = (function () {
                   // sound, previously duplicated at both call sites.
                   fn: function () {
                       SIM.audio.blip(660, 80, 0.12);
-                      setTimeout(function () { SIM.audio.blip(990, 110, 0.12); }, 90);
+                      SIM.audio.sfxTone({ type: 'sine', f1: 990, dur: 0.11, vol: 0.12, at: 0.09 });
                   } },
                 { id: 'refusal_dud', name: 'Refusal (short)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.06, vol: 0.08 } },
@@ -213,6 +213,7 @@ SIM.cues = (function () {
     ];
 
     var byId = {};
+    var level = 1;   // the "Effects" sound level (SPEC 1.12), 0..1
     CATEGORIES.forEach(function (cat) {
         cat.cues.forEach(function (cue) {
             cue.category = cat.id;
@@ -247,9 +248,19 @@ SIM.cues = (function () {
                 if (window.console) console.warn('SIM.cues.play: unknown cue "' + id + '"');
                 return;
             }
-            if (entry.fn) entry.fn(opts || {});
-            else playRecipe(entry, opts || {});
+            // Every primitive a cue reaches multiplies its vol by volScale;
+            // set it for the (synchronous) dispatch and put it back. Cues
+            // schedule later parts with `at`, never setTimeout, so the
+            // whole cue scales.
+            var A = SIM.audio, prev = A.volScale;
+            A.volScale = level;
+            try {
+                if (entry.fn) entry.fn(opts || {});
+                else playRecipe(entry, opts || {});
+            } finally { A.volScale = prev; }
         },
+        setLevel: function (v) { level = Math.max(0, Math.min(1, +v || 0)); },
+        level: function () { return level; },
         // For a future sound-lab tool: every cue, or just one category.
         list: function (categoryId) {
             var out = [];

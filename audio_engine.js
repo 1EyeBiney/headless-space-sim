@@ -33,6 +33,8 @@ SIM.audio = {
     ctx: null,
     masterGain: null,
     uiBus: null,     // stereo, not HRTF — cockpit instruments (tick, tools, thrusters)
+    worldBus: null,  // every HRTF panner lands here — the "World" sound level (SPEC 1.12)
+    volScale: 1,     // multiplies every primitive's vol; SIM.cues.play sets it around a cue
     noiseBuf: null,  // shared 1 s white-noise buffer for explosions/thuds/hiss
     assetBufs: {},   // decoded AudioBuffers from audio_assets.js, keyed by name
 
@@ -52,6 +54,10 @@ SIM.audio = {
         A.uiBus = A.ctx.createGain();
         A.uiBus.gain.value = 1;
         A.uiBus.connect(A.masterGain);
+
+        A.worldBus = A.ctx.createGain();
+        A.worldBus.gain.value = 1;
+        A.worldBus.connect(A.masterGain);
 
         // A short quiet tone so the first real sound does not stutter.
         var g = A.ctx.createGain(); g.gain.value = 0.0001; g.connect(A.ctx.destination);
@@ -93,6 +99,19 @@ SIM.audio = {
         var b = SIM.audio.assetBufs;
         return !!(b.asteroid1 && b.asteroid2 && b.asteroid3 &&
                   b.asteroid_explosion1 && b.asteroid_explosion2 && b.asteroid_explosion3);
+    },
+
+    // Sound-options levels (SPEC 1.12): 'world' is the HRTF bus, 'cockpit'
+    // the UI bus. Effects are a per-cue multiplier owned by SIM.cues.
+    // setTargetAtTime rather than ramp(): a level can change again while the
+    // previous change is still in flight (Left, Left, Right), and the
+    // cancel + setValueAtTime(param.value) idiom can leave the param holding
+    // an intermediate value in that case. setTargetAtTime starts from
+    // wherever the param actually is and always converges on the target.
+    setBusLevel: function (name, value) {
+        var A = SIM.audio;
+        var bus = name === 'world' ? A.worldBus : name === 'cockpit' ? A.uiBus : null;
+        if (bus && A.ctx) bus.gain.setTargetAtTime(value, A.ctx.currentTime, 0.06);
     },
 
     // ---- param + panner helpers -------------------------------------------
@@ -137,7 +156,7 @@ SIM.audio = {
         var A = SIM.audio;
         if (!A.ctx) return null;
         var p = A.makePanner(pos);
-        p.connect(A.masterGain);
+        p.connect(A.worldBus);
         setTimeout(function () { try { p.disconnect(); } catch (e) {} }, ms + 400);
         return p;
     },
@@ -149,6 +168,10 @@ SIM.audio = {
     // instrument bus (cockpit sounds) or through an HRTF panner at a world
     // position (3D events) — the one upgrade this project made on the
     // shared palette.
+
+    // A gain of exactly 0 breaks exponential ramps, so an Off level still
+    // schedules a (silent) 0.0001.
+    scaledVol: function (v) { return Math.max(0.0001, v * SIM.audio.volScale); },
 
     // Resolve the destination: explicit node > stereo pan on the UI bus > UI bus.
     sfxOut: function (o) {
@@ -169,7 +192,7 @@ SIM.audio = {
         if (!A.ctx) return;
         var t0 = A.ctx.currentTime + (o.at || 0);
         var g = A.ctx.createGain();
-        g.gain.setValueAtTime(o.vol || 0.15, t0);
+        g.gain.setValueAtTime(A.scaledVol(o.vol || 0.15), t0);
         g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
         g.connect(A.sfxOut(o));
         var osc = A.ctx.createOscillator();
@@ -190,7 +213,7 @@ SIM.audio = {
         var t0 = A.ctx.currentTime + (o.at || 0);
         var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf;
         var g = A.ctx.createGain();
-        g.gain.setValueAtTime(o.vol || 0.2, t0);
+        g.gain.setValueAtTime(A.scaledVol(o.vol || 0.2), t0);
         g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
         var tail = src;
         if (o.freq) {
@@ -220,7 +243,7 @@ SIM.audio = {
             try { osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur); }
             catch (e) { osc.frequency.setValueAtTime(o.f2, t0 + o.dur); }
         }
-        gain.gain.setValueAtTime(o.vol || 0.15, t0);
+        gain.gain.setValueAtTime(A.scaledVol(o.vol || 0.15), t0);
         gain.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
         delayNode.delayTime.value = o.delay || 0.12;
         feedback.gain.value = 0.4;
@@ -244,7 +267,7 @@ SIM.audio = {
         osc.frequency.setValueAtTime(o.f1, t0);
         osc.frequency.linearRampToValueAtTime(o.f2, t0 + o.dur / 2);
         osc.frequency.linearRampToValueAtTime(o.f3, t0 + o.dur);
-        gain.gain.setValueAtTime(o.vol || 0.1, t0);
+        gain.gain.setValueAtTime(A.scaledVol(o.vol || 0.1), t0);
         gain.gain.linearRampToValueAtTime(0.001, t0 + o.dur);
         osc.connect(gain); gain.connect(A.sfxOut(o));
         osc.start(t0); osc.stop(t0 + o.dur + 0.02);
@@ -276,7 +299,7 @@ SIM.audio = {
         var A = SIM.audio;
         if (!A.ctx || !A.assetBufs[name]) return false;
         var src = A.ctx.createBufferSource(); src.buffer = A.assetBufs[name];
-        var g = A.ctx.createGain(); g.gain.value = vol || 0.3;
+        var g = A.ctx.createGain(); g.gain.value = A.scaledVol(vol || 0.3);
         src.connect(g); g.connect(out || A.uiBus);
         src.start();
         return true;

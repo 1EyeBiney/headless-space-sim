@@ -228,7 +228,8 @@ var profile = null;
 
 function defaultProfile() {
     return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
-             slots: STARTING_SLOTS.slice(), laserSlot: 0 };
+             slots: STARTING_SLOTS.slice(), laserSlot: 0,
+             sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on' };
 }
 
 function loadProfile() {
@@ -248,13 +249,31 @@ function loadProfile() {
     profile.slots = profile.slots.slice(0, LASER_SLOTS).map(function (id) { return laserById(id) ? id : null; });
     while (profile.slots.length < LASER_SLOTS) profile.slots.push(null);
     laserSlot = (profile.laserSlot >= 0 && profile.laserSlot < LASER_SLOTS) ? profile.laserSlot | 0 : 0;
+    // Sound options: one level index per category, unknown values become full.
+    var snd = (profile.sound && typeof profile.sound === 'object') ? profile.sound : {};
+    profile.sound = {};
+    SOUND_CATS.forEach(function (c) {
+        var i = snd[c.id] | 0;
+        profile.sound[c.id] = (i >= 0 && i < SOUND_LEVELS.length && snd[c.id] !== undefined) ? i : SOUND_LEVELS.length - 1;
+    });
+    beaconMode = BEACON_MODES.some(function (m) { return m.id === profile.beacons; }) ? profile.beacons : 'on';
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
+}
+
+// Push the saved levels onto the buses. Called once the context exists and
+// whenever a level changes; harmless before audio has started.
+function applySoundLevels() {
+    if (!profile || !SIM.audio.ctx) return;
+    SIM.audio.setBusLevel('world',   SOUND_LEVELS[profile.sound.world].v);
+    SIM.audio.setBusLevel('cockpit', SOUND_LEVELS[profile.sound.cockpit].v);
+    SIM.cues.setLevel(SOUND_LEVELS[profile.sound.effects].v);
 }
 
 function saveProfile() {
     if (!profile) return;
     profile.tier = tierIdx;
     profile.laserSlot = laserSlot;
+    profile.beacons = beaconMode;
     try {
         if (window.localStorage) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
     } catch (e) { /* can't persist; the session still plays fine */ }
@@ -289,6 +308,28 @@ var LASERS = [
 ];
 var LASER_SLOTS = 6;
 var STARTING_SLOTS = ['mining1', 'mining2'];   // slots 3-6 empty until the station sells more
+
+// Sound options (SPEC 1.12). Three levels rather than a percentage — a
+// percentage is a lot of arrow presses by ear. Speech is never touched.
+var SOUND_LEVELS = [
+    { name: 'off',   v: 0 },
+    { name: 'quiet', v: 0.35 },
+    { name: 'full',  v: 1 }
+];
+var SOUND_CATS = [
+    { id: 'world',   label: 'World sounds',
+      desc: 'Everything out in space: engines, rocks, enemy fire, explosions, and the beacons.' },
+    { id: 'cockpit', label: 'Cockpit instruments',
+      desc: 'The lock tick, thrusters, tools, the shield hum, and the docking corridor.' },
+    { id: 'effects', label: 'Sound effects',
+      desc: 'Menu clicks, chimes, warnings, and the fanfare.' }
+];
+// The four POI beacons: on, off, or only the selected nav target (B key).
+var BEACON_MODES = [
+    { id: 'on',     say: 'Beacons: on.' },
+    { id: 'off',    say: 'Beacons: off.' },
+    { id: 'target', say: 'Beacons: target only.' }
+];
 
 // Modules (SPEC 1.7/A.5): one-time station purchases. Each carries a real
 // gameplay effect (a CFG override, applied every time CFG is rebuilt — see
@@ -489,6 +530,8 @@ var lastCycleAt = 0;     // a cycle already spoke the distance; lock stays quiet
 var demo = null;         // the timed delivery run, while active
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
 var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
+var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
+var beaconMode = 'on';   // 'on' | 'off' | 'target' — live; profile.beacons is the saved copy
 function over() { return won || lost; }
 
 function zoneRad() {
@@ -667,6 +710,8 @@ var HELP_SECTIONS = [
         'Weapons and mining tools are cold in open sector space.'
     ] },
     { heading: 'System', items: [
+        'B cycles the point-of-interest beacons: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship.',
+        'The Sound item on the mission menu sets a level, off, quiet, or full, for world sounds, cockpit instruments, and sound effects. Speech is never affected. Settings are saved.',
         'Escape pauses and resumes the simulation.',
         'F12 turns on explore mode, where every key describes itself safely.',
         'F1 opens this help screen. Escape closes it.',
@@ -741,12 +786,13 @@ var KEY_DESCRIPTIONS = {
     arrowup: 'Pitch the nose up. Hold to keep turning.',
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
     w: 'Thrust forward along the nose. Hold to accelerate.',
-    s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector.',
+    s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
     '1': 'Select laser slot 1 and speak what is fitted there.',
     '2': 'Select laser slot 2.', '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
+    b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
     m: 'At the mission menu, jumps to space mining.',
@@ -808,7 +854,7 @@ function buildVoice(t) {
     var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
     var panner = SIM.audio.makePanner(t.pos);
-    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
+    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.worldBus);
 
     // Recorded engine loop when available (same loop hygiene as the rocks:
     // skip the MP3 padding, random start offset so ships don't phase-lock).
@@ -879,7 +925,7 @@ function buildRockVoice(t) {
     var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
     var panner = SIM.audio.makePanner(t.pos);
-    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
+    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.worldBus);
     var src = SIM.audio.ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
     src.loopStart = 0.15; src.loopEnd = buf.duration - 0.15;
@@ -951,7 +997,11 @@ function buildPoiVoice(t) {
     panner.refDistance = CFG.beaconRef;
     panner.maxDistance = CFG.beaconMax;
     panner.rolloffFactor = CFG.beaconRolloff;
-    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
+    // The B key's mute sits after the tremolo — the LFO is summed INTO
+    // gain.gain, so zeroing that gain would still swing it by the depth.
+    var mute = SIM.audio.ctx.createGain();
+    mute.gain.value = beaconAudible(t) ? 1 : 0;
+    gain.connect(lp); lp.connect(mute); mute.connect(panner); panner.connect(SIM.audio.worldBus);
     var oscs = [];
     function osc(type, freq) {
         var o = SIM.audio.ctx.createOscillator();
@@ -986,7 +1036,36 @@ function buildPoiVoice(t) {
         tremolo(0.25, G * 0.35);
     }
     oscs.forEach(function (o) { o.start(); });
-    t.nodes = { gain: gain, lp: lp, panner: panner, oscs: oscs };
+    t.nodes = { gain: gain, lp: lp, mute: mute, panner: panner, oscs: oscs };
+}
+
+// Whether a beacon should sound under the current B setting. The mute
+// follows this every frame in updateTargeting, so a selection change (Tab,
+// the map, a mission start) takes effect without any call site knowing.
+function beaconAudible(t) {
+    if (beaconMode === 'on') return true;
+    if (beaconMode === 'target') return targets[selected] === t;
+    return false;
+}
+
+function beaconKey() {
+    var i = 0;
+    for (var k = 0; k < BEACON_MODES.length; k++) if (BEACON_MODES[k].id === beaconMode) i = k;
+    beaconMode = BEACON_MODES[(i + 1) % BEACON_MODES.length].id;
+    saveProfile();
+    SIM.audio.blip(beaconMode === 'on' ? 700 : beaconMode === 'target' ? 550 : 400, 90, 0.14, 0, 'triangle');
+    say(beaconModeText() + (mode === 'sector' ? '' : ' Applies in open sector space.'));
+}
+
+function beaconModeText() {
+    for (var k = 0; k < BEACON_MODES.length; k++) if (BEACON_MODES[k].id === beaconMode) return BEACON_MODES[k].say;
+    return 'Beacons: on.';
+}
+
+// Read back at sector entry when the beacons aren't simply on, so a quiet
+// sector is never a mystery.
+function beaconNote() {
+    return beaconMode === 'on' ? '' : ' ' + beaconModeText() + ' B cycles them.';
 }
 
 function makeSectorRoster() {
@@ -1221,6 +1300,10 @@ function updateTargeting() {
             // brightness inside 1,000; ~1.3 kHz at 7,000; ~600 Hz at 11,000.
             var haze = 20000 * Math.pow(1000 / Math.max(a.dist, 1000), 1.4);
             cutoff = Math.min(cutoff, clamp(haze, 500, CFG.lpMax));
+            // The B key (SPEC 1.12): on / off / selected target only.
+            if (t.nodes.mute && SIM.audio.ctx) {
+                t.nodes.mute.gain.setTargetAtTime(beaconAudible(t) ? 1 : 0, SIM.audio.ctx.currentTime, 0.15);
+            }
         }
         t.nodes.lp.frequency.setTargetAtTime(cutoff, SIM.audio.ctx ? SIM.audio.ctx.currentTime : 0, 0.1);
     });
@@ -1631,7 +1714,7 @@ function fireMissile() {
     if (SIM.audio.ctx) {
         var g = SIM.audio.ctx.createGain(); g.gain.value = 0.22;
         var p = SIM.audio.makePanner(m.pos);
-        g.connect(p); p.connect(SIM.audio.masterGain);
+        g.connect(p); p.connect(SIM.audio.worldBus);
         var o = SIM.audio.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 300;
         var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.11;
         var lo = SIM.audio.ctx.createOscillator(); lo.frequency.value = 12;
@@ -1871,7 +1954,7 @@ function enemyBeamVoice(t) {
     var vib = SIM.audio.ctx.createOscillator(); vib.frequency.value = 7;
     var vg = SIM.audio.ctx.createGain(); vg.gain.value = 30;
     vib.connect(vg); vg.connect(o.frequency);
-    o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
+    o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.worldBus);
     o.start(); vib.start();
     SIM.audio.ramp(g.gain, 0.22, 0.08);
     return { g: g, p: p, oscs: [o, vib] };
@@ -1890,7 +1973,7 @@ function startEnemyMissile(t) {
         var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.13;
         var lo = SIM.audio.ctx.createOscillator(); lo.frequency.value = 20;
         lo.connect(lg); lg.connect(g.gain);
-        o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
+        o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.worldBus);
         o.start(); lo.start();
         th.nodes = { g: g, p: p, oscs: [o, lo] };
     }
@@ -2178,7 +2261,7 @@ function buildDustVoice(f) {
     sparkle.connect(sg); sg.connect(g.gain);
     var p = SIM.audio.makePanner(f.pos);
     var src = SIM.audio.ctx.createBufferSource(); src.buffer = SIM.audio.noiseBuf; src.loop = true;
-    src.connect(bp); bp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
+    src.connect(bp); bp.connect(g); g.connect(p); p.connect(SIM.audio.worldBus);
     wander.start(); sparkle.start();
     src.start(0, Math.random());
     f.nodes = { gain: g, panner: p, src: src, lfos: [wander, sparkle] };
@@ -2517,7 +2600,7 @@ function demoIntro() {
            'The station also repairs, rearms, and refuels you. You carry ' + CFG.missileMax + ' missiles, ' +
            'and a full warp tank that reaches the Contested Zone, your nav target. ' +
            'Q opens the map, H hyperwarps to your nav target, C calls a point within ' +
-           CFG.poiInteract + ', and I reads the clock and the tank. F1 for help.';
+           CFG.poiInteract + ', and I reads the clock and the tank. F1 for help.' + beaconNote();
 }
 
 function fmtTime(s) {
@@ -3137,6 +3220,9 @@ function onKeyDown(e) {
     // The run log captures everything the same way.
     if (runlog.open) { runLogKey(lname); return; }
 
+    // The Sound settings list, same shell (reached from the mission menu).
+    if (soundMenu.open) { soundKey(lname); return; }
+
     // Docked at a station: the station menu captures everything.
     if (docked) { stationMenuKey(lname); return; }
 
@@ -3166,6 +3252,7 @@ function onKeyDown(e) {
             if (!paused) selectSlot(parseInt(lname, 10) - 1);
             break;
         case 'g':      if (!paused && !over()) shieldKey(); break;
+        case 'b':      beaconKey(); break;
         case 'tab':    if (!paused && !over()) cycleTarget(); break;
         case 'r':      if (!paused && !over()) radarPing(); break;
         case 'e':      if (!paused && !over()) startExtract(); break;
@@ -3374,6 +3461,10 @@ window.__sim = {
             docking: docking ? Object.assign({ poiName: docking.poi.name }, dockOffsets()) : null,
             docked: docked ? { poiName: docked.poi.name } : null,
             stationSubmenu: stationSubmenu,
+            beacons: beaconMode,
+            sound: profile ? Object.assign({}, profile.sound) : null,
+            beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
+                                .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), stations: profile.stations } : null,
             assets: SIM.audio.assetsReady(),
@@ -3420,6 +3511,9 @@ window.__sim = {
         if (o && o.enemyHp !== undefined) targets.forEach(function (t) { if (!t.kind && t.alive) t.hp = o.enemyHp; });
         if (o && o.laserReady) laserReadyAt = [];
         if (o && o.warpCharge !== undefined) warpCharge = o.warpCharge;
+        // Live, never saved: a test sets beacons off without touching the profile.
+        if (o && o.beacons !== undefined) beaconMode = o.beacons;
+        if (o && o.sound && profile) { Object.assign(profile.sound, o.sound); applySoundLevels(); }
     }
 };
 
@@ -3509,6 +3603,9 @@ var MENU_ITEMS = [
           applyTier((tierIdx + dir + TIERS.length) % TIERS.length);
           saveProfile();
       } },
+    { label: 'Sound',
+      desc: 'Volume for world sounds, cockpit instruments, and sound effects. Beacons are on the B key.',
+      run: function () { openSoundMenu(); } },
     { label: 'Run log',
       desc: function () {
           return profile.runs.length
@@ -3573,6 +3670,8 @@ function menuKey(lname, name) {
         say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
     } else if (lname === 'tab') {
         say(menuItemText(menuIdx));
+    } else if (lname === 'b') {
+        beaconKey();          // no item starts with B; the beacon key works here too
     } else if (lname.length === 1 && /[a-z]/.test(lname)) {
         // First-letter jump, cycling from the item after the cursor.
         var next = -1;
@@ -3585,6 +3684,60 @@ function menuKey(lname, name) {
     } else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse the mission menu, Enter selects. ' + itemLabel(MENU_ITEMS[menuIdx]) + '.');
+    }
+}
+
+// ---- Sound settings (SPEC 1.12) ---------------------------------------------
+// One line per category, Left/Right cycle Off / Quiet / Full and play a
+// short sound in that category at the new level, so the change is heard
+// as well as spoken. Reached from the mission menu; Escape returns to it.
+function openSoundMenu() {
+    soundMenu.open = true;
+    soundMenu.idx = 0;
+    say('Sound. Up and down arrows browse, left and right set a level, Escape returns to the menu. ' +
+        soundLineText(soundMenu.idx));
+}
+
+function soundLineText(i) {
+    var c = SOUND_CATS[i];
+    return c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '. ' + c.desc;
+}
+
+function soundDemo(id) {
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    if (id === 'world') {
+        var out = A.worldOut(add(ship.pos, scale(shipForward(), 200)), 400);
+        if (out) A.sfxTone({ type: 'triangle', f1: 440, f2: 330, dur: 0.35, vol: 0.25, out: out });
+    } else if (id === 'cockpit') {
+        A.sfxTone({ type: 'sine', f1: 880, dur: 0.12, vol: 0.2 });
+    } else {
+        SIM.cues.play('menu_select');
+    }
+}
+
+function soundKey(lname) {
+    var n = SOUND_CATS.length, c = SOUND_CATS[soundMenu.idx];
+    if (lname === 'escape' || lname === 'x') {
+        soundMenu.open = false;
+        say('Sound closed. ' + menuItemText(menuIdx));
+        return;
+    }
+    if (lname === 'arrowdown') { menuClick(); soundMenu.idx = (soundMenu.idx + 1) % n; say(soundLineText(soundMenu.idx)); }
+    else if (lname === 'arrowup') { menuClick(); soundMenu.idx = (soundMenu.idx - 1 + n) % n; say(soundLineText(soundMenu.idx)); }
+    else if (lname === 'arrowright' || lname === 'arrowleft') {
+        var d = lname === 'arrowright' ? 1 : -1;
+        profile.sound[c.id] = (profile.sound[c.id] + d + SOUND_LEVELS.length) % SOUND_LEVELS.length;
+        applySoundLevels();
+        saveProfile();
+        say(c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '.');
+        setTimeout(function () { soundDemo(c.id); }, 250);
+    }
+    else if (lname === 'enter' || lname === 'tab') { say(soundLineText(soundMenu.idx)); }
+    else if (lname === 'b') { beaconKey(); }
+    else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse the sound settings, left and right set a level, Escape returns. ' + c.label + '.');
     }
 }
 
@@ -3611,7 +3764,7 @@ function sectorIntro() {
     return 'Entering the sector just outside Station Meridian, warp tank full. Four points of interest on the quadrant map: ' +
            'a combat area, a mining area, a space station, and a planet, each with its own beacon sound. ' +
            'Q opens the map, Tab cycles beacons, H hyperwarps to your nav target, ' +
-           'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.';
+           'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.' + beaconNote();
 }
 
 function miningIntro() {
@@ -3637,6 +3790,7 @@ function init() {
 
     initBtn.addEventListener('click', function () {
         SIM.audio.audioStart();                    // must live inside the user gesture
+        applySoundLevels();
         initBtn.style.display = 'none';
         container.hidden = false;
         container.focus();

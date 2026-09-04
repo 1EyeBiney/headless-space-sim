@@ -142,11 +142,11 @@ Mission menu (Keyboard Commander style list: Up/Down wrap, click per move,
 Enter/Left/Right select with a two-note sound + "X selected" + 600 ms beat,
 first-letter jump, Tab repeats, cursor remembered; `MENU_ITEMS` in SHELL) →
 Delivery run / Sector (the hub) / Combat training / Mining / Help /
-Difficulty / Run log.
+Difficulty / Sound / Run log.
 
 **Profile persistence (Round 11, `hss_profile` in localStorage)**:
 `loadProfile()` runs once at boot (before the menu ever shows), reading
-`{ tier, credits, upgrades, chaff, runs }` — `credits`/`upgrades`/`chaff`
+`{ tier, credits, upgrades, chaff, runs, slots, laserSlot, sound, beacons }` — `credits`/`upgrades`/`chaff`
 are schema only so far, no consumer until 1.7/1.8 land. `saveProfile()`
 writes back on every tier change and every recorded run. Every read and
 write is try/catch-guarded (`window.localStorage &&` + try/catch on the
@@ -298,6 +298,41 @@ static once tiers exist.
   module, and the shared `listMenu()` extraction — `STATION_ITEMS`/
   `stationMenuKey` still duplicates the mission-menu shell's shape, same
   deliberate deferral already precedented for the run log.
+- **Sound options (Round 12, SPEC 1.12, from ideas3)**: two separate
+  things. (1) **`B` cycles the POI beacons** On / Off / Target only
+  (`BEACON_MODES`, live `beaconMode`, saved as `profile.beacons`). The
+  mute is a dedicated gain node in `buildPoiVoice` between the lowpass
+  and the panner — NOT `gain.gain`, because the beacon tremolo LFO is
+  summed INTO `gain.gain`, so zeroing it would still swing the level by
+  the LFO depth. `updateTargeting` drives every beacon's `nodes.mute`
+  toward `beaconAudible(t)` with `setTargetAtTime` every frame, so a
+  selection change from any source (Tab, the map, a mission start,
+  `selectNearest`) is followed without any call site knowing beacons
+  exist. The lock tick, T, Q, and "Locked. Distance N." all work with
+  beacons silent — Brian's design: steer the nose onto the tick the way
+  you would onto a ship. `B` also works at the mission menu and inside
+  the Sound list; outside the sector it appends "Applies in open sector
+  space." `sectorIntro`/`demoIntro` append `beaconNote()` when the mode
+  isn't On. (2) **The `Sound` menu item** (`openSoundMenu`/`soundKey`,
+  `soundMenu.open` gated in `onKeyDown` with the run log) — one line per
+  `SOUND_CATS` entry (world / cockpit / effects), Left/Right cycle
+  `SOUND_LEVELS` off 0 / quiet 0.35 / full 1, a short demo sound in that
+  category after each change, saved as `profile.sound` (level INDEXES),
+  `applySoundLevels()` at boot right after `audioStart()` and on every
+  change. Engine side: a new `SIM.audio.worldBus` between every HRTF
+  panner and `masterGain` (all seven `panner.connect(masterGain)` sites
+  in index.html plus `worldOut` now land there) = World; `uiBus` =
+  Cockpit; Effects = `SIM.cues.setLevel(v)`, applied by `play()` setting
+  `SIM.audio.volScale` around the (synchronous) dispatch — every
+  primitive's `vol` goes through `A.scaledVol()`, floor 0.0001 so an Off
+  level doesn't break exponential ramps. Three cues used `setTimeout` for
+  a second note (outside that window) — converted to `at:` offsets.
+  **Gotcha found here**: `setBusLevel` first used `ramp()` and three
+  quick level changes left the world bus stuck at 0.297; the
+  cancelScheduledValues + setValueAtTime(`param.value`) idiom misreads a
+  param that's mid-ramp. `setBusLevel` uses `setTargetAtTime` instead —
+  any future param that can be re-targeted while in flight should too.
+  Speech is never touched by any of this.
 - **Combat**: 5 ships with Brian's recorded engine loops (`shipAsset` on the
   roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies are
   passive until hit**: `provoke(t)` in `damageTarget` sets `t.hostile` (fuse
@@ -365,10 +400,11 @@ static once tiers exist.
 Arrows yaw/pitch · W thrust / S brake · 1-6 select laser slot · Space fires
 selected laser (fire-and-forget, cannot be stopped) · F missile · G shields
 · Tab cycle targets · T report selected target (lock onset also speaks distance) · R radar · E extractor · V vacuum · Z
-zone size · Q map · H warp · C call · I status (adds hull, missiles, laser
-slot, shields, laser heat, demo clock + objective) · X leave · F1 help ·
-F12 explore · Escape
-pause. Menu: arrows + Enter (first letters D/S/C/M/H jump); Left/Right on
+zone size · Q map · H warp · C call · B beacons on/off/target only · I
+status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
+objective) · X leave · F1 help · F12 explore · Escape
+pause. Menu: arrows + Enter (first letters D/S/C/M/H jump, S cycles
+Sector then Sound; B cycles beacons here too); Left/Right on
 the Difficulty line cycles Rookie/Veteran/Ace in place.
 
 ## Accessibility architecture (non-negotiable)
@@ -417,11 +453,12 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
 - Beacons off while testing (Brian, ideas3, 2026-09-04): the `.click()`
   boot is NOT actually silent once synthetic key events resume the
   context — a POI left targeted keeps its beacon sounding through Brian's
-  speakers for the whole test and interferes with his own listening. Once
-  SPEC 1.12 lands, every test script sets Beacons off first thing after
-  boot, live and unsaved: `__sim.poke({ sound: { beacons: 0 } })`. Until
-  then, don't leave a point targeted in the sector longer than the step
-  needs, and never leave a tab open between steps.
+  speakers for the whole test and interferes with his own listening. So:
+  every test script sets beacons off first thing after boot, live and
+  unsaved — `__sim.poke({ beacons: 'off' })` right after the `.click()`
+  (the in-game `B` key cycles On / Off / Target only; `poke` never saves,
+  so the pane's profile keeps whatever it had). And still never leave a
+  tab open between steps.
 - Hidden-tab gotcha (confirmed Round 11, calibrated at 0 simulated seconds
   over 10 real seconds): a backgrounded/hidden browser pane (`document.hidden`
   true) fully suspends `requestAnimationFrame`, not just throttles it — the
@@ -480,9 +517,12 @@ Brian's ideas3 notes (2026-09-04, `ideas3.txt`, untracked like ideas1/2)
 are folded into SPEC.md as 1.12 sound options (beacons off + a level per
 category), 1.13 warp-core spoken alerts replacing the regen hiss, 1.14
 laser switching timed by the six switch recordings, and 1.15 R = range /
-Shift+T cycles back / Shift+W auto-thrust — with the open questions in
-Part C (DECIDE). Proposed order: 1.12–1.15 before 1.8 chaff, pending his
-answers. Nothing from ideas3 is built yet.
+Shift+T cycles back / Shift+W auto-thrust. Brian answered the five open
+questions the same day (Part C: `B` key for beacons with a Target-only
+state, per-slot switch clips 3/4/5/1/2/6 stretched into 1.4–3.2 s,
+time-stretch to fit, Shift+R for the sweep, build order 1.12 → 1.13 →
+1.14 → 1.15 → 1.8). 1.12 is built and machine-tested (see "Sound
+options" above); 1.13 is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

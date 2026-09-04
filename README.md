@@ -34,6 +34,18 @@ The last item on the menu reads back your best delivery-run times, up to
 10, fastest first, with the difficulty and date of each — also saved to
 your browser. Finish a run to add to it.
 
+## Sound
+
+The Sound item on the menu sets a level — off, quiet, or full — for
+three kinds of sound: the world around you (engines, rocks, enemy fire,
+explosions, beacons), your cockpit instruments (the lock tick,
+thrusters, tools, the shield hum, the docking corridor), and sound
+effects (clicks, chimes, warnings). Speech is never affected. In the
+sector, B cycles the four point-of-interest beacons between on, off,
+and only your selected nav target, for stretches of open flying when
+you'd rather not hear them — Tab, T, the map, and the lock tick still
+find every point. All of it is saved with your profile.
+
 ## The timed delivery run (first item on the menu)
 
 The shareable challenge. The clock starts at once.
@@ -84,6 +96,7 @@ Right hand on the arrows, left hand on everything else.
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
+| B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
 | Tab / T | Cycle targets / report the selected target. The distance is spoken the moment the lock tone comes on |
 | R | Radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |

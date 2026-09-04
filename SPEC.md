@@ -127,12 +127,10 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 "Audio architecture").
 
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
-Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below.
-Suggested order for the rest — 1.12 sound options first (Brian needs the
-beacons-off switch for his own listening, and it makes Claude's machine
-tests silent for him), then 1.13–1.15 (small, one commit each), then 1.8
-chaff, then 1.11 ship window if Brian wants it before Phase 2. **DECIDE**:
-that order (Part C).
+Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
+(sound options, the `B` beacon key) is DONE. Order for the rest (Brian:
+decided) — 1.13, 1.14, 1.15 (small, one commit each), then 1.8 chaff,
+then 1.11 ship window if Brian wants it before Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -355,7 +353,34 @@ already precedented for the run log (see CLAUDE.md).
 - Veteran/Ace enemies may launch a second missile while the first coasts;
   Rookie never does.
 
-#### 1.12 Sound options: beacons off, a level per category (ideas3)
+#### 1.12 Sound options: beacons off, a level per category (ideas3) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: beacons muted at sector
+entry with the intro reading "Beacons: off. B cycles them."; `B` cycles
+off → target only → on → off with the four mute gains following (target
+only: the selected beacon at 1, the other three at 0, and a Tab moves
+the 1 to the new selection within a frame or two); the lock tick still
+locks with every beacon silent ("Locked. Distance 8460."); `B` also
+works at the mission menu and inside the Sound list ("Applies in open
+sector space" appended outside the sector); the Sound list browses,
+wraps, speaks each level change, plays a short sound in that category,
+saves, and reloads at boot (a reload with all three at quiet came up
+with both buses at 0.35 and the cue level at 0.35); a stray key in the
+list gets the hint; F12 describes `B`; `poke({ beacons: 'off' })` sets
+the live mode without touching the saved copy. No console errors. Not
+yet heard.
+
+One engine gotcha found and fixed: the bus level setter first used the
+shared `ramp()` helper (cancelScheduledValues + setValueAtTime(value) +
+linearRamp). Three quick level changes on the world bus left its gain
+stuck at 0.297 with nothing correcting it — the cancel + set-from-
+`param.value` idiom misreads a param mid-ramp. `setBusLevel` now uses
+`setTargetAtTime`, which starts from wherever the param actually is and
+always converges. `ramp()` itself is unchanged (voices and ducking use
+it once at a time); worth remembering if any other param ever gets
+re-ramped while in flight. Three cues in the registry scheduled their
+second note with `setTimeout`, outside the dispatch window the Effects
+level is applied in — converted to `at:` offsets, behavior-identical.
 
 Brian's ask: a main-menu option to turn the POI sounds off — while Claude
 tests with a point targeted, its beacon keeps sounding through his
@@ -370,25 +395,34 @@ generally (labels and categories: Claude's judgement, adjust later).
   "Beacons: off." Saved in the profile (`profile.sound`), applied at boot
   and the moment a line changes. Speech is never touched (it's the screen
   reader's).
-- Categories:
-  - **Beacons** — the four POI voices in the sector (`buildPoiVoice`,
-    `poiGain`). The specific ask. Off = silent; Tab, T, Q, and the lock
-    tick still find every point. **DECIDE**: at Off, does the SELECTED nav
-    target's beacon stay audible (the homing case), or is Off all four?
+- **Beacons are NOT on the menu — they're on the `B` key in-game** (Brian:
+  decided). `B` cycles **On / Off / Target only**: "Beacons: off." /
+  "Beacons: target only." (the selected nav target's beacon sounds, the
+  other three are silent). The four POI voices (`buildPoiVoice`,
+  `poiGain`) ramp to silence and back, no rebuild. With beacons off the
+  targeting cursor still works exactly as with enemy ships: Tab/T select,
+  the lock tick walks the nose onto the point, "Locked. Distance N." on
+  lock — Brian: there are stretches of open-space flying where the
+  beacons should be quiet, and the tick is how you find things then.
+  Saved in the profile (`profile.beacons`) and read back at sector entry
+  when it isn't On ("Beacons: target only.") so a silent sector is never a
+  mystery **(accepted by default)**. `B` outside the sector: "Beacons are
+  a sector thing." — silence is a bug.
+- Menu categories (the `Sound` item):
   - **World** — everything HRTF: ship engines, rocks and dust, enemy
-    chirps/beams/missiles, explosions at a position. Needs one engine
-    change: a `worldBus` gain in `audio_engine.js` between the panners
-    and `masterGain` (panners connect straight to `masterGain` today,
-    `makePanner`); Beacons sit inside World, so both scale them.
+    chirps/beams/missiles, explosions at a position, the beacons. Needs
+    one engine change: a `worldBus` gain in `audio_engine.js` between the
+    panners and `masterGain` (panners connect straight to `masterGain`
+    today, `makePanner`).
   - **Cockpit** — the UI bus (`uiBus`): lock tick, thrusters and
     stabilizers, tools, shield hum, overheat hiss, docking instruments.
   - **Effects** — the discrete cue registry (`SIM.cues`): menu clicks,
     chimes, warnings, explosions, the fanfare. A gain multiplier inside
     `SIM.cues.play`, so it stacks with whichever bus the cue lands on.
-- Testing rule (now in CLAUDE.md): every machine-test script sets Beacons
-  off first thing after boot, live and unsaved (`__sim.poke({ sound: {
-  beacons: 0 } })`), so a leftover targeted point never sounds on Brian's
-  side. `poke` never calls `saveProfile`.
+- Testing rule (now in CLAUDE.md): every machine-test script sets beacons
+  off first thing after boot, live and unsaved (`__sim.poke({ beacons:
+  'off' })`), so a leftover targeted point never sounds on Brian's side.
+  `poke` never calls `saveProfile`.
 
 #### 1.13 Warp core: spoken charge alerts, no regen hiss (ideas3)
 
@@ -413,35 +447,45 @@ generally (labels and categories: Claude's judgement, adjust later).
   lightest laser and switches fastest; the variance is too small, so the
   lightest laser's delay goes SHORTER than its clip and the heaviest
   LONGER, for a better spread.
-- Each `LASERS` entry gets `switchAsset` (which of the six) and `switchS`
-  (the delay). Proposal: `switchS` from the clip length stretched about
-  the middle — `mid + (clipLen − mid) × CFG.laserSwitchStretch`, stretch 3
-  puts the lightest near 1.4 s and the heaviest near 3.3 s — or hand-set
-  per laser once Brian has heard them. Either way the number lives in the
-  table, not inline.
+- The switch sound and delay belong to the **slot** (the hotkey), not the
+  laser fitted in it (Brian: decided). A `SLOT_SWITCH` table, one row per
+  slot `{ asset, s }`, with the delay stretched linearly from the clip
+  lengths so the shortest clip lands at 1.4 s and the longest at 3.2 s
+  (Brian's range):
+
+  | Slot | Clip | Clip length | Delay `s` |
+  | --- | --- | --- | --- |
+  | 1 | laser_switch3 | 2.164 s | 1.8 |
+  | 2 | laser_switch4 | 2.027 s | 1.4 |
+  | 3 | laser_switch5 | 2.297 s | 2.2 |
+  | 4 | laser_switch1 | 2.023 s | 1.4 |
+  | 5 | laser_switch2 | 2.666 s | 3.2 |
+  | 6 | laser_switch6 | 2.023 s | 1.4 |
+
+  Clips 1, 4, and 6 are the same length to the millisecond, so slots 2,
+  4, and 6 tie at 1.4 s — the numbers are in the table so Brian can
+  hand-set them once he has heard the six in place.
+- The clip is **time-stretched to fit the window** (Brian: decided —
+  "stretch and shrink"): `playbackRate = clipLen / s`, so slot 5 plays
+  ~17 % slow and lower, slot 2 ~45 % fast and higher. The pitch shift is
+  part of the character: heavy slots grind, light ones snap.
 - Pressing 1–6 starts the switch: the clip plays on the UI bus (a cockpit
   sound), "Slot 2, mining laser two, switching." Space during the switch
   is refused like a cooldown: "Switching lasers, 2 seconds." At the end:
-  a ready cue and "Mining laser two ready." Delay shorter than the clip:
-  the clip fades out at the delay **(accepted by default)**. Delay longer:
-  the clip plays, then silence until ready — **DECIDE** whether to
-  time-stretch the clip to fit instead (which pitches it).
+  a ready cue and "Mining laser two ready."
 - Re-selecting the current slot: no switch, no delay. Switching mid-burst:
   refused, the burst can't be stopped (1.9). Switching to an empty slot:
   today's refusal, no delay. The `I` status reads "switching, N seconds."
 - The six wavs get decoded into `audio_assets.js` (mono 96k MP3 like the
-  rest, ~25 KB each). **DECIDE**: which clip goes with which of the 16
-  lasers (8 Mining, 8 Rapid-pulse) — only `mining1`/`mining2` need one
-  for the demo.
+  rest, ~25 KB each).
 
 #### 1.15 Keys: R = range, Shift+T cycles back, Shift+W auto-thrust (ideas3)
 
 - **R reads the range to the current target**: "Range 430, closing." —
   the distance and whether it's closing or opening (the sign of the range
   rate; a docking and tow instrument later). No target: "No target
-  selected. Tab cycles targets." R today is the radar sweep (every
-  target, nearest first, `radarPing`). **DECIDE** where the sweep goes —
-  proposal Shift+R.
+  selected. Tab cycles targets." The radar sweep (every target, nearest
+  first, `radarPing`) moves to **Shift+R** (Brian: decided).
 - **Shift+T cycles targets backward** (Tab forward). Shift+Tab does the
   same **(accepted by default)** — the convention, and free.
   Implementation: `lname` is lowercased, so 'T' and 't' look alike; read
@@ -596,26 +640,28 @@ demo** and screens like it go on **function keys**; hydrogen gates
 quadrants; modules have mass; **lasers are built first**; the single-file
 demo is gone for good.
 
-Decided (Brian, ideas3, 2026-09-04): a main-menu switch for the POI
-beacons plus per-category sound levels (1.12); no warp-core regen hiss —
-spoken 50/75/100 % alerts instead (1.13); laser switching takes time, set
-by the switch recordings' lengths with the variance stretched (1.14); R
-reads range; Shift+T cycles back; Shift+W is auto-thrust (1.15).
+Decided (Brian, ideas3, 2026-09-04, questions answered the same day):
+**`B` cycles the beacons On / Off / Target only** in-game (not a menu
+item), the targeting tick works on points with beacons off; a `Sound`
+menu item with a level per World / Cockpit / Effects (1.12); no
+warp-core regen hiss — spoken 50/75/100 % alerts instead (1.13); laser
+switching takes time, **per slot**, clips 3/4/5/1/2/6 on slots 1–6,
+delays stretched into **1.4–3.2 s**, the clip **time-stretched to fit**
+(1.14); R reads range, **Shift+R is the radar sweep**, Shift+T cycles
+back, Shift+W is auto-thrust (1.15); build order 1.12 → 1.13 → 1.14 →
+1.15 → 1.8.
 
 Accepted by default (say otherwise): shields as a damage pool; credits and
 modules persist across sessions; chaff on `D`; `G` refused during a
 laser burst; slow warp regen in open flight so a dry tank never strands;
-three sound levels per category (Off / Quiet / Full); Shift+Tab alongside
-Shift+T; any W or S press cancels auto-thrust; a switch clip fades at the
-delay when the delay is shorter than the clip.
+three sound levels per category (Off / Quiet / Full); the beacon setting
+persists and is read back at sector entry when it isn't On; Shift+Tab
+alongside Shift+T; any W or S press cancels auto-thrust.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
-ships placeholders. From ideas3: the radar sweep's new key (Shift+R?);
-which switch clip goes with which laser, and the stretched delay range;
-pad-with-silence vs time-stretch when the delay is longer than the clip;
-whether the selected nav target's beacon stays audible at Beacons off;
-and the build order — 1.12–1.15 before chaff (1.8)?
+ships placeholders. The per-slot switch delays (three tie at 1.4 s) —
+Brian hand-sets them in `SLOT_SWITCH` after hearing them.
 
 ## Deferred (Brian: "not yet")
 
