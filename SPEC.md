@@ -121,12 +121,14 @@ people; nothing in Phase 2+ starts without his go.
 Done, live on Pages (Rounds 10–12): 1.0 hosting + `?run=delivery`, 1.1
 difficulty tiers, 1.2 Rookie Cruiser, 1.3 shield damage pool + disrepair,
 1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots, 1.10 warp
-charge, and 1.6 the docking corridor (all machine-tested, not yet heard by
-Brian — see below), and the audio split
-(`audio_engine.js` / `audio_cues.js`, see CLAUDE.md "Audio architecture").
+charge, 1.6 the docking corridor, and 1.7 the station economy hook (Sell
+ore + Modules) (all machine-tested, not yet heard by Brian — see below),
+and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
+"Audio architecture").
 
-Suggested order for the rest — 1.7's economy items (Sell ore, Modules)
-next, since the station menu shell is already up from 1.6, then chaff:
+1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
+Suggested order for the rest — 1.8 chaff next, then 1.11 ship window if
+Brian wants it before Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -272,34 +274,61 @@ lists, nothing is copied implicitly.
   1.7 adds the economy items on top of the same `STATION_ITEMS`/
   `stationMenuKey`.
 
-#### 1.7 Station menu (the economy hook)
+#### 1.7 Station menu (the economy hook) — DONE, needs Brian's ear
 
-A KC-style list — make `listMenu(items, opts)` reusable so the mission menu,
-station menu, run log, ship window, and every future menu share one
-implementation.
-- Items: Sell ore · Sell hydrogen · Repair · Rearm · Restock chaff · Refuel
-  · Modules ▸ · Undock.
-- **Sell**: `orePrice` 1 credit per 10 ore, `hydrogenPrice` (placeholder).
-  Speaks the sale and the balance. The delivery-run handover is the ore
-  sale (quota met → run complete when sold).
-- **Repair / Rearm / Restock / Refuel**: credits (`repairCost` per hull
-  point, `missileCost`, `chaffCost`, `refuelCost` per charge point). In the
-  delivery run the FIRST repair+rearm+refuel is free (the clock is the
-  cost); everything else costs.
-- **Modules ▸** (from A.5): `MODULES` table `{ id, name, group, mass, cost,
-  effects }`. First list: shield spool 1.5 → 1.0 s; shield pool +50 %;
-  missile rack 8 → 12; the second and third lasers (from `LASERS`); warp
-  tank +50 %; core cooling ×2; thruster upgrade (offsets mass); hydrogen
-  extractor (mining ticks also yield hydrogen); docking computer (widens
-  the corridor, Phase 2). Each line speaks price, mass, and whether you can
-  afford it. Owned modules live in the profile and apply at boot; mass
-  feeds thrust/turn.
-- **Influence** (from A.6): `profile.stations[id].influence`, raised by
-  delivery, combat clears at that station's zone, sales, rescues. Spoken
-  on docking ("Meridian control. Good to see you again, pilot." past a
-  threshold). No consumer beyond speech and a price break yet.
-- **Undock**: pushes the ship 100 out along the corridor heading, "Undocked.
-  Clear of the station." Escape = Undock.
+Built and machine-tested (full run: sell ore → correct credits and balance
+speech; Modules browsed all 5, bought 3 in sequence with correct running
+credits/mass, "Already fitted" gating on a re-buy attempt, "Need N more
+credits" gating on an unaffordable buy with the attempt correctly refused
+and no credits deducted; `shipMass()` confirmed wired into both thrust and
+turn in `simTick` — code-verified rather than flight-measured, since by
+this point in testing the profile already had 3 modules fitted with no
+clean mass=1 baseline left to compare against; full Delivery-run docking
+path confirmed the handover fires `bumpInfluence(poi, 2)` — separately from
+the plain-sector dock, which does not bump influence on its own, only on a
+sale — and a second dock once influence crossed `influenceThreshold` (3)
+correctly spoke the "good to see you again, pilot" greeting, which the
+FIRST dock at exactly influence=3 correctly withheld, since the greeting
+is computed from the influence BEFORE that visit's own bump; no console
+errors through any of it). Not yet heard.
+
+This shipped a smaller slice than first sketched below: **Sell ore** and
+**Modules** only, on top of the 1.6 station-menu shell. Repair / Rearm /
+Restock / Refuel stayed FREE on every dock (unchanged from before 1.7) —
+turning those into paid actions, hydrogen as a second resource, chaff
+restock, and the docking-computer module are all deferred, most of them
+waiting on chaff (1.8) or Phase 2's hydrogen anyway. `listMenu(items, opts)`
+was NOT extracted this round either — `STATION_ITEMS`/`stationMenuKey`
+still duplicates the mission-menu shell's shape, same deliberate deferral
+already precedented for the run log (see CLAUDE.md).
+
+- **Sell ore**: `CFG.oreCreditRate` 10 (1 credit per 10 ore). Speaks the
+  sale and the new balance; "No ore to sell" if the hold is empty. The
+  delivery-run handover is a separate path (`finishDocking`'s demo branch),
+  not routed through this item — it converts ore to the run completion
+  directly and does not award credits.
+- **Modules ▸**: `MODULES` table, 5 entries shipped — shield spool (raise
+  1.5 → 1.0 s, 400 cr, +8 mass), shield pool (+50 %, 500 cr, +12 mass),
+  missile rack (8 → 12, 350 cr, +10 mass), warp tank (+50 %, 450 cr, +15
+  mass), core cooling (×2, 400 cr, +6 mass). Each line speaks price, mass,
+  and affordability ("You can afford it" / "Need N more credits" /
+  "Already fitted"). `moduleCfgOverlay()` merges every owned module's `cfg`
+  object into live `CFG` on every `applyTier()` rebuild, so a purchase
+  takes effect immediately with no special-case code path. `shipMass()` =
+  `1 + (sum of owned modules' mass)/100`, divides both `CFG.thrust` and
+  `CFG.turnRate` in `simTick` — no friction in space, so mass is purely a
+  maneuvering tax, same intent as sketched originally.
+- **Influence**: `profile.stations[name].influence`, bumped by delivery
+  handover (+2, `finishDocking`), selling ore (+1, `sellOre`), and a
+  sector-entered combat-zone clear (+1, `destroyTarget`, gated on
+  `sectorHome` so the standalone Combat-training mission doesn't feed it).
+  Past `CFG.influenceThreshold` (3) the NEXT docking adds "Station Meridian
+  control: good to see you again, pilot." before the rest of the arrival
+  line — computed from influence as it stood before that visit's own bump,
+  confirmed in testing. Rescues (from A.6) have no source yet — no rescue
+  mechanic exists.
+- **Undock**: Escape (or `X`) on the station menu top level. "Undocked.
+  Clear of Station Meridian."
 
 #### 1.11 Ship window (from A.5) — deferred past the demo
 

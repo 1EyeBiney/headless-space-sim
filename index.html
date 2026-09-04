@@ -114,6 +114,9 @@ var CFG_DEFAULTS = {
     dockCoachIntervalMs: 3000,
     dockCenterTol: 15,        // coaching goes silent under this many units off-axis
     dockClickFastMs: 80, dockClickSlowMs: 500,  // range click speeds up toward the door
+    // Economy (SPEC 1.7): placeholder prices, all in CFG so Brian can retune.
+    oreCreditRate: 10,        // 1 credit per this many ore
+    influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
     warpChargeMs: 2000,      // spool-up before the jump
     warpMinDist: 1200,       // closer than this: just fly it
@@ -210,7 +213,7 @@ var TIER_DESCS = [
 
 function applyTier(idx) {
     tierIdx = idx;
-    Object.assign(CFG, CFG_DEFAULTS, TIERS[idx].cfg);
+    Object.assign(CFG, CFG_DEFAULTS, TIERS[idx].cfg, moduleCfgOverlay());
     zoneIdx = TIERS[idx].zoneIdxDefault;
 }
 
@@ -238,6 +241,8 @@ function loadProfile() {
         }
     } catch (e) { /* no persistence this session; profile stays default */ }
     if (!Array.isArray(profile.runs)) profile.runs = [];
+    if (!Array.isArray(profile.upgrades)) profile.upgrades = [];
+    if (!profile.stations || typeof profile.stations !== 'object') profile.stations = {};
     // Laser slots: exactly LASER_SLOTS entries, unknown ids become empty.
     if (!Array.isArray(profile.slots)) profile.slots = STARTING_SLOTS.slice();
     profile.slots = profile.slots.slice(0, LASER_SLOTS).map(function (id) { return laserById(id) ? id : null; });
@@ -284,6 +289,61 @@ var LASERS = [
 ];
 var LASER_SLOTS = 6;
 var STARTING_SLOTS = ['mining1', 'mining2'];   // slots 3-6 empty until the station sells more
+
+// Modules (SPEC 1.7/A.5): one-time station purchases. Each carries a real
+// gameplay effect (a CFG override, applied every time CFG is rebuilt — see
+// applyTier) and a mass cost — no friction in space, so a fitted ship turns
+// and thrusts a little slower for every module it carries (shipMass()).
+// Stored on profile.upgrades (the field name SPEC 1.4 already saved this
+// under, before "modules" had a name). Deliberately a short first list:
+// no second/third laser yet (no other laser recordings are embedded —
+// see CLAUDE.md "Audio architecture" on why), no hydrogen extractor or
+// docking computer (both need systems that don't exist yet).
+var MODULES = [
+    { id: 'shield_spool', name: 'shield capacitor', cost: 400, mass: 8,
+      desc: 'Shields raise in one second instead of one and a half.',
+      cfg: { shieldRaiseMs: 1000 } },
+    { id: 'shield_pool', name: 'shield plating', cost: 500, mass: 12,
+      desc: 'Half again as much charge in the shield pool.',
+      cfg: { shieldPool: 67.5 } },
+    { id: 'missile_rack', name: 'missile rack extension', cost: 350, mass: 10,
+      desc: 'Four more missiles in the magazine.',
+      cfg: { missileMax: 12 } },
+    { id: 'warp_tank', name: 'auxiliary warp tank', cost: 450, mass: 15,
+      desc: 'Half again as much warp charge.',
+      cfg: { warpTankMax: 18750 } },
+    { id: 'core_cooling', name: 'core cooling upgrade', cost: 400, mass: 6,
+      desc: 'The warp core cools twice as fast in open flight.',
+      cfg: { warpRegenPerS: 80 } }
+];
+
+function moduleById(id) {
+    for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === id) return MODULES[i];
+    return null;
+}
+function ownedModules() { return (profile && profile.upgrades) || []; }
+
+// Every owned module's cfg, merged into one overlay, applied on top of the
+// tier — so buying a module works the moment you buy it (applyTier is the
+// one place CFG gets rebuilt from scratch, tier change or not).
+function moduleCfgOverlay() {
+    var out = {};
+    ownedModules().forEach(function (id) {
+        var m = moduleById(id);
+        if (m && m.cfg) Object.assign(out, m.cfg);
+    });
+    return out;
+}
+
+// No friction in space, so mass is the tradeoff for every module: 1.0 at
+// an empty loadout, a little higher per module fitted. Feeds thrust/turn
+// in simTick.
+function shipMass() {
+    var extra = ownedModules().reduce(function (s, id) {
+        var m = moduleById(id); return s + (m ? m.mass : 0);
+    }, 0);
+    return 1 + extra / 100;
+}
 
 function laserById(id) {
     for (var i = 0; i < LASERS.length; i++) if (LASERS[i].id === id) return LASERS[i];
@@ -415,7 +475,9 @@ var warpCoreNodes = null;// the core-cooling hiss while the tank refills in open
 var docking = null;      // { poi, axis, right, up, coachAt, tickTimer } while approaching
 var docked = null;       // { poi } once docked; ship held, station menu active
 var dockToneNodes = null;// the corridor's centerline tone
-var stationIdx = 0;      // cursor in the station menu (SPEC 1.7 extends the item list)
+var stationIdx = 0;      // cursor in the top-level station menu
+var stationSubmenu = null;  // null | 'modules' — which list stationMenuKey is browsing
+var moduleIdx = 0;       // cursor in the Modules submenu
 var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
 var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
 var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
@@ -598,8 +660,10 @@ var HELP_SECTIONS = [
         'A click on the corridor speeds up as you close the range, and every few seconds a voice reads your position: how far left or right, how far high or low, and the range, going quiet once you are centered.',
         'Slow down as you close in. Coming in too fast near the door aborts the approach and resets you to the start of the corridor — no damage, just start over.',
         'Dock slowly enough and close enough and you are in: the station menu opens, your hull, missiles, and warp tank are full, and the ship is held until you undock.',
+        'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
+        'Every module has a real effect, a price in credits, and a mass cost — no friction in space, so a heavier ship turns and thrusts a little slower for every module it carries. Fitted modules stay with you across sessions.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
-        'Your ore hold, hull, and missile count ride with you for the whole sector run. Docking repairs, rearms, and refuels.',
+        'Your ore hold, hull, missile count, and credits ride with you for the whole sector run. Docking repairs, rearms, and refuels.',
         'Weapons and mining tools are cold in open sector space.'
     ] },
     { heading: 'System', items: [
@@ -1189,6 +1253,7 @@ function destroyTarget(t) {
     if (left === 0) {
         won = true;
         shieldReset();
+        if (sectorHome) bumpInfluence({ name: 'Station Meridian' }, 1);
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
             var tail;
@@ -2738,22 +2803,24 @@ function finishDocking() {
     var service = (repaired ? 'Hull repaired. ' : '') +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
                   (refueled ? 'Warp tank filled. ' : '');
+    var greeting = influenceGreeting(poi);
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
         var delivered = ore;
         demo.delivered = true;
         ore = 0;
+        bumpInfluence(poi, 2);
         var isBest = recordRun(demo.elapsed);
         var bestLine = isBest === true ? 'New personal best!'
                       : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
                       : '';
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
-        say('Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
+        say(greeting + 'Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
             'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service + stationMenuIntro());
     } else {
-        say('Docked at ' + poi.name + '. ' + service +
+        say(greeting + 'Docked at ' + poi.name + '. ' + service +
             (demo && !demo.delivered
                 ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
-                : 'Your cargo hold reads ' + ore + ' ore.') + ' ' + stationMenuIntro());
+                : 'Your cargo hold reads ' + ore + ' ore, ' + profile.credits + ' credits.') + ' ' + stationMenuIntro());
     }
 }
 
@@ -2762,9 +2829,77 @@ function finishDocking() {
 // selects with a beat, Escape (or X) undocks. Not yet the shared listMenu
 // the plan describes — see CLAUDE.md's note on the run log for why.
 var STATION_ITEMS = [
+    { label: 'Sell ore',
+      desc: function () {
+          return ore > 0 ? 'Sell ' + ore + ' ore for ' + Math.floor(ore / CFG.oreCreditRate) + ' credits.'
+                          : 'No ore in the hold.';
+      },
+      ready: function () {
+          if (ore <= 0) { say('No ore to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellOre(); } },
+    { label: 'Modules',
+      desc: function () {
+          return MODULES.length + ' modules on file, ' + ownedModules().length + ' fitted. ' +
+                 profile.credits + ' credits.';
+      },
+      run: function () { openModules(); } },
     { label: 'Undock', desc: 'Back out along the approach corridor, clear of the station.',
       run: function () { undock(); } }
 ];
+
+function sellOre() {
+    var earned = Math.floor(ore / CFG.oreCreditRate);
+    ore = 0;
+    profile.credits += earned;
+    bumpInfluence(docked.poi, 1);
+    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
+}
+
+// ---- Modules submenu --------------------------------------------------------
+function moduleText(i) {
+    var m = MODULES[i], owned = ownedModules().indexOf(m.id) >= 0;
+    if (owned) return m.name + '. ' + m.desc + ' Already fitted.';
+    return m.name + '. ' + m.desc + ' ' + m.cost + ' credits, adds ' + m.mass + ' mass. ' +
+           (profile.credits >= m.cost ? 'You can afford it.'
+                                       : 'Need ' + (m.cost - profile.credits) + ' more credits.');
+}
+
+function openModules() {
+    stationSubmenu = 'modules';
+    moduleIdx = 0;
+    say('Modules. Up and down arrows browse, Enter fits one, Escape returns. ' + moduleText(moduleIdx));
+}
+
+function buyModule(i) {
+    var m = MODULES[i];
+    if (ownedModules().indexOf(m.id) >= 0) { SIM.cues.play('refusal_dud'); say('Already fitted.'); return; }
+    if (profile.credits < m.cost) {
+        SIM.cues.play('refusal_dud');
+        say('Not enough credits. Need ' + (m.cost - profile.credits) + ' more.');
+        return;
+    }
+    profile.credits -= m.cost;
+    profile.upgrades.push(m.id);
+    applyTier(tierIdx);      // re-layer CFG with the new module live, mid-session
+    saveProfile();
+    menuSelectSound();
+    say(capFirst(m.name) + ' fitted. ' + profile.credits + ' credits left.');
+}
+
+function moduleKey(lname) {
+    var n = MODULES.length;
+    if (lname === 'escape' || lname === 'x') { stationSubmenu = null; say(stationItemText()); return; }
+    if (lname === 'arrowdown') { menuClick(); moduleIdx = (moduleIdx + 1) % n; say(moduleText(moduleIdx)); }
+    else if (lname === 'arrowup') { menuClick(); moduleIdx = (moduleIdx - 1 + n) % n; say(moduleText(moduleIdx)); }
+    else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') { buyModule(moduleIdx); }
+    else if (lname === 'tab') { say(moduleText(moduleIdx)); }
+    else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse modules, Enter fits one, Escape returns. ' + MODULES[moduleIdx].name + '.');
+    }
+}
 
 function stationMenuIntro() {
     return 'Station menu. Use up and down arrows to navigate and Enter to select. ' + stationItemText();
@@ -2774,9 +2909,25 @@ function stationItemText() {
     return itemLabel(it) + '. ' + itemDesc(it);
 }
 
+// Influence (SPEC 1.7/A.6): a small per-station counter raised by delivery,
+// selling, and clearing a combat zone entered from the sector. No consumer
+// yet beyond a friendlier greeting past a threshold — a price break is a
+// natural follow-up once there is more than one station to compare.
+function bumpInfluence(poi, amt) {
+    if (!poi || !profile) return;
+    if (!profile.stations[poi.name]) profile.stations[poi.name] = { influence: 0 };
+    profile.stations[poi.name].influence += amt;
+    saveProfile();
+}
+function influenceGreeting(poi) {
+    var s = profile && profile.stations[poi.name];
+    return (s && s.influence >= CFG.influenceThreshold) ? poi.name + ' control: good to see you again, pilot. ' : '';
+}
+
 function undock() {
     var poi = docked.poi;
     docked = null;
+    stationSubmenu = null;
     var dir = norm(poi.dockAxis || v3(0, 0, 1));
     ship.pos = add(poi.pos, scale(dir, CFG.dockRadius + 100));
     ship.vel = v3(0, 0, 0);
@@ -2785,6 +2936,7 @@ function undock() {
 }
 
 function stationMenuKey(lname) {
+    if (stationSubmenu === 'modules') { moduleKey(lname); return; }
     var n = STATION_ITEMS.length;
     if (lname === 'escape' || lname === 'x') { undock(); return; }
     if (lname === 'arrowdown') { menuClick(); stationIdx = (stationIdx + 1) % n; say(stationItemText()); }
@@ -3115,15 +3267,17 @@ function simTick(dt) {
         thrusterSync(null); updateStabilizers(0); return;
     }
 
-    // Attitude from held arrows.
-    if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate * dt;
-    if (keysDown.arrowright) ship.yaw   += CFG.turnRate * dt;
-    if (keysDown.arrowup)    ship.pitch += CFG.turnRate * dt;
-    if (keysDown.arrowdown)  ship.pitch -= CFG.turnRate * dt;
+    // Attitude from held arrows. Fitted modules add mass (SPEC 1.7); no
+    // friction in space, so more mass just means slower turning and thrust.
+    var mass = shipMass();
+    if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate / mass * dt;
+    if (keysDown.arrowright) ship.yaw   += CFG.turnRate / mass * dt;
+    if (keysDown.arrowup)    ship.pitch += CFG.turnRate / mass * dt;
+    if (keysDown.arrowdown)  ship.pitch -= CFG.turnRate / mass * dt;
     ship.pitch = clamp(ship.pitch, -CFG.pitchLimit, CFG.pitchLimit);
 
     // Thrust, brake, damping, cap — with each maneuver's own thruster sound.
-    if (keysDown.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust * dt));
+    if (keysDown.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * dt));
     thrusterSync(keysDown);
     if (keysDown.s) ship.vel = scale(ship.vel, Math.pow(CFG.brakeKeep, dt));
     ship.vel = scale(ship.vel, Math.pow(CFG.dampKeep, dt));
@@ -3219,6 +3373,9 @@ window.__sim = {
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
             docking: docking ? Object.assign({ poiName: docking.poi.name }, dockOffsets()) : null,
             docked: docked ? { poiName: docked.poi.name } : null,
+            stationSubmenu: stationSubmenu,
+            economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
+                                  mass: shipMass(), stations: profile.stations } : null,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };

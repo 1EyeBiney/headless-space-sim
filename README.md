@@ -55,6 +55,13 @@ coming in too fast resets you to the start of the corridor, no damage,
 just try again. Docking repairs your hull, rearms your eight missiles,
 and refills the warp tank. Losing your ship fails the run.
 
+Once docked, a station menu opens: **Sell ore** trades your cargo for
+credits (10 ore per credit), and **Modules** spends them on permanent
+upgrades — a faster shield, a bigger shield pool, a larger missile
+magazine, a bigger warp tank, faster core cooling. Every module adds a
+little mass, and mass is the tradeoff: no friction in space, so a heavier
+ship just turns and thrusts a little slower. Escape undocks.
+
 The warp drive has a tank, measured in distance, and a jump spends it. A
 jump longer than the tank still goes — you drop out where the charge runs
 dry and thrust the rest. The tank refills at the station and whenever you

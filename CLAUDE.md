@@ -251,6 +251,51 @@ static once tiers exist.
   by adding `dockAxis: p.dockAxis` to the target literal. Any future POI
   data field needs the same check: `makeSectorRoster` only copies what it
   explicitly lists.
+- **Station economy (Round 12, SPEC 1.7)**: fleshes out `STATION_ITEMS` to
+  `[Sell ore, Modules, Undock]`, reusing `profile.credits` and
+  `profile.upgrades` (repurposed in place as "owned module ids" — same
+  field the run log already displays, not a new one) rather than adding
+  new schema. **Sell ore** (`sellOre()`): `ore / CFG.oreCreditRate` (10)
+  credits, ore zeroed, `bumpInfluence(docked.poi, 1)`. This is a SEPARATE
+  path from the delivery-run handover (`finishDocking`'s demo branch, which
+  converts ore straight to run completion and does not award credits) —
+  docking with a full hold in plain Sector mode (no active undelivered
+  demo) correctly falls through to the manual sell option instead.
+  **Modules** (`openModules`/`moduleKey`, same captured-input shell as the
+  station menu itself): `MODULES` table, 5 entries — shield spool (raise
+  1.5→1.0 s), shield pool (+50%), missile rack (8→12), warp tank (+50%),
+  core cooling (×2) — each `{id, name, desc, cost, mass, cfg}`. Buying one
+  pushes its `id` onto `profile.upgrades`; `moduleCfgOverlay()` merges every
+  owned module's `cfg` into the live `CFG` object on every `applyTier()`
+  rebuild (`Object.assign(CFG, CFG_DEFAULTS, TIERS[idx].cfg,
+  moduleCfgOverlay())`), so a purchase takes effect immediately with no
+  special-case code path elsewhere — confirmed in testing: `CFG.shieldRaiseMs`
+  measured 1500 before buying shield spool, 1000 after, same session, no
+  reload. `shipMass()` = `1 + (sum of owned modules' mass)/100`, feeds
+  `simTick` by dividing both `CFG.thrust` and `CFG.turnRate` (no friction in
+  space, so mass is purely a maneuvering tax) — verified by code inspection
+  rather than a flight measurement, since testing had already fitted 3
+  modules before a clean mass=1 baseline could be flown. `moduleText(i)`
+  speaks price/mass/affordability three ways depending on state: "Already
+  fitted" (owned), "Need N more credits" (unaffordable, buy refused, no
+  credits deducted — confirmed), "You can afford it" (buyable). **Influence**
+  (`profile.stations[name].influence`, `bumpInfluence(poi, amt)`): +2 on
+  the delivery handover (`finishDocking`), +1 on `sellOre`, +1 on a
+  sector-entered combat-zone clear (`destroyTarget`, gated on `sectorHome`
+  so the standalone Combat-training mission — no `sectorHome` snapshot —
+  doesn't feed it). `influenceGreeting(poi)` prepends "Station Meridian
+  control: good to see you again, pilot." to the arrival line once influence
+  is `>= CFG.influenceThreshold` (3) — **read BEFORE that visit's own bump**,
+  so the docking that pushes influence from 1 to 3 (via its delivery bump)
+  does NOT get the greeting itself; the NEXT dock does. Confirmed both
+  halves of that ordering in testing (first dock at the threshold: no
+  greeting; a following dock: greeting present). Deliberately NOT built this
+  round despite being in the original 1.7 sketch: Repair/Rearm/Restock
+  Chaff/Refuel as paid actions (all four stay free on every dock, unchanged
+  from before), hydrogen as a second sellable resource, a docking-computer
+  module, and the shared `listMenu()` extraction — `STATION_ITEMS`/
+  `stationMenuKey` still duplicates the mission-menu shell's shape, same
+  deliberate deferral already precedented for the run log.
 - **Combat**: 5 ships with Brian's recorded engine loops (`shipAsset` on the
   roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies are
   passive until hit**: `provoke(t)` in `damageTarget` sets `t.hostile` (fuse
@@ -402,23 +447,33 @@ the shield damage-pool + disrepair rework, evade + counterattack, ore ×1.5 /
 dust ×0.75, difficulty tiers, no-warp zone, saved profile. Still awaiting his
 ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon balance,
 warp drama. SPEC.md 1.6 (docking corridor) and 1.7 (station economy)
-are the two large pieces deliberately deferred — good next round once Round
-10–11 has been heard.
+were the two large pieces deferred out of Round 10–11 — both built this
+round (see below), good next round once Round 10–11 has been heard.
 
-Round 12 (this one) is the audio pull-out: `audio_engine.js` + `audio_cues.js`
-split out of index.html as `SIM.audio`/`SIM.cues`, 22 discrete cues migrated
-into the registry, `sfxEcho`/`sfxSweep` added, `.claude/launch.json` added
-for local multi-file testing, Station Meridian's beacon halved in volume.
-Machine-tested thoroughly (every migrated cue exercised under real gameplay
-conditions at a local server), not yet heard by Brian. See "Audio
-architecture" above for the shape of it and what's deliberately NOT
-migrated. Next audio step, per Brian: a sound-lab tester (this project's own
+Round 12 (this one) was the audio pull-out plus 1.6/1.7: `audio_engine.js` +
+`audio_cues.js` split out of index.html as `SIM.audio`/`SIM.cues`, 22
+discrete cues migrated into the registry, `sfxEcho`/`sfxSweep` added,
+`.claude/launch.json` added for local multi-file testing, Station
+Meridian's beacon halved in volume; then SPEC 1.6 (the docking corridor —
+see "Docking (Round 12, SPEC 1.6)" above) and SPEC 1.7 (the station
+economy hook — see "Station economy (Round 12, SPEC 1.7)" above). All of
+it machine-tested thoroughly (every migrated cue exercised under real
+gameplay conditions at a local server; docking flown both pre- and
+post-bugfix; the full economy loop — sell, buy, gating both ways, the full
+delivery-run handover path, and a repeat visit past the influence
+threshold — exercised end to end with no console errors), not yet heard by
+Brian. Next audio step, per Brian: a sound-lab tester (this project's own
 `.soundtester`-style page) for auditioning new synth ideas AND the new
-unintegrated recordings side by side — not built yet.
+unintegrated recordings side by side — not built yet. Per SPEC.md's
+suggested order, 1.8 (chaff) is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
 45 that's roughly 1.5 full beams absorbed before disrepair), attack gap
 7–12 s, shield spool 1.5 s (2.5 s Ace) / repair 12 s, laser overheat window
-8 s, and whether the "Shields, G" coaching (first two warnings only) is
-enough for newcomers.
+8 s, whether the "Shields, G" coaching (first two warnings only) is enough
+for newcomers, the docking corridor's tightness (`dockRadius` 40,
+`dockMaxSpeed` 25 — deliberately the hardest version, a docking-computer
+module loosens it in Phase 2), and the 5 module prices/costs (placeholder
+numbers, never priced against actual ore/credit earn rate over a real
+session).
