@@ -72,12 +72,31 @@ window.AUDIO_MANIFEST = {
   // drive module exists to select another engine.
   warp_start1: 'audio/ships/warp/warp_start1.mp3',
   warp_engaged1r: 'audio/ships/warp/warp_engaged1r.mp3',
-  warp_finish1: 'audio/ships/warp/warp_finish1.mp3'
+  warp_finish1: 'audio/ships/warp/warp_finish1.mp3',
+
+  // Station interior ambience (ideas6): loops on the music bus while
+  // docked. Stereo 48k 128k sibling of Brian's WAV master in the same
+  // folder (the WAV is not served). Fetched when the sector is entered,
+  // not at boot — see AUDIO_PRELOAD below.
+  station_interior1: 'audio/quadrant/space_station_interior1.mp3',
+
+  // Vortex set (ideas6): the sound lab's HRTF orbit demo. Not used by the
+  // game itself yet.
+  vortex1: 'audio/quadrant/vortex/space_vortex1.mp3',
+  vortex2: 'audio/quadrant/vortex/space_vortex2.mp3',
+  vortex3: 'audio/quadrant/vortex/space_vortex3.mp3',
+  vortex4: 'audio/quadrant/vortex/space_vortex4.mp3',
+  vortex5: 'audio/quadrant/vortex/space_vortex5.mp3',
+  vortex6: 'audio/quadrant/vortex/space_vortex6.mp3',
+  vortex7: 'audio/quadrant/vortex/space_vortex7.mp3',
+  vortex8: 'audio/quadrant/vortex/space_vortex8.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
 // the demo can reach without a special unlock, so the common path never
-// waits on a first-use fetch. Right now that's every manifest key; as
-// candidate/unconnected recordings gain manifest entries later, this list
-// stays curated rather than becoming "all of AUDIO_MANIFEST".
-window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST);
+// waits on a first-use fetch. Curated, not "all of AUDIO_MANIFEST": the
+// vortex set is the sound lab's, and the station interior (1.8 MB) is
+// fetched when a sector run starts instead, since only docking plays it.
+window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
+  return !/^(vortex\d|station_interior)/.test(k);
+});

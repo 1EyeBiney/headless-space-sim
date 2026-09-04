@@ -54,7 +54,7 @@ SIM.cues = (function () {
                       A.sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
                       A.sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
                   } },
-                { id: 'chaff_burst', name: 'Chaff Burst', source: 'spec-1.8',
+                { id: 'chaff_burst', name: 'Decoy Burst', source: 'spec-1.8',
                   // A bright crackling burst at the ship (UI bus): a hiss of
                   // bright noise and a scatter of short clicks fanning out.
                   fn: function () {
@@ -158,6 +158,29 @@ SIM.cues = (function () {
                       var A = SIM.audio;
                       A.sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
                       A.sfxTone({ type: 'sine', f1: 1400, f2: 90, dur: 0.9, vol: 0.2 });
+                  } },
+                // Station range crossings (ideas6): one rising pair on
+                // entering comm range, a rising triple on entering dock
+                // range, a falling pair on leaving either. Placeholders
+                // until Brian hears them — the ranges themselves stay put.
+                { id: 'comm_range', name: 'Comms Range Reached', source: 'ideas6',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 520, dur: 0.12, vol: 0.16 });
+                      A.sfxTone({ type: 'sine', f1: 780, dur: 0.18, vol: 0.16, at: 0.14 });
+                  } },
+                { id: 'dock_range', name: 'Docking Range Reached', source: 'ideas6',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 660, dur: 0.1, vol: 0.16 });
+                      A.sfxTone({ type: 'sine', f1: 880, dur: 0.1, vol: 0.16, at: 0.12 });
+                      A.sfxTone({ type: 'sine', f1: 1100, dur: 0.2, vol: 0.16, at: 0.24 });
+                  } },
+                { id: 'range_lost', name: 'Station Range Left', source: 'ideas6',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 780, dur: 0.12, vol: 0.12 });
+                      A.sfxTone({ type: 'sine', f1: 520, dur: 0.18, vol: 0.12, at: 0.14 });
                   } }
             ]
         },

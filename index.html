@@ -139,6 +139,20 @@ var CFG_DEFAULTS = {
     // things. Supersedes the 1.6 docking-corridor mechanic entirely.
     stationCommRange: 500,   // C this close: a hail (status, no docking)
     stationDockRange: 150,   // C this close: docks instantly
+    // ideas6: both ranges stay as they are (upgrades will extend them
+    // later); crossing into either now sounds a cue and says so. Undocking
+    // puts the ship well outside comm range, facing away, so the pilot has
+    // to thrust clear of the no-warp zone (warpInhibitDist) before jumping.
+    undockDist: 1000,
+    stationAmbientVol: 0.35, // the docked interior loop (music bus)
+    // Lock tones by target kind (ideas6): a ship gets the solid tone; a
+    // rock or dust field the soft pulse; a point of interest the solid
+    // tone much softer WITH the guidance ticks still running underneath,
+    // at this cadence, so a long flight onto a beacon keeps its steering.
+    lockToneVol: 0.12,
+    lockTonePoiVol: 0.045,
+    lockPulseVol: 0.1,
+    tickLockedMs: 220,
     // Economy (SPEC 1.7): placeholder prices, all in CFG so Brian can retune.
     oreCreditRate: 10,        // 1 credit per this many ore
     influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
@@ -997,7 +1011,7 @@ var HELP_SECTIONS = [
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
-        function () { return 'D fires chaff: a decoy burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Chaff does nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
+        function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
         'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve it.'
@@ -1038,7 +1052,7 @@ var HELP_SECTIONS = [
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         function () { return 'The station works by range instead: C within ' + CFG.stationCommRange + ' hails it for a status report, and C within ' + CFG.stationDockRange + ' docks at once — no corridor to fly.'; },
         function () { return 'The hail (in comm range but not close enough to dock) is a real menu too: rearm, sell ore, buy reaction mass, take a mission, or close. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
-        'Docked, the station menu opens, your hull, missiles, chaff, and warp tank are full, and the ship is held until you undock.',
+        'Docked, the station menu opens, your hull, missiles, decoys, and warp tank are full, the beacons outside go quiet, and the ship is held until you undock — which puts you ' + CFG.undockDist + ' out, facing away, with the no-warp zone still to thrust clear of.',
         'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
         'Every module has a real effect, a price in credits, and a mass cost — no friction in space, so a heavier ship turns and thrusts a little slower for every module it carries. Fitted modules stay with you across sessions.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
@@ -1128,12 +1142,12 @@ var KEY_DESCRIPTIONS = {
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles the version backward.',
     '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
-    f2: 'Ship status: hull, shields, warp charge, cargo, missiles, chaff, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
-    f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and chaff, each with what it is for. Arrows read it line by line, Escape closes it.',
+    f2: 'Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
+    f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
-    d: function () { return 'Fire chaff: a decoy burst that spoofs the missile coming at you, so it loses guidance at once, no shield needed. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
+    d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, so it loses guidance at once, no shield needed. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'At the mission menu, jumps to space mining.',
     tab: 'Cycle to the next target and speak its bearing. Shift Tab cycles back.',
     t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T cycles back to the previous target.',
@@ -1386,9 +1400,23 @@ function buildPoiVoice(t) {
 // follows this every frame in updateTargeting, so a selection change (Tab,
 // the map, a mission start) takes effect without any call site knowing.
 function beaconAudible(t) {
+    if (docked) return false;   // ideas6: inside the station, the beacons are outside
     if (beaconMode === 'on') return true;
     if (beaconMode === 'target') return targets[selected] === t;
     return false;
+}
+
+// Push every beacon's mute to beaconAudible() right now. updateTargeting
+// does this every live frame; this is for the moments the sim is frozen
+// (docking — simTick returns early while docked, so the frame loop never
+// gets to silence them).
+function applyBeaconMutes() {
+    if (!SIM.audio.ctx) return;
+    targets.forEach(function (t) {
+        if (t.kind === 'poi' && t.nodes && t.nodes.mute) {
+            t.nodes.mute.gain.setTargetAtTime(beaconAudible(t) ? 1 : 0, SIM.audio.ctx.currentTime, 0.15);
+        }
+    });
 }
 
 function beaconKey() {
@@ -1412,6 +1440,10 @@ function beaconNote() {
 }
 
 function makeSectorRoster() {
+    // ideas6: the station interior loop is only ever needed after a
+    // docking, so it's fetched here (cached/coalesced — cheap to repeat on
+    // every sector re-entry) rather than in the boot preload set.
+    if (SIM.audio.ctx) SIM.audio.load('station_interior1').catch(function () {});
     return SECTOR_POIS.map(function (p) {
         var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
                   pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
@@ -1536,7 +1568,7 @@ function stopSolidTone() {
     setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 120);
 }
 
-function startSolidTone() {
+function startSolidTone(vol) {
     if (!SIM.audio.ctx || tick.solid) return;
     var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0;
     var sp = SIM.audio.ctx.createStereoPanner ? SIM.audio.ctx.createStereoPanner() : null;
@@ -1544,20 +1576,29 @@ function startSolidTone() {
     var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
     o.connect(g); o.start();
     tick.solid = { o: o, g: g, sp: sp };
-    SIM.audio.ramp(g.gain, 0.12, 0.05);
+    SIM.audio.ramp(g.gain, vol || CFG.lockToneVol, 0.05);
 }
 
-// SPEC 2.11: a lock in combat lasts seconds and the solid tone suits it;
-// a lock on a beacon in the sector or on a rock while mining can last a
-// whole flight, and the same tone is harsh over minutes. Combat keeps the
-// solid tone; sector/mining get a soft double-blip every 2 s instead.
-// CFG.lockToneMode names which pick is live so the sound lab can offer
-// the same three candidates without duplicating this dispatch.
-function lockToneUsesPulse() { return mode === 'sector' || mode === 'mining'; }
+// SPEC 2.11 picked the lock tone by MODE (combat solid, sector/mining a
+// soft double-blip every 2 s). ideas6 picks it by what is actually under
+// the cursor, so the tone itself says what kind of thing is locked:
+//   'solid' — a ship (or a mission friendly): today's 880 Hz tone.
+//   'pulse' — a rock or a dust field: the soft double-blip, every 2 s.
+//   'poi'   — a point of interest: the solid tone much softer, and the
+//             guidance ticks keep running underneath it (tickBeat), so a
+//             minutes-long flight onto a beacon never loses its steering.
+function lockToneKind() {
+    var t = targets[selected];
+    if (!t) return 'solid';
+    if (t.kind === 'rock' || t.kind === 'dust') return 'pulse';
+    if (t.kind === 'poi') return 'poi';
+    return 'solid';
+}
+function lockToneUsesPulse() { return lockToneKind() === 'pulse'; }
 
 function playLockPulse() {
-    SIM.audio.sfxTone({ type: 'sine', f1: 330, dur: 0.06, vol: 0.07 });
-    SIM.audio.sfxTone({ type: 'sine', f1: 440, dur: 0.06, vol: 0.07, at: 0.09 });
+    SIM.audio.sfxTone({ type: 'sine', f1: 330, dur: 0.06, vol: CFG.lockPulseVol });
+    SIM.audio.sfxTone({ type: 'sine', f1: 440, dur: 0.06, vol: CFG.lockPulseVol, at: 0.09 });
 }
 
 function startLockPulse() {
@@ -1576,7 +1617,11 @@ function stopLockPulse() {
     lockPulseTimer = null;
 }
 
-function startLockTone() { if (lockToneUsesPulse()) startLockPulse(); else startSolidTone(); }
+function startLockTone() {
+    var kind = lockToneKind();
+    if (kind === 'pulse') startLockPulse();
+    else startSolidTone(kind === 'poi' ? CFG.lockTonePoiVol : CFG.lockToneVol);
+}
 function stopLockTone() { stopLockPulse(); stopSolidTone(); }
 
 function scheduleTick() {
@@ -1585,13 +1630,21 @@ function scheduleTick() {
 }
 
 function tickBeat() {
-    if (!running || over() || help.open || map.open || menuOpen || warping) { tick.timer = setTimeout(tickBeat, 250); return; }
+    if (!running || over() || help.open || map.open || menuOpen || warping || docked || hailMenu.open) { tick.timer = setTimeout(tickBeat, 250); return; }
     var t = targets[selected];
     if (!t || !t.alive) { tick.timer = setTimeout(tickBeat, 250); return; }
     var a = aim(t.pos);
     var interval;
-    if (locked) {
-        // Solid tone carries the locked state; the scheduler just idles.
+    if (locked && lockToneKind() === 'poi') {
+        // ideas6: locked on a point of interest, the soft tone says
+        // "locked" and the ticks keep steering — a steady cadence, still
+        // pitched by elevation and panned by azimuth.
+        var ppan = clamp(Math.sin(a.azimuth) * 1.5, -1, 1);
+        SIM.audio.blip(tickFreqFor(a.elev), 45, 0.11, ppan, 'square');
+        interval = CFG.tickLockedMs;
+    } else if (locked) {
+        // Solid tone (or the 2 s pulse) carries the locked state; the
+        // scheduler just idles.
         interval = 200;
     } else if (a.err > CFG.tickArc) {
         // Searching: soft slow tock, out of the tracking arc.
@@ -2512,7 +2565,7 @@ function startEnemyMissile(t) {
 function fireChaff() {
     if (chaff <= 0) {
         SIM.cues.play('refusal_dud');
-        say('No chaff left.' + (sectorHome ? ' Station Meridian restocks.' : ''));
+        say('No decoys left.' + (sectorHome ? ' Station Meridian restocks.' : ''));
         return;
     }
     chaff--;
@@ -2523,13 +2576,13 @@ function fireChaff() {
         // Veteran and Ace answer a spoof fast: the next attack comes while
         // the decoyed missile is still popping, not after the usual gap.
         if (TIERS[tierIdx].alwaysHostile) th.followUp = true;
-        say('Chaff away. Missile spoofed. ' + left);
+        say('Decoy away. Missile spoofed. ' + left);
     } else if (th && th.type === 'missile') {
-        say('Chaff away. That missile was already ballistic. ' + left);
+        say('Decoy away. That missile was already ballistic. ' + left);
     } else if (th && th.type === 'laser') {
-        say('Chaff away. Chaff does nothing against a laser. Shields. ' + left);
+        say('Decoy away. Decoys do nothing against a laser. Shields. ' + left);
     } else {
-        say('Chaff away, nothing inbound. ' + left);
+        say('Decoy away, nothing inbound. ' + left);
     }
 }
 
@@ -3094,7 +3147,7 @@ function statusReport() {
           : aliveTargets().length + ' targets remain. ';
     if (mode !== 'mining') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
-                chaff + ' chaff. ';
+                chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
     if (mode === 'combat' || mode === 'mining') line += laserStatusText();
     if (mode === 'combat') {
@@ -3236,7 +3289,7 @@ function buildShipLines() {
     lines.push('Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
     lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.'));
-    lines.push(chaff + (chaff === 1 ? ' chaff.' : ' chaff remaining.'));
+    lines.push(chaff + (chaff === 1 ? ' decoy remaining.' : ' decoys remaining.'));
     for (var i = 0; i < LASER_SLOTS; i++) {
         var L = profile ? laserById(profile.slots[i]) : null;
         if (!L) { lines.push('Slot ' + (i + 1) + ' is empty.'); continue; }
@@ -3302,7 +3355,7 @@ function buildResourceLines() {
     lines.push('Hydrogen: 0. Not collectible yet — combat drops and a mining module add it later.');
     lines.push('Credits: ' + (profile ? profile.credits : 0) + '. Spent on modules, lasers, and collision repairs.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.') + ' Fired with F.');
-    lines.push(chaff + (chaff === 1 ? ' chaff.' : ' chaff.') + ' Spent with D against an incoming missile.');
+    lines.push(chaff + (chaff === 1 ? ' decoy.' : ' decoys.') + ' Spent with D against an incoming missile.');
     return lines;
 }
 
@@ -3473,6 +3526,13 @@ function dockAtStation(poi, extra) {
     SIM.cues.play('dock_clunk');
     docked = { poi: poi, approachDir: approachDir };
     stationIdx = 0;
+    // ideas6: docked is its own place. The lock tick and tone stop, every
+    // beacon outside goes quiet (updateTargeting can't do it — simTick is
+    // frozen while docked), and the station's interior loop comes up on
+    // the music bus. undock() reverses all three.
+    locked = false; stopLockTone();
+    applyBeaconMutes();
+    if (SIM.audio.ctx) SIM.audio.playMusic('station_interior1', { vol: CFG.stationAmbientVol, fadeS: 1 });
     var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
         restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax,
         massRefueled = rcs < CFG.rcsMax;
@@ -3500,7 +3560,7 @@ function dockAtStation(poi, extra) {
     missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp(); refillRcs();
     var service = billLine +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
-                  (restocked ? 'Chaff restocked to ' + CFG.chaffMax + '. ' : '') +
+                  (restocked ? 'Decoys restocked to ' + CFG.chaffMax + '. ' : '') +
                   (refueled ? 'Warp tank filled. ' : '') +
                   (massRefueled ? 'Reaction mass filled. ' : '');
     var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
@@ -3534,6 +3594,14 @@ function dockAtStation(poi, extra) {
 // today's instant Enter-to-retry — tugCandidate() is the one place that
 // decides which applies.
 function tugCandidate() { return !!(sectorHome || mode === 'sector'); }
+
+// What a held flight key answers while over() holds the ship still.
+function overHeldText() {
+    if (tug) return 'Ship lost. A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.';
+    if (mission) return 'Mission over. X returns to the sector.';
+    if (lost) return 'Ship lost. Enter tries again, X leaves.';
+    return 'Encounter over. Enter plays again, X ' + (sectorHome ? 'returns to the sector.' : 'for the mission menu.');
+}
 
 function startTug() {
     var poiData = null;
@@ -3716,12 +3784,12 @@ var HAIL_ITEMS = [
     { label: 'Rearm',
       desc: function () {
           return (missiles < CFG.missileMax || chaff < CFG.chaffMax)
-              ? 'Restock missiles and chaff.' : 'Missiles and chaff already full.';
+              ? 'Restock missiles and decoys.' : 'Missiles and decoys already full.';
       },
       run: function () {
           var did = missiles < CFG.missileMax || chaff < CFG.chaffMax;
           missiles = CFG.missileMax; chaff = CFG.chaffMax;
-          say(did ? 'Missiles and chaff restocked.' : 'Already full.');
+          say(did ? 'Missiles and decoys restocked.' : 'Already full.');
       } },
     { label: 'Sell ore',
       desc: function () {
@@ -3899,14 +3967,56 @@ function influenceGreeting(poi) {
     return (s && s.influence >= CFG.influenceThreshold) ? poi.name + ' control: good to see you again, pilot. ' : '';
 }
 
+// ideas6: undocking drops the ship undockDist (1000) out along the arrival
+// vector, facing away — outside comm range, but still inside the no-warp
+// zone, so the pilot thrusts clear before jumping anywhere. Everything
+// that could hold the ship still is reset here on purpose (Brian once
+// undocked and couldn't move; that couldn't be reproduced, so this resets
+// held keys, auto-thrust, and the range band regardless).
 function undock() {
     var poi = docked.poi, dir = docked.approachDir;
     docked = null;
     stationSubmenu = null;
-    ship.pos = add(poi.pos, scale(dir, CFG.stationDockRange + 100));
+    keysDown = {}; autoThrust = false;
+    ship.pos = add(poi.pos, scale(dir, CFG.undockDist));
     ship.vel = v3(0, 0, 0);
     ship.yaw = Math.atan2(-dir.x, dir.z); ship.pitch = 0;   // face away from the door
-    say('Undocked. Clear of ' + poi.name + '.');
+    poi.rangeBand = 0;          // outside comm range now; no crossing cue for the departure itself
+    if (SIM.audio.ctx) SIM.audio.stopMusic(1);
+    say('Undocked. ' + CFG.undockDist + ' out from ' + poi.name + ', facing away. The drive won\'t spool within ' +
+        CFG.warpInhibitDist + ' of the station — thrust clear first.');
+}
+
+// ---- station range cues (ideas6) -------------------------------------------
+// Two audible lines around every station: comm range (C hails) and dock
+// range (C docks). Crossing inward sounds a rising cue and says which; a
+// crossing outward sounds a falling one. Stateless per frame — the band is
+// compared before/after, like the warp-core alerts — with the first frame
+// after a roster build just recording where the ship already is.
+function stationRangeBand(d) {
+    return d <= CFG.stationDockRange ? 2 : d <= CFG.stationCommRange ? 1 : 0;
+}
+function updateStationRanges() {
+    targets.forEach(function (t) {
+        if (!t.alive || t.kind !== 'poi' || t.poiType !== 'station') return;
+        var band = stationRangeBand(len(sub(t.pos, ship.pos)));
+        if (t.rangeBand === undefined) { t.rangeBand = band; return; }
+        if (band === t.rangeBand) return;
+        var was = t.rangeBand;
+        t.rangeBand = band;
+        if (band > was) {
+            if (band === 2) {
+                SIM.cues.play('dock_range');
+                say('Docking range. C docks at ' + t.name + '.');
+            } else {
+                SIM.cues.play('comm_range');
+                say('Comms range. C hails ' + t.name + '; within ' + CFG.stationDockRange + ' it docks.');
+            }
+        } else {
+            SIM.cues.play('range_lost');
+            say(band === 1 ? 'Out of docking range. Still in comms range.' : 'Out of comms range.');
+        }
+    });
 }
 
 function stationMenuKey(lname) {
@@ -4272,7 +4382,13 @@ function onKeyDown(e) {
         SIM.audio.blip(380, 90, 0.14, 0, 'triangle');
         say('Auto-thrust off.');
     }
-    if (HELD[lname]) { keysDown[lname] = true; return; }
+    if (HELD[lname]) {
+        keysDown[lname] = true;
+        // Silence is a bug: if the sim is frozen because the encounter is
+        // over, a thrust or turn key says so instead of doing nothing.
+        if (over() && !e.repeat) say(overHeldText());
+        return;
+    }
     if (e.repeat) return;
 
     switch (lname) {
@@ -4289,7 +4405,7 @@ function onKeyDown(e) {
             break;
         case 'g':      if (!over()) shieldKey(); break;
         case 'd':
-            if (mode === 'sector') say('Nothing shoots at you in open space. Chaff is for encounters.');
+            if (mode === 'sector') say('Nothing shoots at you in open space. Decoys are for encounters.');
             else if (!over()) fireChaff();
             break;
         case 'b':      beaconKey(); break;
@@ -4468,7 +4584,7 @@ function simTick(dt) {
     ship.pos = add(ship.pos, scale(ship.vel, dt));
     // Stabilizers pulse only while coasting with real momentum to shed.
     updateStabilizers(spd > 3 && !k.w && !k.s ? spd : 0);
-    if (mode === 'sector') updateCollisions(spd);
+    if (mode === 'sector') { updateCollisions(spd); updateStationRanges(); }
 
     if (mode === 'mining') {
         // Rock physics: drift with momentum, bleed energy to friction so a
@@ -4546,7 +4662,9 @@ window.__sim = {
             tug: tug ? { remaining: Math.round(tug.remaining * 10) / 10, total: Math.round(tug.total * 10) / 10, paid: tug.paid, poi: tug.poiData.name } : null,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
-            locked: locked, lockToneMode: lockToneUsesPulse() ? 'pulse' : 'solid',
+            locked: locked, lockToneMode: lockToneKind(),
+            music: !!SIM.audio.musicNode,
+            stationBand: (function () { var s = null; targets.forEach(function (t) { if (t.kind === 'poi' && t.poiType === 'station') s = t.rangeBand; }); return s; })(),
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
@@ -4663,6 +4781,7 @@ function clearMission() {
     autoThrust = false;
     // (the warp charge itself persists across a sector run)
     docked = null;
+    if (SIM.audio.ctx) SIM.audio.stopMusic(0.5);   // the docked interior loop, if one was playing
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }

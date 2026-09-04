@@ -49,6 +49,7 @@
     <h2>Quick Navigation</h2>
     <div class="nav-links">
         <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
+        <a href="#sec-vortex">Vortex orbit demo (ideas6)</a>
         <a href="#sec-cues">Discrete cues</a>
         <a href="#sec-prim">Raw primitives</a>
         <a href="#sec-embed">Recordings in the manifest</a>
@@ -66,6 +67,20 @@
     <button id="candC">C. Filtered pulse <span class="desc">A single 40&nbsp;ms lowpassed square wave at 220&nbsp;Hz, once a second.</span></button>
     <button id="candSolid">(Reference) Today's combat lock tone <span class="desc">The solid 880&nbsp;Hz sine, unchanged, for comparison.</span></button>
 </div>
+
+<!-- ============================================================ -->
+<h2 id="sec-vortex" class="section-header">Vortex orbit demo (ideas6)</h2>
+<p class="section-note">Brian's eight vortex recordings (<code>audio/quadrant/vortex</code>), each looping on its own HRTF panner and orbiting the listener at its own radius and speed — four one way, four the other. Start it, then put focus in the box: Up and Down raise or lower every orbit, Left and Right slow or speed them all up, Escape stops. The status line below the box reads back each change.</p>
+<div class="button-group">
+    <button id="vortexStart">Start the vortex orbit <span class="desc">Loads all eight (about 1.7&nbsp;MB) the first time.</span></button>
+    <button id="vortexStop">Stop the vortex orbit</button>
+</div>
+<div id="vortexArena" tabindex="0" role="application"
+     aria-label="Vortex orbit controls. Up and down arrows raise and lower the orbits, left and right slow and speed them, Escape stops."
+     style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
+    Arrow keys work here once the orbit is running.
+</div>
+<p id="vortexStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
 <!-- ============================================================ -->
 <h2 id="sec-cues" class="section-header">Discrete cues (SIM.cues)</h2>
@@ -207,6 +222,88 @@ document.getElementById('candA').addEventListener('click', candidateA);
 document.getElementById('candB').addEventListener('click', candidateB);
 document.getElementById('candC').addEventListener('click', candidateC);
 document.getElementById('candSolid').addEventListener('click', candidateSolid);
+
+// ---- vortex orbit demo (ideas6) --------------------------------------------
+// Eight looping sources, each on its own HRTF panner, each on its own
+// circular orbit around the listener (who sits at the origin facing -z,
+// the AudioContext default — this page never moves the listener). A rAF
+// loop advances every angle by its own rate times a shared multiplier, so
+// Left/Right change all eight at once without any of them jumping.
+var VORTEX_ORBITS = [
+    { r: 90,  w:  0.35 }, { r: 120, w: -0.28 }, { r: 150, w:  0.22 }, { r: 180, w: -0.18 },
+    { r: 110, w:  0.50 }, { r: 140, w: -0.40 }, { r: 170, w:  0.30 }, { r: 200, w: -0.25 }
+];
+var vortex = { nodes: [], raf: null, speedMul: 1, height: 0, last: 0 };
+var vortexArena = document.getElementById('vortexArena');
+var vortexStatus = document.getElementById('vortexStatus');
+function vortexSay(t) { vortexStatus.textContent = t; }
+
+function vortexStop() {
+    if (vortex.raf) { cancelAnimationFrame(vortex.raf); vortex.raf = null; }
+    var nodes = vortex.nodes; vortex.nodes = [];
+    nodes.forEach(function (n) {
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.3); } catch (e) {}
+        setTimeout(function () { try { n.src.stop(); n.p.disconnect(); } catch (e) {} }, 500);
+    });
+    if (nodes.length) vortexSay('Vortex orbit stopped.');
+}
+registerStop(vortexStop);
+
+function vortexFrame(now) {
+    var dt = Math.min((now - vortex.last) / 1000, 0.1);
+    vortex.last = now;
+    vortex.nodes.forEach(function (n) {
+        n.angle += n.orbit.w * vortex.speedMul * dt;
+        SIM.audio.movePanner(n.p, {
+            x: Math.cos(n.angle) * n.orbit.r,
+            y: vortex.height,
+            z: Math.sin(n.angle) * n.orbit.r
+        });
+    });
+    vortex.raf = requestAnimationFrame(vortexFrame);
+}
+
+function vortexStart() {
+    vortexStop();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    var names = [];
+    for (var i = 1; i <= 8; i++) names.push('vortex' + i);
+    vortexSay('Loading eight vortex recordings…');
+    Promise.all(names.map(function (n) { return A.load(n); })).then(function (bufs) {
+        bufs.forEach(function (buf, i) {
+            var orbit = VORTEX_ORBITS[i], angle = i * Math.PI / 4;
+            var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+            var g = A.ctx.createGain(); g.gain.value = 0.0001;
+            var p = A.makePanner({ x: Math.cos(angle) * orbit.r, y: vortex.height, z: Math.sin(angle) * orbit.r });
+            src.connect(g); g.connect(p); p.connect(A.worldBus);
+            src.start(0, Math.random() * buf.duration * 0.5);   // don't all start on the same beat
+            A.ramp(g.gain, 0.35, 0.8);
+            vortex.nodes.push({ src: src, g: g, p: p, orbit: orbit, angle: angle });
+        });
+        vortex.last = performance.now();
+        vortex.raf = requestAnimationFrame(vortexFrame);
+        vortexArena.focus();
+        vortexSay('Eight vortices orbiting. Height 0, speed times 1. Up and Down for height, Left and Right for speed, Escape stops.');
+    }).catch(function (err) {
+        vortexSay('Load failed: ' + err.message);
+    });
+}
+
+vortexArena.addEventListener('keydown', function (e) {
+    if (!vortex.nodes.length) return;
+    var k = e.key;
+    if (k === 'ArrowUp')         vortex.height = Math.min(300, vortex.height + 15);
+    else if (k === 'ArrowDown')  vortex.height = Math.max(-300, vortex.height - 15);
+    else if (k === 'ArrowRight') vortex.speedMul = Math.min(8, vortex.speedMul * 1.25);
+    else if (k === 'ArrowLeft')  vortex.speedMul = Math.max(0.125, vortex.speedMul / 1.25);
+    else if (k === 'Escape')     { vortexStop(); e.preventDefault(); return; }
+    else return;
+    e.preventDefault();
+    vortexSay('Height ' + vortex.height + ', speed times ' + vortex.speedMul.toFixed(2) + '.');
+});
+document.getElementById('vortexStart').addEventListener('click', vortexStart);
+document.getElementById('vortexStop').addEventListener('click', vortexStop);
 
 // ---- discrete cues, generated from SIM.cues -------------------------------
 var CUE_LABELS = {

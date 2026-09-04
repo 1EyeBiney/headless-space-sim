@@ -935,7 +935,9 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.19 are all DONE (Sonnet) — Phase 2 is complete.
+2.10 through 2.19 are all DONE (Sonnet) — Phase 2 is complete. 2.20 (Brian's
+ideas6, the first notes from actually flying the Phase 2 build) is DONE too
+(Fable, Round 16).
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1578,6 +1580,97 @@ at every boot.
   a clean boot. `file://` was not tested — it no longer works, by
   decision. Not yet re-tested at Pages by Brian's ear, but the mechanism
   itself (fetch, not embed) needs nothing different there.
+#### 2.20 ideas6 — first notes from flying the Phase 2 build (Brian, 2026-09-04, 18:33) — DONE
+
+The first feedback on anything from Rounds 10–15: Brian flew a delivery
+run to completion on the 2.17 build. Seven notes; six built, one parked
+(his own instruction). Built by Fable in Round 16, machine-tested at a
+local server and on Pages, not yet heard back.
+
+- **Decoys, not chaff.** Every player-facing "chaff" is now "decoy(s)":
+  the D refusal in open space, the four firing lines, I / F2 / F3, the
+  docking and hail restock lines, help, the key descriptions, README, and
+  the cue's display name in the sound lab. Variables (`chaff`,
+  `CFG.chaffMax`) and the cue id `chaff_burst` keep their names — no
+  reason to touch working code for a word.
+- **Lock tones by what's under the cursor**, not by mode. SPEC 2.11 picked
+  the tone by mode (combat solid, sector/mining pulse). Now `lockToneKind()`
+  reads the selected target: a ship (or a mission friendly) gets the solid
+  880 Hz tone at `lockToneVol` 0.12; a rock or dust field gets the soft
+  double-blip every 2 s at `lockPulseVol` 0.1 (was 0.07 — Brian said he
+  needed *something* every two seconds, so the pulse is a touch louder);
+  a point of interest gets the solid tone at `lockTonePoiVol` 0.045 AND
+  the guidance ticks keep running underneath it at `tickLockedMs` 220,
+  still pitched by elevation and panned by azimuth — Brian's "combat
+  tone, but softer, and the guidance ticks" — so a minutes-long flight
+  onto a beacon never loses its steering. The tick also now idles while
+  docked or hailing. All four numbers are CFG placeholders for his ear;
+  `__sim.state().lockToneMode` reports 'solid' / 'pulse' / 'poi'.
+- **Undocking puts you 1000 out** (`undockDist`), facing away, outside
+  comm range and inside the no-warp zone, and says so: "1000 out from
+  Station Meridian, facing away. The drive won't spool within 1500 of
+  the station — thrust clear first." (was 250 out with a bare
+  "Undocked.") Brian reported that after his delivery, undocking left
+  him unable to move — only the map answered. **Not reproduced**: at a
+  local server, the exact flow (delivery run, station selected, dock
+  within 150, Escape to undock, W held, arrows held) moves the ship
+  normally, and the Q-map "depart" path from an encounter clears state
+  through `returnToSector` → `newGame` like X does. `undock()` now resets
+  held keys and auto-thrust regardless, and — the real fix for the
+  *silence* — a held W/S/arrow while `over()` is holding the ship still
+  now answers instead of doing nothing (`overHeldText()`: "Ship lost. A
+  tug is on the way, N seconds out." / "Mission over. X returns to the
+  sector." / "Encounter over. Enter plays again, X ..."). If it happens
+  again, the ship will say why; that's the diagnostic. Brian: if you
+  remember the exact keys between the delivery and the undock, that's
+  the lead.
+- **Comm-range and dock-range cues.** `updateStationRanges()` runs every
+  sector frame next to the collision check and compares each station's
+  range band (outside / comm / dock) before and after — stateless, the
+  same before/after idiom as the warp-core alerts. Crossing inward:
+  `comm_range` (a rising pair) + "Comms range. C hails Station Meridian;
+  within 150 it docks." or `dock_range` (a rising triple) + "Docking
+  range. C docks at Station Meridian." Crossing outward: `range_lost` (a
+  falling pair) + "Out of docking range. Still in comms range." / "Out
+  of comms range." The ranges themselves are untouched (Brian: upgrades
+  will extend them). Warp drops out at 600, just outside comm range, so
+  an arrival never trips the cue; the first frame after a roster build
+  only records the band; undock sets it to "outside" silently.
+  Machine-tested at 600 / 450 / 120 / 300 / 700 in that order — bands
+  0-1-2-1-0 with the right line each time.
+- **Docked is its own place.** `beaconAudible()` is false while docked,
+  pushed to every beacon at the moment of docking by `applyBeaconMutes()`
+  (updateTargeting can't — simTick is frozen while docked); the lock
+  tick and tone stop and `locked` clears; and Brian's
+  `space_station_interior1` loops on the music bus at `stationAmbientVol`
+  0.35 (`SIM.audio.playMusic`, the 2.19 hook, finally with a track). The
+  WAV master (29 MB, stereo 24-bit 44.1k) got a stereo 48k 128k MP3
+  sibling, `audio/quadrant/space_station_interior1.mp3` (1.8 MB); the
+  WAV itself is not served and **not committed** — Brian's call whether
+  it goes in like the mining/laser masters did. The loop is fetched when
+  the sector roster is built (cached, so re-entries are free), not in
+  the boot preload set. Undock fades it over 1 s; `clearMission` stops it
+  too, so leaving to the menu never leaks it. Machine-tested: `music`
+  true while docked, false after undock, the fade confirmed gone 1.3 s
+  later; the beacon mute is a one-line guard, verified by reading, not
+  by ear (tests run with beacons off).
+- **The vortex orbit demo** lives in `soundlab.html`, a new section
+  ahead of the cues: Brian's eight `audio/quadrant/vortex/space_vortex1–8`
+  recordings (all stereo 48k, 8 or 10 s) loop on eight HRTF panners
+  orbiting the listener — radii 90–200, four one way and four the other
+  at rates 0.18–0.5 rad/s, a shared multiplier on all eight, one shared
+  height. Focus the box: Up/Down move every orbit ±15 per press (clamped
+  ±300), Left/Right multiply the shared speed by 1.25 (0.125×–8×),
+  Escape stops; a polite live region reads each change back. The eight
+  files are manifest keys `vortex1–8` (and the interior is
+  `station_interior1`), excluded from `AUDIO_PRELOAD` — it's now a
+  curated filter rather than "every key", as the 2.19 comment said it
+  would become. Machine-tested: all eight load, the arena takes focus,
+  every key changes the status line, Escape stops. Nothing here is heard
+  by anyone yet — it's built precisely so Brian can.
+- **Parked on his instruction**: the other audio sets he's collecting
+  ("do not worry about them yet").
+
 ### Phase 2, continued — a living sector, smarter enemies (the existing 2.1–2.8)
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)

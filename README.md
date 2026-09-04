@@ -64,10 +64,14 @@ Calling the station works by range: within 500 it hails you back with a
 small menu — rearm, sell ore, buy reaction mass, take a mission — and
 within 150 it docks you outright. Fly it in by ear — the lock tick and R
 (range, closing or opening) are your instruments. Docking repairs your
-hull, rearms your eight missiles, restocks chaff, refills the warp tank,
-and tops off your reaction mass. Losing your ship no longer fails the
-run outright — a tug is dispatched instead, on the clock, and the run's
-timer keeps running while you wait.
+hull, rearms your eight missiles, restocks decoys, refills the warp tank,
+and tops off your reaction mass. You hear a cue and a word as you cross
+into comms range and again into docking range; docked, the beacons
+outside go quiet and the station's own interior takes over. Undocking
+puts you 1000 out, facing away — the drive won't spool within 1500 of
+the station, so thrust clear before jumping. Losing your ship no longer
+fails the run outright — a tug is dispatched instead, on the clock, and
+the run's timer keeps running while you wait.
 
 Once docked, a station menu opens: **Sell ore** trades your cargo for
 credits (10 ore per credit), and **Modules** spends them on permanent
@@ -120,11 +124,11 @@ Right hand on the arrows, left hand on everything else.
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
 | 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse) carrying all eight versions; pressing the slot's key again cycles to the next version, Shift+ the key cycles back. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
-| F2 | Ship status: hull, shields, warp charge, cargo, missiles, chaff, each laser slot with what it's good against, fitted modules, and mass |
-| F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and chaff, each with what it's for |
+| F2 | Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with what it's good against, fitted modules, and mass |
+| F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
-| D | Chaff. A decoy burst that spoofs the missile coming at you — no shield needed. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
+| D | Decoy. A burst that spoofs the missile coming at you — no shield needed. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
 | B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
 | Tab / T | Cycle targets / report the selected target. Shift+T or Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
@@ -153,7 +157,7 @@ hear working, and come back at half charge; drop them yourself before that
 and whatever charge is left keeps recovering. A ship that survives one of
 your missiles breaks away hard and hits back within seconds — except a
 Rookie-tier Cruiser, which only ever answers by missile and never bothers
-with the dramatic evade. Against a missile you also have D, chaff: the
+with the dramatic evade. Against a missile you also have D, a decoy: the
 missile loses guidance on the spot and your weapons stay live — but it
 does nothing against a beam, you carry four, and at Veteran and Ace a
 spoofed missile brings the next attack fast.

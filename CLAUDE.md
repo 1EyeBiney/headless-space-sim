@@ -45,7 +45,12 @@ expands.
   `<audio controls>` (paths with spaces `encodeURI`'d). Native HTML
   buttons/audio elements, not the game's custom key-trap shell — Tab and
   Enter/Space already work. Test at the local server (`soundlab.html`,
-  not `index.html`).
+  not `index.html`). As of ideas6 (Round 16) it also hosts the **vortex
+  orbit demo**: eight looping HRTF panners orbiting the listener
+  (`VORTEX_ORBITS`, `vortexStart/Stop/Frame`), arrow keys in a focused
+  `role=application` box for shared height (Up/Down) and a shared speed
+  multiplier (Left/Right), Escape stops — Brian's testbed for what the
+  HRTF layer can do with moving sources, the seed of a future 3D space.
 - (F2, the ship status screen, SPEC 2.13 — same browsable shell as the run
   log, listing hull/shields/warp/cargo/missiles/chaff, one line per laser
   slot with its family matchup in words, fitted modules, and total mass;
@@ -515,6 +520,40 @@ static once tiers exist.
   wait (elapsed 3 at death, 13 ten seconds into the wait, 53 at
   arrival) and the `demo` object surviving intact. Zero console errors.
   Not yet heard by Brian.
+- **ideas6 (Round 16, SPEC 2.20 — Brian's first notes from flying the
+  Phase 2 build)**: (1) "chaff" is "decoy(s)" everywhere the player hears
+  it; code names unchanged. (2) `lockToneKind()` picks the lock tone by
+  the selected target's kind, not by mode — 'solid' (ship), 'pulse' (rock/
+  dust, `lockPulseVol`), 'poi' (solid at `lockTonePoiVol` PLUS the guidance
+  ticks continuing at `tickLockedMs` in `tickBeat`); `startSolidTone(vol)`
+  takes its level. `tickBeat` also idles while `docked`/`hailMenu.open`.
+  (3) `undock()` places the ship `CFG.undockDist` 1000 out, resets
+  `keysDown`/`autoThrust`, sets the station's `rangeBand` to 0 silently,
+  stops the music, and says the no-warp zone still has to be thrust clear
+  of. Brian's "couldn't move after undocking" was NOT reproduced (the
+  delivery → dock → Escape → W flow moves normally at a local server);
+  the held-key branch in `onKeyDown` now answers with `overHeldText()`
+  whenever `over()` is holding the ship, so if it recurs the ship says why.
+  (4) `updateStationRanges()` (called from `simTick` next to
+  `updateCollisions` in sector mode) tracks `t.rangeBand` per station —
+  0 outside / 1 comm / 2 dock — and on each crossing plays `comm_range`,
+  `dock_range`, or `range_lost` (new entries in `audio_cues.js`'s sector
+  category) with a one-line say(); the first frame after a roster build
+  just records the band. (5) Docked: `beaconAudible()` returns false while
+  `docked`, applied at dock time by the new `applyBeaconMutes()` (simTick
+  is frozen while docked, so updateTargeting can't); lock tone/tick stop;
+  `SIM.audio.playMusic('station_interior1', {vol: CFG.stationAmbientVol})`
+  — the 2.19 music hook's first real track, Brian's
+  `audio/quadrant/space_station_interior1.wav` converted to a stereo 48k
+  128k MP3 sibling (the WAV is not committed, his call); loaded when
+  `makeSectorRoster()` runs (cached), stopped by `undock()` and
+  `clearMission()`. (6) `AUDIO_PRELOAD` is now a curated filter that
+  excludes `vortex\d` and `station_interior`. The vortex demo itself is
+  in `soundlab.html` (see Files). `__sim.state()` gained `music` and
+  `stationBand`. All machine-tested (range bands 0-1-2-1-0 at 600/450/
+  120/300/700, dock/undock/music/held-key/warp-refusal, the three lock
+  kinds in sector/mining/combat, the lab demo's load/keys/stop), zero
+  console errors; nothing heard by Brian yet.
 - **Docking (Round 13, SPEC 1.19, supersedes Round 12's SPEC 1.6)**: the
   flown corridor is GONE — Brian: use ranges instead. `callPoi()` computes
   `range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract`
@@ -824,7 +863,7 @@ effective-keys object `k`; any W or S press, Shift+W, a warp jump,
 docking, or `clearMission` ends it; the Shift chords are checked in
 `onKeyDown` BEFORE the `HELD` branch, since Shift+W arrives as `lname`
 'w') · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
-selected laser (fire-and-forget, cannot be stopped) · F missile · D chaff (spoofs the incoming missile, SPEC 1.8) · G shields
+selected laser (fire-and-forget, cannot be stopped) · F missile · D decoy (spoofs the incoming missile, SPEC 1.8; "chaff" in the code, "decoy" to the player as of ideas6) · G shields
 · Tab cycle targets (Shift+T / Shift+Tab cycle back) · T report selected
 target (lock onset also speaks distance) · R range to target with
 closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
@@ -1084,9 +1123,19 @@ console errors; not yet heard by Brian.
 2.10 through 2.19 are all DONE now — **Phase 2 (the Sunday 2026-09-06
 demo target) is complete**. Nothing from Rounds 10-15 has been heard or
 flown by Brian yet; every item shipped this session is machine-tested
-only. Phase 3 (the moving world, SPEC.md's 3.10-3.17) is the next block
-of work whenever Brian is ready to start it, but nothing there has been
-scoped into per-round detail yet the way Phase 2 was.
+only. Round 16 (Fable) built Brian's **ideas6** as SPEC 2.20 — his first
+notes from actually flying the Phase 2 build (decoys, lock tones by
+target kind, undock at 1000, comm/dock range cues, the docked station
+interior, and the sound lab's vortex orbit demo; see the "ideas6" bullet
+in the Sector section). One report — couldn't move after undocking — was
+not reproduced; held keys now answer whenever the sim is holding the
+ship, so a recurrence will say why.
+
+Next, per Brian (2026-09-04 evening): write the Phase 3 spec — the
+moving world, SPEC.md's Part A.10 and 3.10–3.17 — in rounds of
+questions to give the macro areas real definition before any of it is
+built. Nothing in Phase 3 is scoped to per-round detail yet the way
+Phase 2 was.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
