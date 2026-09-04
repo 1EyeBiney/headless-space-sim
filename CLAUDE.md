@@ -569,15 +569,17 @@ from Rounds 10–12 has been heard yet.
 Brian's ideas4 (2026-09-04 evening, `ideas4.txt`, untracked) is folded
 into SPEC.md as a Phase 1 second pass, 1.16–1.20, DOCS ONLY — nothing
 built: 1.16 chaff instant/any time (already true as built, now a rule),
-1.17 warp takes time (1000 units/s, three-phase recorded warp, no warp
-under 25 % — the 18 clips are measured in SPEC, and they are 4 / 1.5 /
-4 s, not the ~1.5 s the note assumed, which is the open question), 1.18
-Escape opens the mission menu from the live sim (Resume item; the
-separate pause state goes), 1.19 the docking corridor is REMOVED in
-favor of a comm range and a dock range (supersedes 1.6 — the "Docking"
-bullet above describes code that will go), 1.20 lasers ×2 against ships
-at Rookie. Open questions in Part C. Brian's plan: Sonnet builds these
-next, suggested order in SPEC (1.19 → 1.20 → 1.16 → 1.18 → 1.17).
+1.17 warp takes time (the three recorded phases play untrimmed at their
+own rates — the 18 clips measure 4 / 1.5 / 4 s — shortest jump 9.5 s,
+longest 12 s, the timed run's first leg exactly 12 s, no warp under
+25 %), 1.18 Escape opens the mission menu from the live sim (Resume
+item; the separate pause state goes; mid-warp the flight continues
+under the menu), 1.19 the docking corridor is REMOVED in favor of a
+comm range and a dock range (supersedes 1.6 — the "Docking" bullet
+above describes code that will go), 1.20 lasers ×2 against ships at
+Rookie (confirmed as the tier Brian tests at). Nothing open in Part C.
+Brian's plan: Sonnet builds these next, suggested order in SPEC (1.19 →
+1.20 → 1.16 → 1.18 → 1.17).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

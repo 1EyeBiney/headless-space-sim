@@ -602,50 +602,54 @@ The recordings, measured 2026-09-04 (ffprobe), all in `audio/ships/warp/`:
 | `warp_engaged1r–6r.mp3` | 1.5 s each (Brian guessed 1.54) | stereo 48 kHz |
 | `warp_finish1–6.mp3` | 4.0 s each | stereo 48 kHz |
 
-So the start and finish clips are 4 s, not the ~1.5 s the note assumed,
-and the plan below is written against 4 / 1.5 / 4. **DECIDE** (Brian):
-re-cut start and finish to ~1.5 s as first intended (then the engaged
-loop carries nearly every jump), or keep the 4 s clips and let the code
-trim them to fit short jumps (the default below). Either way the numbers
-live in a table, not inline.
+So the start and finish clips are 4 s, not the ~1.5 s the note assumed.
+Brian (decided, same evening): **no trimming, no rate changes — the
+clips play as recorded.** The shortest jump is one full play of start,
+one engaged, and finish (4 + 1.5 + 4 = 9.5 s); longer jumps run the
+engaged loop longer; the longest jump the tank allows is 12 s, and the
+timed run's first leg — station to the Contested Zone on a full tank —
+must be exactly that 12 s.
 
-- **Speed**: `warpSpeed` 1000 units/s. A jump's flight time is
-  `travel / warpSpeed`, `travel` = the distance to `warpDropout` short of
-  the target, capped by the charge exactly as now (a jump past the tank
-  still goes and drops out where the charge runs dry — unchanged from
-  1.10). The ship MOVES along the line every frame during the flight (the
-  map, beacons, and the range readout all stay honest; the delivery
-  clock already counts in warp), keys answer "Hyperwarp in progress."
-  as now. The 2 s spool (`warpChargeMs`) stays in front of the flight.
+- **Time, not speed**: a jump's total time from H to arrival is
+  `warpJumpMinS` 9.5 at `warpMinDist` (1,200), rising linearly to
+  `warpJumpMaxS` 12 at `warpJumpLongDist` — set from `SECTOR_POIS` so the
+  delivery run's station → Contested Zone leg lands on 12 s exactly
+  (Sonnet measures the leg's travel distance and puts that number in
+  CFG). Anything longer is still 12. `travel` is the distance to
+  `warpDropout` short of the target, capped by the charge exactly as now
+  (a jump past the tank still goes and drops out where the charge runs
+  dry — unchanged from 1.10; its time comes from the shortened travel).
+  The ship MOVES along the line every frame during the flight at
+  `travel / flight time` (the map, beacons, and R's range all stay
+  honest; the delivery clock already counts in warp); keys answer
+  "Hyperwarp in progress." as now. `warpChargeMs` (the 2 s spool) goes
+  away — the start clip IS the spool.
 - **Minimum charge**: refuse under `warpMinChargePct` 25 %: "Warp core
   below 25 percent. Let it cool, or fly it." (replaces today's
   zero-charge refusal; the 1.13 alerts at 50/75 tell the pilot when it's
-  coming back). 25 % of a 12,500 tank = 3,125 units ≈ 3.1 s of flight,
-  which with the spool is ~5 s of sound — enough for a start and an end
-  once they are trimmed, not enough for two untrimmed 4 s clips.
+  coming back).
 - **Engine type**: `warpEngine` 1–6, a CFG default of 1 today; a drive
   module chooses it later (A.5). Engine N plays `warp_startN`,
   `warp_engagedNr` looped, `warp_finishN`. **Accepted by default**: embed
   only set 1 in `audio_assets.js` now (~150 KB mono 48k 96k, the same
   pipeline as the laser clips); the other five stay on disk until a
   second drive exists — all 18 would add ~0.9 MB to a 2.2 MB file.
-- **The sequence** for a jump with spool `S` (2 s) and flight `T`:
-  the start clip plays from the moment H is accepted (it covers the
-  spool and the first seconds of flight — the ship departs at `S` as
-  now); the engaged loop starts when the start clip ends and repeats,
-  seamless, until the finish clip is due; the finish clip ends exactly at
-  arrival. Total sound = `S + T`. When `S + T` is shorter than start +
-  finish (8 s untrimmed), each is cut to `(S + T) / 2` — the start fades
-  out as the finish fades in at the midpoint — and there is no engaged
-  loop at all (**accepted by default**, the "trim" option above). A dry
-  drop-out is an arrival: the finish clip plays over the last seconds
-  before the charge runs out, then "Warp charge exhausted..." as now. The
-  existing synth cues (`warp_charge`, `warp_arrive`, `warp_dry`) stay as
-  the fallback when the assets aren't decoded; `warp_dry` still fires
-  after the finish on a dry jump.
-- Escape during a flight: see 1.18 — the menu freezes the sim, the warp
-  audio pauses with it (stop the loop, resume on Resume). Simplest honest
-  version; Sonnet's call if it fights the audio.
+- **The sequence** for a jump of total time `T` (9.5–12 s): the start
+  clip plays from the moment H is accepted, 4 s at its own rate; the
+  ship departs when it ends; the engaged clip loops seamlessly from 4 s
+  until `T − 4`; the finish clip plays its full 4 s and ends exactly at
+  arrival. The engaged section is therefore `T − 8` seconds (1.5 s at the
+  shortest jump = one play, 4 s at the longest) — its last repeat is
+  simply cut with a short fade when the finish starts, never sped up or
+  slowed. A dry drop-out is an arrival like any other: the finish plays
+  its last 4 s before the charge runs out, then "Warp charge
+  exhausted..." as now. The existing synth cues (`warp_charge`,
+  `warp_arrive`, `warp_dry`) stay as the fallback when the assets aren't
+  decoded; `warp_dry` still fires after the finish on a dry jump.
+- Escape during a flight: see 1.18 — the menu opens, the warp KEEPS
+  FLYING and sounding underneath it (Brian: decided — nothing hostile
+  waits at the far end of a warp today), arrival speaks under the menu,
+  Resume returns to the arrived ship.
 - Help, KEY_DESCRIPTIONS (`h`), README warp paragraph, `I` ("Hyperwarp,
   N seconds to go.") all updated. CLAUDE.md's 1.10 bullet and the "warp
   drama" note in "Where we left off" get superseded.
@@ -653,9 +657,14 @@ live in a table, not inline.
 #### 1.18 Escape opens the mission menu from open space or an encounter (ideas4)
 
 - Today Escape = pause (masterGain ducked, sim frozen, "Paused."). New:
-  Escape in the raw sim — open sector space or any encounter, warp
-  included — opens the MISSION MENU over the live mission: sim frozen,
-  audio ducked, the same freeze help/map/run log already use. A new
+  Escape in the raw sim — open sector space or any encounter — opens
+  the MISSION MENU over the live mission: sim frozen, audio ducked, the
+  same freeze help/map/run log already use. **Exception, mid-warp
+  (Brian: decided)**: the menu opens but the sim does NOT freeze — the
+  warp flight and its sound continue, the ship arrives under the menu
+  ("Hyperwarp complete..." spoken as now), and Resume returns the pilot
+  to the arrived ship. Nothing hostile waits at the far end of a warp
+  today, so an open menu during the flight is safe. A new
   first item **Resume** ("Back to the ship."); Escape again also resumes
   **(accepted by default)**. Choosing any mission item abandons the
   current one exactly as X does today (X keeps every current meaning:
@@ -711,10 +720,7 @@ Brian: "make lasers do 2x damage on enemy ships at this difficulty."
   (`dmg * L.hullMult * CFG.laserShipMult`); rocks and the per-laser
   `hullMult` character are untouched. Spoken damage numbers double with
   it, so the pilot hears the change.
-- **DECIDE** (Brian): "this difficulty" read as Rookie, the default and
-  the tier a fresh profile plays at. If it was the tier your profile had
-  set (the menu says which on the Difficulty line), say so and the 2
-  moves; if it's all tiers, it's one number in `CFG_DEFAULTS` instead.
+- Rookie confirmed (Brian, same evening) — the tier he is testing at.
 - Help (Weapons line about lasers), README combat paragraph, the
   Difficulty descriptions (`TIER_DESCS`) mention it.
 
@@ -872,27 +878,28 @@ three sound levels per category (Off / Quiet / Full); the beacon setting
 persists and is read back at sector entry when it isn't On; Shift+Tab
 alongside Shift+T; any W or S press cancels auto-thrust.
 
-Decided (Brian, ideas4, 2026-09-04 evening): chaff is instant and works
-during a burst or with shields up (1.16); warp takes time at 1000
-units/s with a recorded start / engaged-loop / finish and no warp under
-25 % charge (1.17); Escape opens the mission menu from the live sim
-(1.18); the docking corridor goes — a station has a communication range
-and a landing range, nothing else (1.19); lasers do double damage to
-ships at (Rookie) difficulty (1.20).
+Decided (Brian, ideas4, 2026-09-04 evening, follow-ups answered the
+same night): chaff is instant and works during a burst or with shields
+up (1.16); warp takes time — the recorded start / engaged-loop / finish
+play at their own rates, untrimmed, the shortest jump is one full pass
+of all three (9.5 s), the longest 12 s, and the timed run's first leg is
+that 12 s; no warp under 25 % charge (1.17); Escape opens the mission
+menu from the live sim, and mid-warp the flight continues under the
+menu (1.18); the docking corridor goes — a station has a communication
+range and a landing range, nothing else (1.19); lasers do double damage
+to ships at Rookie, the tier Brian tests at (1.20).
 
 Accepted by default (say otherwise), ideas4: Resume as the menu's first
 item while a mission is live, Escape again resumes; no speed check at
-the dock range; embed only warp engine set 1 now; the code trims the 4 s
-start/finish clips to fit short jumps; undock along the arrival vector.
+the dock range; embed only warp engine set 1 now; the start clip is the
+spool (the 2 s `warpChargeMs` goes); the engaged loop's last repeat is
+cut with a short fade under the finish; undock along the arrival vector.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
 ships placeholders. The per-slot switch delays (three tie at 1.4 s) —
-Brian hand-sets them in `SLOT_SWITCH` after hearing them. From ideas4:
-re-cut the warp start/finish clips to ~1.5 s, or keep 4 s and trim in
-code (1.17); "this difficulty" for the 2× laser = Rookie? (1.20);
-whether Escape mid-warp should open the menu or wait for arrival
-(1.17/1.18).
+Brian hand-sets them in `SLOT_SWITCH` after hearing them. Nothing open
+from ideas4 — all three follow-up questions were answered.
 
 ## Deferred (Brian: "not yet")
 
