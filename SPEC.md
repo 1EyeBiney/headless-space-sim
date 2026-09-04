@@ -131,8 +131,9 @@ Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
 (sound options, the `B` beacon key), 1.13 (warp-core alerts), 1.14
 (laser switching), 1.15 (R / Shift+R / Shift+T / Shift+W), and 1.8
 (chaff) are all DONE — every Phase 1 item except 1.11 (the ship window,
-deferred past the demo by Brian). Next is Brian's ear on Rounds 10–12,
-then Phase 2 on his go.
+deferred past the demo by Brian). Brian's ideas4 (2026-09-04, evening)
+adds a second pass, 1.16–1.20 below — the next build, by Sonnet, before
+Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -562,6 +563,161 @@ W. No console errors. Not yet heard.
 - F12 explore, F1 help, KEY_DESCRIPTIONS, README, and CLAUDE.md's key map
   updated for all three.
 
+### Phase 1, second pass — Brian's ideas4 (2026-09-04, evening)
+
+Five items from `ideas4.txt`, folded in here 2026-09-04 (Fable, docs
+only). Brian: Sonnet builds these next. Suggested order — 1.19 first (a
+removal, it unblocks every docking test), 1.20 (one number per tier),
+1.16 (a test, nothing to build), 1.18, then 1.17 (the biggest, and it
+waits on the clip-length decision below). Same rules as everything
+above: one commit per item, machine-test at a local server with beacons
+off, docs in sync, push, re-test at Pages, close every tab.
+
+#### 1.16 Chaff is instant, any time (ideas4)
+
+Brian: "chaff is instant, can be used during laser or shields." Already
+true as 1.8 was built — `fireChaff()` has no gate on a burst in progress
+or on raised shields, and D answers in the same frame. This item makes
+it a RULE rather than an accident: D never gets a gate beyond "in an
+encounter, not paused, not over." Test checklist: D mid-burst spoofs the
+missile and the burst keeps running; D with shields up spends a round
+("That missile was already ballistic") since the shield already broke
+its guidance.
+
+#### 1.17 Warp takes time: a three-phase recorded warp, 25 % minimum charge (ideas4)
+
+Brian's ask: warping should take time — 10,000 distance ≈ 10 seconds on
+the current engine — and play three recorded phases: warp start, warp
+engaged (looped to fill), warp end. Six start and six end variants for
+six engine types, engaged loops to match. No warp below 25 % charge, so
+there is always time for all three phases. (He wrote "quadrant warping";
+the only warp that exists is the in-sector `H` hyperwarp, so this is
+that — the Phase 4 quadrant jump inherits it later.)
+
+The recordings, measured 2026-09-04 (ffprobe), all in `audio/ships/warp/`:
+
+| Files | Length | Format |
+| --- | --- | --- |
+| `warp_start1–6.mp3` | 4.0 s each | stereo 48 kHz |
+| `warp_engaged1r–6r.mp3` | 1.5 s each (Brian guessed 1.54) | stereo 48 kHz |
+| `warp_finish1–6.mp3` | 4.0 s each | stereo 48 kHz |
+
+So the start and finish clips are 4 s, not the ~1.5 s the note assumed,
+and the plan below is written against 4 / 1.5 / 4. **DECIDE** (Brian):
+re-cut start and finish to ~1.5 s as first intended (then the engaged
+loop carries nearly every jump), or keep the 4 s clips and let the code
+trim them to fit short jumps (the default below). Either way the numbers
+live in a table, not inline.
+
+- **Speed**: `warpSpeed` 1000 units/s. A jump's flight time is
+  `travel / warpSpeed`, `travel` = the distance to `warpDropout` short of
+  the target, capped by the charge exactly as now (a jump past the tank
+  still goes and drops out where the charge runs dry — unchanged from
+  1.10). The ship MOVES along the line every frame during the flight (the
+  map, beacons, and the range readout all stay honest; the delivery
+  clock already counts in warp), keys answer "Hyperwarp in progress."
+  as now. The 2 s spool (`warpChargeMs`) stays in front of the flight.
+- **Minimum charge**: refuse under `warpMinChargePct` 25 %: "Warp core
+  below 25 percent. Let it cool, or fly it." (replaces today's
+  zero-charge refusal; the 1.13 alerts at 50/75 tell the pilot when it's
+  coming back). 25 % of a 12,500 tank = 3,125 units ≈ 3.1 s of flight,
+  which with the spool is ~5 s of sound — enough for a start and an end
+  once they are trimmed, not enough for two untrimmed 4 s clips.
+- **Engine type**: `warpEngine` 1–6, a CFG default of 1 today; a drive
+  module chooses it later (A.5). Engine N plays `warp_startN`,
+  `warp_engagedNr` looped, `warp_finishN`. **Accepted by default**: embed
+  only set 1 in `audio_assets.js` now (~150 KB mono 48k 96k, the same
+  pipeline as the laser clips); the other five stay on disk until a
+  second drive exists — all 18 would add ~0.9 MB to a 2.2 MB file.
+- **The sequence** for a jump with spool `S` (2 s) and flight `T`:
+  the start clip plays from the moment H is accepted (it covers the
+  spool and the first seconds of flight — the ship departs at `S` as
+  now); the engaged loop starts when the start clip ends and repeats,
+  seamless, until the finish clip is due; the finish clip ends exactly at
+  arrival. Total sound = `S + T`. When `S + T` is shorter than start +
+  finish (8 s untrimmed), each is cut to `(S + T) / 2` — the start fades
+  out as the finish fades in at the midpoint — and there is no engaged
+  loop at all (**accepted by default**, the "trim" option above). A dry
+  drop-out is an arrival: the finish clip plays over the last seconds
+  before the charge runs out, then "Warp charge exhausted..." as now. The
+  existing synth cues (`warp_charge`, `warp_arrive`, `warp_dry`) stay as
+  the fallback when the assets aren't decoded; `warp_dry` still fires
+  after the finish on a dry jump.
+- Escape during a flight: see 1.18 — the menu freezes the sim, the warp
+  audio pauses with it (stop the loop, resume on Resume). Simplest honest
+  version; Sonnet's call if it fights the audio.
+- Help, KEY_DESCRIPTIONS (`h`), README warp paragraph, `I` ("Hyperwarp,
+  N seconds to go.") all updated. CLAUDE.md's 1.10 bullet and the "warp
+  drama" note in "Where we left off" get superseded.
+
+#### 1.18 Escape opens the mission menu from open space or an encounter (ideas4)
+
+- Today Escape = pause (masterGain ducked, sim frozen, "Paused."). New:
+  Escape in the raw sim — open sector space or any encounter, warp
+  included — opens the MISSION MENU over the live mission: sim frozen,
+  audio ducked, the same freeze help/map/run log already use. A new
+  first item **Resume** ("Back to the ship."); Escape again also resumes
+  **(accepted by default)**. Choosing any mission item abandons the
+  current one exactly as X does today (X keeps every current meaning:
+  leave, return to the sector, cancel). Sound, Difficulty, Run log, Help
+  work from there as now. The delivery clock stops while it's open (it
+  already stops for menu/help/map).
+- The separate "paused" state goes away — the open menu IS the pause,
+  and the few "Paused." refusals (Shift chords, etc.) become the menu's
+  own captured-key behavior. `over()` (won/lost) keeps its Enter/X flow.
+- Overlays keep Escape as today: help, map, run log, Sound list close;
+  the station menu undocks. Only the bare sim changes.
+- The cursor lands on Resume when opened from a mission; at boot the
+  menu still has no Resume line (nothing to resume) — build the item
+  list with Resume only while a mission is live.
+- KEY_DESCRIPTIONS (`escape`), help System line, README key row.
+
+#### 1.19 Station by range, not corridor (ideas4) — supersedes 1.6
+
+Brian: remove the landing corridor; use ranges for the communication
+and landing zones. 1.6 stays in the record as built-and-superseded; the
+docking-computer module idea from 1.7/A.5 goes with it.
+
+- **Remove** the corridor entirely: `startDocking`/`updateDocking`/
+  `dockOffsets`/`corridorFrame`/`abortToEntry`/`dockToneOn`/
+  `scheduleDockTick`, the `docking` state, `dockAxis` on `SECTOR_POIS`
+  and in `makeSectorRoster`, the `dock*` CFG block (keep nothing of it),
+  the `dock_abort` cue (keep `dock_clunk`), the corridor help lines and
+  README paragraph, `X` cancelling an approach, CLAUDE.md's corridor
+  bullet and its tuning note. `docked`, the station menu, and
+  `finishDocking`'s service/handover/influence all stay.
+- **Two ranges per station**, both in CFG: `stationCommRange` 500 (=
+  today's `poiInteract`) and `stationDockRange` 150. `C` inside comm
+  range but outside dock range = a **hail**, no docking: "Meridian
+  control: [influence greeting if earned] services ready — repair, rearm,
+  chaff, fuel. Come within 150 to dock." (a short status, not the menu).
+  `C` inside dock range = dock, instantly, `finishDocking` as today.
+  No speed check **(accepted by default** — Brian said ranges only);
+  the lock tick and "Locked. Distance N", plus R's range-with-closing
+  from 1.15, are the landing instruments now.
+- **Undock**: place the ship `stationDockRange + 100` out along the
+  direction it arrived from (store the approach vector at dock time —
+  `dockAxis` is gone), velocity zero, as today otherwise.
+- Planet and the other points: unchanged (`poiInteract` stays for them).
+- Test checklist: C at 400 hails, C at 120 docks, the delivery handover
+  still fires on the dock, undock lands outside dock range, `X` in open
+  space no longer mentions a corridor, no console errors.
+
+#### 1.20 Lasers do double damage against ships at Rookie (ideas4)
+
+Brian: "make lasers do 2x damage on enemy ships at this difficulty."
+- A per-tier number, `laserShipMult` in `TIERS[].cfg` (Rookie 2,
+  Veteran 1, Ace 1), multiplied into the ship branch of `beamTick` only
+  (`dmg * L.hullMult * CFG.laserShipMult`); rocks and the per-laser
+  `hullMult` character are untouched. Spoken damage numbers double with
+  it, so the pilot hears the change.
+- **DECIDE** (Brian): "this difficulty" read as Rookie, the default and
+  the tier a fresh profile plays at. If it was the tier your profile had
+  set (the menu says which on the Difficulty line), say so and the 2
+  moves; if it's all tiers, it's one number in `CFG_DEFAULTS` instead.
+- Help (Weapons line about lasers), README combat paragraph, the
+  Difficulty descriptions (`TIER_DESCS`) mention it.
+
 ### Phase 2 — a living sector, smarter enemies, the second resource
 
 #### 2.1 Distress calls + rescue-and-tow (new, not combat/mining)
@@ -716,10 +872,27 @@ three sound levels per category (Off / Quiet / Full); the beacon setting
 persists and is read back at sector entry when it isn't On; Shift+Tab
 alongside Shift+T; any W or S press cancels auto-thrust.
 
+Decided (Brian, ideas4, 2026-09-04 evening): chaff is instant and works
+during a burst or with shields up (1.16); warp takes time at 1000
+units/s with a recorded start / engaged-loop / finish and no warp under
+25 % charge (1.17); Escape opens the mission menu from the live sim
+(1.18); the docking corridor goes — a station has a communication range
+and a landing range, nothing else (1.19); lasers do double damage to
+ships at (Rookie) difficulty (1.20).
+
+Accepted by default (say otherwise), ideas4: Resume as the menu's first
+item while a mission is live, Escape again resumes; no speed check at
+the dock range; embed only warp engine set 1 now; the code trims the 4 s
+start/finish clips to fit short jumps; undock along the arrival vector.
+
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
 ships placeholders. The per-slot switch delays (three tie at 1.4 s) —
-Brian hand-sets them in `SLOT_SWITCH` after hearing them.
+Brian hand-sets them in `SLOT_SWITCH` after hearing them. From ideas4:
+re-cut the warp start/finish clips to ~1.5 s, or keep 4 s and trim in
+code (1.17); "this difficulty" for the 2× laser = Rookie? (1.20);
+whether Escape mid-warp should open the menu or wait for arrival
+(1.17/1.18).
 
 ## Deferred (Brian: "not yet")
 

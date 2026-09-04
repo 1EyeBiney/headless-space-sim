@@ -33,7 +33,10 @@ expands.
   `audio/mining/` = 3 asteroid loops + 3 asteroid explosions (all 6 already
   embedded in `audio_assets.js`); `audio/ships/` = 18 ship loops
   (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far) plus
-  `audio/ships/warp/` = a warp-drama candidate recording; `audio/weapons/
+  `audio/ships/warp/` = 18 warp recordings for SPEC 1.17 (`warp_start1-6`,
+  `warp_finish1-6` at 4.0 s each, `warp_engaged1r-6r` loops at 1.5 s,
+  all stereo 48 kHz — none embedded yet; one set per future engine
+  type); `audio/weapons/
   missiles/` = the one embedded missile-firing mp3, `audio/weapons/lasers/`
   = 16 laser candidates (Mining ×8, Rapid-pulse ×8; `mining1`/`mining2`
   embedded) plus 6 `laser_switch1-6.wav` switch clips (2.02–2.67 s, all
@@ -561,8 +564,20 @@ the lasers bullet), and 1.15 (R range / Shift+R sweep / Shift+T back /
 Shift+W auto-thrust, in the key map) are all built and machine-tested —
 ideas3 is fully in — and 1.8 chaff after it (in the Combat bullet). Phase
 1 is complete except 1.11, which Brian deferred past the demo. Nothing
-from Rounds 10–12 has been heard yet; that's the next step, then Phase 2
-on his go.
+from Rounds 10–12 has been heard yet.
+
+Brian's ideas4 (2026-09-04 evening, `ideas4.txt`, untracked) is folded
+into SPEC.md as a Phase 1 second pass, 1.16–1.20, DOCS ONLY — nothing
+built: 1.16 chaff instant/any time (already true as built, now a rule),
+1.17 warp takes time (1000 units/s, three-phase recorded warp, no warp
+under 25 % — the 18 clips are measured in SPEC, and they are 4 / 1.5 /
+4 s, not the ~1.5 s the note assumed, which is the open question), 1.18
+Escape opens the mission menu from the live sim (Resume item; the
+separate pause state goes), 1.19 the docking corridor is REMOVED in
+favor of a comm range and a dock range (supersedes 1.6 — the "Docking"
+bullet above describes code that will go), 1.20 lasers ×2 against ships
+at Rookie. Open questions in Part C. Brian's plan: Sonnet builds these
+next, suggested order in SPEC (1.19 → 1.20 → 1.16 → 1.18 → 1.17).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
