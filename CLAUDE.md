@@ -37,7 +37,27 @@ expands.
 Mission menu (Keyboard Commander style list: Up/Down wrap, click per move,
 Enter/Left/Right select with a two-note sound + "X selected" + 600 ms beat,
 first-letter jump, Tab repeats, cursor remembered; `MENU_ITEMS` in SHELL) →
-Delivery run / Sector (the hub) / Combat training / Mining / Help / Difficulty.
+Delivery run / Sector (the hub) / Combat training / Mining / Help /
+Difficulty / Run log.
+
+**Profile persistence (Round 11, `hss_profile` in localStorage)**:
+`loadProfile()` runs once at boot (before the menu ever shows), reading
+`{ tier, credits, upgrades, chaff, runs }` — `credits`/`upgrades`/`chaff`
+are schema only so far, no consumer until 1.7/1.8 land. `saveProfile()`
+writes back on every tier change and every recorded run. Every read and
+write is try/catch-guarded (`window.localStorage &&` + try/catch on the
+call itself) so a `data:`-origin preview or any blocked-storage browser
+still boots and plays, just without persistence that session — confirmed
+in this environment, where the browser preview pane serves this file as a
+`data:` URL (opaque origin, `localStorage` throws SecurityError on touch).
+`recordRun(seconds)` pushes `{seconds, tier, upgrades, date}` into
+`profile.runs`, sorts ascending, caps at 10, and returns whether it beat
+the prior best (spoken on delivery as "New personal best!" or "Best is
+N."). The Run log menu item (`openRunLog`/`runLogKey`, gated in
+`onKeyDown` at the same priority tier as `help.open`/`map.open`) is a
+read-only browse-and-Escape overlay modeled on the quadrant map, not yet
+the shared `listMenu` the plan describes for 1.7 — that refactor is where
+mission menu / station menu / run log converge on one implementation.
 
 **Difficulty tiers (Round 11)**: `TIERS` in CONFIG (Rookie/Veteran/Ace).
 `CFG_DEFAULTS` is the frozen numeric baseline; `CFG` is a live copy
@@ -68,7 +88,10 @@ static once tiers exist.
   throb / Asteroid Field Kappa rumble / Station Meridian blinking 660 tone /
   Planet Auren 45 Hz drone). Long-range beacon panners (ref 800, rolloff 1.2,
   gain ×2) + distance-haze lowpass in `updateTargeting`. `Q` map overlay,
-  `H` hyperwarp (2 s charge, drops 600 out; interact range 500), `C` call
+  `H` hyperwarp (2 s charge, drops 600 out; interact range 500; refuses
+  within `warpInhibitDist` 1500 of ANY point of interest via `nearbyPoi()`,
+  not just the nav target — Brian: fly clear of a station before jumping
+  anywhere, not just before jumping back to it), `C` call
   within 500 → combat/mining encounters (`sectorHome` snapshot; `X` returns
   to open space at the POI) or station (repair/rearm/delivery) / planet
   placeholder hail. Weapons/tools cold in open space. Ore, hull, and missile

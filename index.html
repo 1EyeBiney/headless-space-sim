@@ -104,6 +104,7 @@ var CFG_DEFAULTS = {
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
     warpChargeMs: 2000,      // spool-up before the jump
     warpMinDist: 1200,       // closer than this: just fly it
+    warpInhibitDist: 1500,   // this close to ANY point of interest, the drive won't spool at all
     // Beacon panners use long-range params so every POI stays faintly
     // audible across the sector (sensor conceit, not real acoustics). The
     // steep-ish rolloff plus the distance-haze lowpass (see updateTargeting)
@@ -180,9 +181,52 @@ function applyTier(idx) {
     zoneIdx = TIERS[idx].zoneIdxDefault;
 }
 
-// Placeholder until 1.4 (profile persistence) lands: keeps the Difficulty
-// menu item's call site stable.
-function saveProfile() {}
+// ---- profile (localStorage) --------------------------------------------
+// One saved object carries the difficulty choice and the delivery-run log
+// across sessions — same idea as Keyboard Commander's kbc_profile. Every
+// read and write is wrapped: a browser with localStorage blocked or absent
+// (some file:// contexts throw on the property access itself) just runs
+// without persistence instead of erroring.
+var PROFILE_KEY = 'hss_profile';
+var profile = null;
+
+function defaultProfile() {
+    return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [] };
+}
+
+function loadProfile() {
+    profile = defaultProfile();
+    try {
+        var raw = window.localStorage && localStorage.getItem(PROFILE_KEY);
+        if (raw) {
+            var saved = JSON.parse(raw);
+            if (saved && typeof saved === 'object') Object.assign(profile, saved);
+        }
+    } catch (e) { /* no persistence this session; profile stays default */ }
+    if (!Array.isArray(profile.runs)) profile.runs = [];
+    applyTier(TIERS[profile.tier] ? profile.tier : 0);
+}
+
+function saveProfile() {
+    if (!profile) return;
+    profile.tier = tierIdx;
+    try {
+        if (window.localStorage) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    } catch (e) { /* can't persist; the session still plays fine */ }
+}
+
+// Records a completed delivery run, keeps the best 10 by time, and returns
+// whether it beat the previous best (undefined if this is the first run).
+function recordRun(seconds) {
+    if (!profile) return undefined;
+    var prevBest = profile.runs.length ? profile.runs[0].seconds : undefined;
+    profile.runs.push({ seconds: seconds, tier: tierIdx, upgrades: profile.upgrades.length,
+                         date: new Date().toISOString().slice(0, 10) });
+    profile.runs.sort(function (a, b) { return a.seconds - b.seconds; });
+    profile.runs = profile.runs.slice(0, 10);
+    saveProfile();
+    return prevBest === undefined || seconds < prevBest;
+}
 
 // Target roster. Each voice is a distinct timbre so identity survives motion.
 // The Cruiser carries a Rookie-only overlay (Brian: unbeatable at Rookie
@@ -302,6 +346,7 @@ var coachedShield = 0;   // how many times the lock warning has said "G"
 var lastCycleAt = 0;     // a cycle already spoke the distance; lock stays quiet for a beat
 var demo = null;         // the timed delivery run, while active
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
+var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
 function over() { return won || lost; }
 
 function zoneRad() {
@@ -458,6 +503,7 @@ var HELP_SECTIONS = [
         'Q opens the quadrant map: up and down browse the points with bearing and distance, Enter sets one as your nav target, Escape closes.',
         'Tab and T work on beacons too, and the tick guides you onto your nav target just like any other.',
         'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
+        function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point: combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
         'Your ore hold, hull, and missile count ride with you for the whole sector run. Calling the station repairs and rearms you.',
@@ -553,7 +599,7 @@ var KEY_DESCRIPTIONS = {
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
-    h: 'Hyperwarp to your nav target, in open sector space.',
+    h: 'Hyperwarp to your nav target, in open sector space. Refuses this close to any point of interest.',
     c: 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest.',
     enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
@@ -2371,6 +2417,45 @@ function statusReport() {
     say(line);
 }
 
+// ---- run log --------------------------------------------------------------------
+// A read-only browsable list, same shell as the quadrant map: the sim
+// freezes and ducks while open, arrows step, Escape closes.
+function openRunLog() {
+    if (!profile.runs.length) { say('No runs recorded yet. Finish a delivery run to set one.'); return; }
+    runlog.open = true;
+    runlog.idx = -1;
+    keysDown = {};
+    thrusterSync(null);
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    say('Run log. Best ' + profile.runs.length + ' of up to 10. Up and down arrows browse, Escape closes.');
+}
+
+function closeRunLog() {
+    runlog.open = false;
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    say('Run log closed.');
+}
+
+function runLogLineText(i) {
+    var r = profile.runs[i];
+    return 'Number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + TIERS[r.tier].name + ' difficulty' +
+           (r.upgrades ? ', ' + r.upgrades + ' upgrades' : '') + ', ' + r.date + '.';
+}
+
+function runLogKey(lname) {
+    if (lname === 'escape') { closeRunLog(); return; }
+    var n = profile.runs.length;
+    if (lname === 'arrowdown') {
+        if (runlog.idx < n - 1) { runlog.idx++; say(runLogLineText(runlog.idx)); }
+        else { blip(220, 80, 0.1); say('End of the list.'); }
+    } else if (lname === 'arrowup') {
+        if (runlog.idx > 0) { runlog.idx--; say(runLogLineText(runlog.idx)); }
+        else { runlog.idx = 0; blip(220, 80, 0.1); say('Top of the list.'); }
+    } else {
+        say('Up and down arrows read the run log, Escape closes.');
+    }
+}
+
 // ---- delivery run --------------------------------------------------------------
 // The shareable, timed demo: clear the Contested Zone, mine the quota, deliver
 // it to Station Meridian. The clock counts only while the sim is live (pauses,
@@ -2504,11 +2589,30 @@ function mapKey(lname) {
 
 // H — hyperwarp to the nav target. Spool up, jump, and drop out just beyond
 // calling range so the last leg is always flown by ear.
+// The nearest point of interest inside the no-warp zone, or null. Checked
+// against every POI, not just the nav target — the drive won't spool this
+// close to ANYTHING, so a pilot must fly clear of a station before jumping
+// anywhere else, not just before jumping back to that same station.
+function nearbyPoi() {
+    var best = null, bestD = CFG.warpInhibitDist;
+    targets.forEach(function (p) {
+        if (!p.alive || p.kind !== 'poi') return;
+        var d = len(sub(p.pos, ship.pos));
+        if (d < bestD) { bestD = d; best = p; }
+    });
+    return best;
+}
+
 function startWarp() {
     if (mode !== 'sector') { say('Hyperwarp needs open sector space.'); return; }
     if (warping) return;
     var t = targets[selected];
     if (!t) { say('No nav target. Q opens the quadrant map.'); return; }
+    var near = nearbyPoi();
+    if (near) {
+        say('Hyperwarp inhibited this close to ' + near.name + '. Fly clear first.');
+        return;
+    }
     var d = len(sub(t.pos, ship.pos));
     if (d < CFG.warpMinDist) {
         say('Too close for hyperwarp. Just fly it. Distance ' + round10(d) + '.');
@@ -2577,9 +2681,13 @@ function callPoi() {
             var delivered = ore;
             demo.delivered = true;
             ore = 0;
+            var isBest = recordRun(demo.elapsed);
+            var bestLine = isBest === true ? 'New personal best!'
+                          : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
+                          : '';
             setTimeout(winArpeggio, 300);
             say('Station Meridian control: cargo received, ' + delivered + ' ore. Delivery complete! ' +
-                'Run time ' + fmtTime(demo.elapsed) + '. ' + service +
+                'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service +
                 'X for the mission menu, or keep flying the sector.');
         } else {
             say('Station Meridian control: docking clearance granted. ' + service +
@@ -2655,6 +2763,9 @@ function onKeyDown(e) {
 
     // The quadrant map captures everything the same way.
     if (map.open) { if (lname === 'f1') { closeMap(); openHelp(); } else mapKey(lname); return; }
+
+    // The run log captures everything the same way.
+    if (runlog.open) { runLogKey(lname); return; }
 
     // Mid-jump, the ship answers to nobody.
     if (warping) { if (!e.repeat) say('Hyperwarp in progress.'); return; }
@@ -3002,7 +3113,14 @@ var MENU_ITEMS = [
       adjust: function (dir) {
           applyTier((tierIdx + dir + TIERS.length) % TIERS.length);
           saveProfile();
-      } }
+      } },
+    { label: 'Run log',
+      desc: function () {
+          return profile.runs.length
+              ? 'Your best delivery run times, best ' + profile.runs.length + ' of up to 10.'
+              : 'No runs recorded yet.';
+      },
+      run: function () { openRunLog(); } }
 ];
 var menuIdx = 0;
 var menuBusy = false;   // the beat between "selected" and the action
@@ -3112,6 +3230,7 @@ function miningIntro() {
 }
 
 function init() {
+    loadProfile();
     var initBtn = document.getElementById('initBtn');
     var container = document.getElementById('game');
     liveEl = document.getElementById('announce');

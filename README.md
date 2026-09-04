@@ -23,12 +23,18 @@ status line, but the game does not need it.
 
 ## Difficulty
 
-The last item on the mission menu is Difficulty, adjusted with left and
-right arrows right there on the menu line: **Rookie** (ships hold their
-fire until you hit them — the easiest way to learn the controls), **Veteran**
-(every ship is hostile and watching from the moment an encounter starts),
-and **Ace** (Veteran, plus a slower shield, a touchier laser, and a smaller
-missile magazine). It sticks until you change it again.
+Difficulty on the mission menu is adjusted with left and right arrows right
+there on the menu line: **Rookie** (ships hold their fire until you hit
+them — the easiest way to learn the controls), **Veteran** (every ship is
+hostile and watching from the moment an encounter starts), and **Ace**
+(Veteran, plus a slower shield, a touchier laser, and a smaller missile
+magazine). It's saved to your browser and remembered next time you play.
+
+## Run log
+
+The last item on the menu reads back your best delivery-run times, up to
+10, fastest first, with the difficulty and date of each — also saved to
+your browser. Finish a run to add to it.
 
 ## The timed delivery run (first item on the menu)
 
@@ -42,6 +48,9 @@ The shareable challenge. The clock starts at once.
 
 The station repairs your hull and rearms your eight missiles whenever you
 call it. Losing your ship fails the run.
+
+The hyperwarp drive won't spool within 1,500 of any point of interest, so
+after a station visit you'll need to fly clear before jumping onward.
 
 ## Keys
 
