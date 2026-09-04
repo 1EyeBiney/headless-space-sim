@@ -107,6 +107,20 @@ var CFG_DEFAULTS = {
     warpChargeMs: 2000,      // spool-up before the jump
     warpMinDist: 1200,       // closer than this: just fly it
     warpInhibitDist: 1500,   // this close to ANY point of interest, the drive won't spool at all
+    // The warp tank (SPEC 1.10) is measured in DISTANCE: a jump spends charge
+    // by distance flown, and a jump that outreaches the tank drops the pilot
+    // where it runs dry to thrust the rest. Full at a station and on leaving
+    // any encounter (the core cools while you fight and mine); slow regen in
+    // open flight so nobody is ever stranded. SECTOR_POIS is laid out against
+    // this number: station -> combat fits one tank, the two later legs each
+    // run the tank dry a few hundred short of the usual 600 dropout. Sized
+    // against the BEST exit from an encounter (the no-warp zone makes the
+    // pilot fly 1500 clear first, and leaving toward the next target shaves
+    // that off the leg) — leave the wrong way and it's a longer thrust in.
+    warpTankMax: 12500,
+    warpRegenPerS: 40,       // open-flight core cooling: ~6 min to a full tank
+    sectorStartDist: 1800,   // new pilots start this far from Station Meridian, toward
+                             // the Contested Zone — just outside the no-warp zone
     // Beacon panners use long-range params so every POI stays faintly
     // audible across the sector (sensor conceit, not real acoustics). The
     // steep-ish rolloff plus the distance-haze lowpass (see updateTargeting)
@@ -337,11 +351,18 @@ var ROCK_SIZES = [
 // beacon with its own signature so the whole sector is navigable by ear.
 // Calling (C) a combat or mining POI transitions into that encounter; the
 // station and planet are the future economy endpoints (placeholder hails).
+// Laid out against CFG.warpTankMax (12500) for the delivery run's three legs
+// (Brian's design): start 1800 out from the station toward the Contested
+// Zone -> combat is ~11200 away, one tank with room to spare. Combat ->
+// Field Kappa is ~15000 point to point; after flying the 1500 no-warp zone
+// clear toward Kappa the jump needs ~12900, so the tank runs dry ~1000
+// short and the last stretch is flown. Kappa -> station is ~15100, the
+// same shape. Move a point and the legs move with it — check all three.
 var SECTOR_POIS = [
     { name: 'Contested Zone',       poiType: 'combat',
-      desc: 'combat area',   pos: v3(6000, 500, -9000) },
+      desc: 'combat area',   pos: v3(5200, 400, -5600) },
     { name: 'Asteroid Field Kappa', poiType: 'mining',
-      desc: 'mining area',   pos: v3(-8000, -800, -4000) },
+      desc: 'mining area',   pos: v3(-9500, -800, -2800) },
     { name: 'Station Meridian',     poiType: 'station',
       desc: 'space station', pos: v3(2000, 0, 7000) },
     { name: 'Planet Auren',         poiType: 'planet',
@@ -374,6 +395,8 @@ var lost = false;        // hull breached: the encounter is over, like won
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
+var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
+var warpCoreNodes = null;// the core-cooling hiss while the tank refills in open flight
 var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
 var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
 var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
@@ -501,7 +524,7 @@ var HELP_SECTIONS = [
         function () { return 'F fires a homing missile for ' + CFG.missileDamage + ' damage. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.'; },
         'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
         'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
-        'Weapon and tool keys sit under the left hand — Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
+        'Weapon and tool keys sit under the left hand — 1 to 6, Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
         'R sounds a radar ping of every surviving target in order, nearest first.'
     ] },
     { heading: 'Shields and enemy fire', items: [
@@ -546,6 +569,9 @@ var HELP_SECTIONS = [
         'Q opens the quadrant map: up and down browse the points with bearing and distance, Enter sets one as your nav target, Escape closes.',
         'Tab and T work on beacons too, and the tick guides you onto your nav target just like any other.',
         'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
+        'The warp drive has a tank, measured in distance. A jump spends it, and a jump longer than the tank still goes: you drop out where the charge runs dry and thrust the rest. The map says whether each point is in warp range.',
+        'The tank refills at the station and whenever you leave an encounter — the core cools while you fight and mine. In open flight it recovers slowly, and you can hear the core cooling until it is full.',
+        'You start just outside Station Meridian with a full tank. It reaches the Contested Zone; the legs after that run it dry a little short, so expect to fly the last stretch into the asteroid field and back to the station.',
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point: combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
@@ -645,7 +671,7 @@ var KEY_DESCRIPTIONS = {
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
-    h: 'Hyperwarp to your nav target, in open sector space. Refuses this close to any point of interest.',
+    h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
     c: 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest.',
     enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
@@ -2302,7 +2328,7 @@ function statusReport() {
             line += debris.length + (debris.length === 1 ? ' dust field' : ' dust fields') + ' adrift. ';
         }
     }
-    if (mode === 'sector') line += 'Ore hold ' + ore + '. ';
+    if (mode === 'sector') line += 'Ore hold ' + ore + '. Warp charge ' + warpPct() + ' percent. ';
     line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
           : aliveTargets().length + ' targets remain. ';
@@ -2371,15 +2397,38 @@ function startDemo() {
     sectorHome = null;
     demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
     newGame('sector');
+    placeAtStationStart();
+    // The first objective is the nav target from the start, so H works at once.
+    targets.forEach(function (t, i) { if (t.poiType === 'combat') selected = i; });
+    locked = false; stopSolidTone();
     say(demoIntro());
+}
+
+// New pilots begin just outside Station Meridian, facing the Contested Zone,
+// with a full tank — the demo route (SPEC 1.10) starts here.
+function placeAtStationStart() {
+    var s = null, c = null;
+    targets.forEach(function (t) {
+        if (t.poiType === 'station') s = t;
+        if (t.poiType === 'combat') c = t;
+    });
+    if (!s || !c) return;
+    var dir = norm(sub(c.pos, s.pos));
+    ship.pos = add(s.pos, scale(dir, CFG.sectorStartDist));
+    ship.vel = v3(0, 0, 0);
+    ship.yaw = Math.atan2(dir.x, -dir.z);
+    ship.pitch = Math.asin(clamp(dir.y, -1, 1));
+    refillWarp();
+    selectNearest();
 }
 
 function demoIntro() {
     return 'Delivery run. The clock is running. First clear the Contested Zone, then mine ' +
            CFG.demoOreGoal + ' ore at Asteroid Field Kappa and deliver it to Station Meridian. ' +
-           'The station also repairs and rearms you. You carry ' + CFG.missileMax + ' missiles. ' +
+           'The station also repairs, rearms, and refuels you. You carry ' + CFG.missileMax + ' missiles, ' +
+           'and a full warp tank that reaches the Contested Zone, your nav target. ' +
            'Q opens the map, H hyperwarps to your nav target, C calls a point within ' +
-           CFG.poiInteract + ', and I reads the clock. F1 for help.';
+           CFG.poiInteract + ', and I reads the clock and the tank. F1 for help.';
 }
 
 function fmtTime(s) {
@@ -2448,7 +2497,9 @@ function closeMap(spoken) {
 // own little space), so lines read as chart entries: sector-frame distance
 // from the point you are at.
 function mapLineText(item) {
-    if (mode === 'sector') return bearingText(item);
+    if (mode === 'sector') {
+        return bearingText(item) + ' ' + capFirst(warpReachText(len(sub(item.pos, ship.pos)))) + '.';
+    }
     if (sectorHome && item.name === sectorHome.poiName) {
         return item.name + ', ' + item.desc + '. Your current location.';
     }
@@ -2492,8 +2543,64 @@ function mapKey(lname) {
     }
 }
 
-// H — hyperwarp to the nav target. Spool up, jump, and drop out just beyond
-// calling range so the last leg is always flown by ear.
+// ---- the warp tank (SPEC 1.10) ------------------------------------------------
+function warpPct() { return Math.round(warpCharge / CFG.warpTankMax * 100); }
+function refillWarp() { warpCharge = CFG.warpTankMax; }
+
+// Charge a jump to a point that far away would spend (the usual dropout is
+// flown, not warped), and whether the tank covers it.
+function warpNeed(dist) { return Math.max(0, dist - CFG.warpDropout); }
+function warpReachText(dist) {
+    var need = warpNeed(dist);
+    return need <= warpCharge ? 'in warp range'
+         : 'beyond warp range by ' + round10(need - warpCharge);
+}
+
+// Open-flight regen, audible: a low core-cooling hiss on the UI bus that
+// thins as the tank fills, then a chime when it's full. Silent in
+// encounters and at full charge.
+function updateWarpCore(dt) {
+    if (mode !== 'sector' || warping || warpCharge >= CFG.warpTankMax) { warpCoreSound(false); return; }
+    warpCharge = Math.min(CFG.warpTankMax, warpCharge + CFG.warpRegenPerS * dt);
+    if (warpCharge >= CFG.warpTankMax) {
+        warpCoreSound(false);
+        SIM.cues.play('ready_chime');
+        say('Warp core cooled. Tank full.');
+        return;
+    }
+    warpCoreSound(true);
+}
+
+function warpCoreSound(on) {
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    if (on && !warpCoreNodes) {
+        var g = A.ctx.createGain(); g.gain.value = 0.0001;
+        var f = A.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 180; f.Q.value = 1.2;
+        var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf; src.loop = true;
+        var lfo = A.ctx.createOscillator(); lfo.frequency.value = 0.6;   // slow breathing
+        var lg = A.ctx.createGain(); lg.gain.value = 0.0;
+        lfo.connect(lg); lg.connect(g.gain);
+        src.connect(f); f.connect(g); g.connect(A.uiBus);
+        src.start(); lfo.start();
+        warpCoreNodes = { src: src, lfo: lfo, lg: lg, g: g };
+    }
+    if (warpCoreNodes) {
+        if (on) {
+            var vol = 0.01 + (1 - warpCharge / CFG.warpTankMax) * 0.04;   // thins as it fills
+            A.ramp(warpCoreNodes.g.gain, vol, 0.3);
+            A.ramp(warpCoreNodes.lg.gain, vol * 0.5, 0.3);
+        } else {
+            var n = warpCoreNodes; warpCoreNodes = null;
+            A.ramp(n.g.gain, 0.0001, 0.3);
+            setTimeout(function () { try { n.src.stop(); n.lfo.stop(); n.g.disconnect(); } catch (e) {} }, 500);
+        }
+    }
+}
+
+// H — hyperwarp to the nav target. Spool up, jump as far as the tank allows,
+// and drop out just beyond calling range — or wherever the charge runs dry —
+// so the last leg is always flown by ear.
 // The nearest point of interest inside the no-warp zone, or null. Checked
 // against every POI, not just the nav target — the drive won't spool this
 // close to ANYTHING, so a pilot must fly clear of a station before jumping
@@ -2523,6 +2630,12 @@ function startWarp() {
         say('Too close for hyperwarp. Just fly it. Distance ' + round10(d) + '.');
         return;
     }
+    if (warpCharge <= 0) {
+        SIM.cues.play('refusal_wait');
+        say('Warp charge exhausted. Fly it, or let the core cool. Q for the map.');
+        return;
+    }
+    warpCoreSound(false);
     warping = true;
     keysDown = {};
     thrusterSync(null);
@@ -2531,17 +2644,25 @@ function startWarp() {
     SIM.cues.play('warp_charge', { dur: CFG.warpChargeMs / 1000 });
     setTimeout(function () {
         if (!running || mode !== 'sector') { warping = false; return; }
-        SIM.cues.play('warp_arrive');
         var dir = norm(sub(t.pos, ship.pos));
-        ship.pos = sub(t.pos, scale(dir, CFG.warpDropout));
+        var need = warpNeed(len(sub(t.pos, ship.pos)));
+        var travel = Math.min(need, warpCharge);
+        var dry = travel < need;
+        SIM.cues.play(dry ? 'warp_dry' : 'warp_arrive');
+        ship.pos = add(ship.pos, scale(dir, travel));
+        warpCharge -= travel;
         ship.vel = v3(0, 0, 0);
         ship.yaw = Math.atan2(dir.x, -dir.z);
         ship.pitch = Math.asin(clamp(dir.y, -1, 1));
         warping = false;
         setTimeout(function () {
-            say('Hyperwarp complete. ' + t.name + ' dead ahead, distance ' +
-                round10(len(sub(t.pos, ship.pos))) + '. C calls it once you are within ' +
-                CFG.poiInteract + '.');
+            var rem = round10(len(sub(t.pos, ship.pos)));
+            say(dry
+                ? 'Warp charge exhausted. ' + t.name + ' dead ahead, distance ' + rem +
+                  '. Thrust the rest; C calls it within ' + CFG.poiInteract + '.'
+                : 'Hyperwarp complete. ' + t.name + ' dead ahead, distance ' + rem +
+                  '. C calls it once you are within ' + CFG.poiInteract +
+                  '. Warp charge ' + warpPct() + ' percent.');
         }, 350);
     }, CFG.warpChargeMs);
 }
@@ -2577,10 +2698,12 @@ function callPoi() {
     } else if (t.poiType === 'station') {
         // Docking: always a repair and a rearm; in the delivery run, the
         // handover once the quota is aboard.
-        var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax;
-        hull = CFG.shipHull; missiles = CFG.missileMax;
+        var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
+            refueled = warpCharge < CFG.warpTankMax;
+        hull = CFG.shipHull; missiles = CFG.missileMax; refillWarp();
         var service = (repaired ? 'Hull repaired. ' : '') +
-                      (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '');
+                      (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
+                      (refueled ? 'Warp tank filled. ' : '');
         if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
             var delivered = ore;
             demo.delivered = true;
@@ -2614,8 +2737,9 @@ function returnToSector(silent) {
     var idx = -1;
     targets.forEach(function (t, i) { if (t.name === home.poiName) idx = i; });
     if (idx >= 0) { selected = idx; locked = false; stopSolidTone(); }
+    refillWarp();                                  // the core cooled while you were busy
     if (!silent) {
-        say('Back in open space near ' + home.poiName + '. Ore hold ' + ore + '. Q for the map.');
+        say('Back in open space near ' + home.poiName + '. Warp tank full. Ore hold ' + ore + '. Q for the map.');
     }
 }
 
@@ -2835,6 +2959,7 @@ function simTick(dt) {
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
+    updateWarpCore(dt);
     updateStatusLine();
 }
 
@@ -2895,6 +3020,8 @@ window.__sim = {
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
+            warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
+            pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
@@ -2938,6 +3065,7 @@ window.__sim = {
         if (o && o.combatCleared !== undefined && demo) demo.combatCleared = o.combatCleared;
         if (o && o.enemyHp !== undefined) targets.forEach(function (t) { if (!t.kind && t.alive) t.hp = o.enemyHp; });
         if (o && o.laserReady) laserReadyAt = [];
+        if (o && o.warpCharge !== undefined) warpCharge = o.warpCharge;
     }
 };
 
@@ -2958,6 +3086,7 @@ function clearMission() {
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();
     laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
+    warpCoreSound(false);                        // (the charge itself persists across a sector run)
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
@@ -3053,6 +3182,7 @@ function startMission(m) {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
     newGame(m);
+    if (m === 'sector') placeAtStationStart();
     say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());
 }
 
@@ -3123,7 +3253,7 @@ function combatIntro() {
 }
 
 function sectorIntro() {
-    return 'Entering the sector. Four points of interest on the quadrant map: ' +
+    return 'Entering the sector just outside Station Meridian, warp tank full. Four points of interest on the quadrant map: ' +
            'a combat area, a mining area, a space station, and a planet, each with its own beacon sound. ' +
            'Q opens the map, Tab cycles beacons, H hyperwarps to your nav target, ' +
            'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.';

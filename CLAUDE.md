@@ -193,7 +193,23 @@ static once tiers exist.
   `H` hyperwarp (2 s charge, drops 600 out; interact range 500; refuses
   within `warpInhibitDist` 1500 of ANY point of interest via `nearbyPoi()`,
   not just the nav target — Brian: fly clear of a station before jumping
-  anywhere, not just before jumping back to it), `C` call
+  anywhere, not just before jumping back to it). **Warp tank (Round 12,
+  SPEC 1.10)**: `warpCharge` in distance units, `warpTankMax` 12500; a
+  jump spends `warpNeed(dist)` = dist − 600, and a jump past the tank
+  still goes — the pilot drops out where the charge runs dry ("Warp charge
+  exhausted... Thrust the rest", cue `warp_dry`). `refillWarp()` on
+  `returnToSector` (leaving any encounter) and at the station; slow regen
+  in open flight (`warpRegenPerS` 40, an audible core-cooling hiss via
+  `warpCoreSound` that thins as it fills, chime + "Warp core cooled" when
+  full); zero charge refuses. New pilots start `sectorStartDist` 1800 from
+  the station toward the Contested Zone (`placeAtStationStart`), just
+  outside the no-warp zone, and the delivery run preselects the zone.
+  `SECTOR_POIS` moved (combat 5200,400,-5600; mining -9500,-800,-2800) so
+  the run's three legs fit Brian's design: station→combat one tank,
+  combat→Kappa and Kappa→station each run dry ~850 out AFTER flying 1500
+  clear toward the next target — exit direction changes the leg by up to
+  3000, so the tank is sized against the best exit. Map lines read "in warp
+  range" / "beyond warp range by N" (`warpReachText`). `C` call
   within 500 → combat/mining encounters (`sectorHome` snapshot; `X` returns
   to open space at the POI) or station (repair/rearm/delivery) / planet
   placeholder hail. Weapons/tools cold in open space. Ore, hull, and missile

@@ -120,12 +120,13 @@ people; nothing in Phase 2+ starts without his go.
 
 Done, live on Pages (Rounds 10–12): 1.0 hosting + `?run=delivery`, 1.1
 difficulty tiers, 1.2 Rookie Cruiser, 1.3 shield damage pool + disrepair,
-1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots
-(machine-tested, not yet heard by Brian — see below), and the audio split
+1.4 saved profile + run log, 1.5 no-warp zone, 1.9 laser slots and 1.10
+warp charge (both machine-tested, not yet heard by Brian — see below), and
+the audio split
 (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md "Audio architecture").
 
-Suggested order for the rest — the station next, since everything else
-hangs off it:
+Suggested order for the rest — the docking corridor and station next,
+since everything else hangs off them, then chaff:
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -187,7 +188,23 @@ retune once Brian has heard the new rhythm.
   into `audio_assets.js` (mono 96k like the rest) — the first new
   recordings connected to the game.
 
-#### 1.10 Warp charge (from A.3) — NEW, decided
+#### 1.10 Warp charge (from A.3) — DONE, needs Brian's ear
+
+Built and machine-tested: the three-leg route flies as designed (leg 1
+arrives with a quarter tank; legs 2 and 3 run dry ~850–870 out with the
+map saying "beyond warp range by N" first), the tank refills on leaving
+an encounter and at the station ("Warp tank filled"), `I` reads the
+charge, a dry tank refuses with "Fly it, or let the core cool", and the
+open-flight regen hiss starts and stops cleanly. Not yet heard.
+
+One thing found in testing, already handled: the no-warp zone makes the
+pilot fly 1500 clear of an encounter before jumping, and the DIRECTION
+they leave changes the next leg by up to 3000. The tank is therefore
+sized against the best exit (toward the next target): `warpTankMax`
+12500, not the 14000 first pencilled in. Leave the wrong way and it's a
+longer thrust in — the map's reach line says so before the jump. If that
+feels punishing in play, widen the tank a little or shrink the no-warp
+zone; both are one number.
 
 - The tank is measured in distance: `warpCharge` up to `warpTankMax`.
   A jump spends charge by distance flown — and if the nav target is

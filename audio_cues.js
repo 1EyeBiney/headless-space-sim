@@ -131,6 +131,14 @@ SIM.cues = (function () {
                 { id: 'warp_charge', name: 'Hyperwarp Charging', source: 'v11-extraction',
                   // dur depends on CFG.warpChargeMs — pass {dur: seconds}.
                   recipe: 'tone', args: { type: 'sawtooth', f1: 120, f2: 1400, dur: 2, vol: 0.15 } },
+                { id: 'warp_dry', name: 'Warp Tank Runs Dry', source: 'v12-warp',
+                  // The drive gives out short of the target: a sagging sweep
+                  // under the usual arrival noise. Placeholder until Brian hears it.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
+                      A.sfxSweep({ f1: 700, f2: 300, f3: 60, dur: 1.1, vol: 0.16, type: 'sawtooth' });
+                  } },
                 { id: 'warp_arrive', name: 'Hyperwarp Arrival', source: 'v11-extraction',
                   fn: function () {
                       var A = SIM.audio;

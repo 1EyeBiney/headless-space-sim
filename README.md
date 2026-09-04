@@ -39,7 +39,9 @@ your browser. Finish a run to add to it.
 The shareable challenge. The clock starts at once.
 
 1. Fly or hyperwarp to the Contested Zone and clear it. Five ships. Each
-   one holds its fire until you hit it, then it shoots back.
+   one holds its fire until you hit it, then it shoots back. You start
+   just outside Station Meridian with a full warp tank, and the zone is
+   already your nav target — H jumps you there.
 2. Mine 15,000 ore at Asteroid Field Kappa. Laser rocks apart, vacuum the
    dust, extract the glowing cores.
 3. Deliver the ore to Station Meridian. Your run time is spoken on delivery.
@@ -47,8 +49,15 @@ The shareable challenge. The clock starts at once.
 The station repairs your hull and rearms your eight missiles whenever you
 call it. Losing your ship fails the run.
 
-The hyperwarp drive won't spool within 1,500 of any point of interest, so
-after a station visit you'll need to fly clear before jumping onward.
+The warp drive has a tank, measured in distance, and a jump spends it. A
+jump longer than the tank still goes — you drop out where the charge runs
+dry and thrust the rest. The tank refills at the station and whenever you
+leave an encounter, and recovers slowly in open flight; the quadrant map
+says whether each point is in range. Expect the legs into the asteroid
+field and back to the station to run it dry a little short. The drive
+also won't spool within 1,500 of any point of interest, so after a visit
+you'll need to fly clear before jumping onward — and which way you fly
+out changes how far the next jump reaches.
 
 ## Keys
 
@@ -66,8 +75,8 @@ Right hand on the arrows, left hand on everything else.
 | R | Radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Target zone size: wide, standard, narrow |
-| Q / H / C | Quadrant map / hyperwarp / call a point of interest (sector) |
-| I | Status: speed, target, hull, missiles, shields, mission clock |
+| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest (sector) |
+| I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
 | X | Leave the mission |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |
