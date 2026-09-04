@@ -222,46 +222,37 @@ static once tiers exist.
   3000, so the tank is sized against the best exit. Map lines read "in warp
   range" / "beyond warp range by N" (`warpReachText`). `C` call
   within 500 → combat/mining encounters (`sectorHome` snapshot; `X` returns
-  to open space at the POI) or the station, which now **starts a docking
-  approach** instead of instant service (see below) / planet placeholder
+  to open space at the POI) or the station, which as of SPEC 1.19 hails or
+  docks by range, no corridor to fly (see below) / planet placeholder
   hail. Weapons/tools cold in open space. Ore, hull, and missile
   count persist across a sector run (menu starts reset them).
-- **Docking (Round 12, SPEC 1.6)**: entering the station is a corridor, not
-  an instant `C`. `startDocking(poi)` builds a local frame off
-  `poi.dockAxis` (`corridorFrame`: `axis` = the unit vector the entry point
-  sits along, `right`/`up` via `cross()` against world-up) and speaks
-  "cleared to dock." `updateDocking(dt)` runs every frame from `simTick`
-  while `docking` is set (physics stay live — only `docked`, the SUCCESS
-  state, freezes movement, added to `simTick`'s early-return list alongside
-  `warping`): `dockOffsets()` decomposes the ship's position relative to
-  the door into `lateral`/`vertical`/`range`; inside `dockRadius` 40 at
-  ≤ `dockMaxSpeed` 25 → `finishDocking()`; inside `dockSpeedCheckDist` 300
-  and too fast → `abortToEntry()` (teleports back to `dockCorridorLen` 800
-  out, ON axis, no damage — confirmed by a real bug this round: see below).
-  Instruments are UI-bus, not HRTF, like the tick: a continuous centerline
-  tone (`dockToneNodes`) panned by `-lateral/dockPanWidth` (off the line to
-  the right → tone from the left → turn left, the tick's own "steer toward
-  the tone" convention) with pitch = 600 + vertical (glide slope: high =
-  sharp); a range click (`scheduleDockTick`, a real `setTimeout` chain
-  independent of rAF, like the lock tick) that quickens
-  `dockClickFastMs`80→`dockClickSlowMs`500 toward the door; spoken coaching
-  every `dockCoachIntervalMs` 3 s, silent under `dockCenterTol` 15.
-  `finishDocking()` is where the old instant repair/rearm/refuel +
-  delivery-handover logic moved to (now fires on ARRIVAL, not on `C`).
-  Docking also opens a **station menu shell**: `STATION_ITEMS` (currently
-  just Undock), `stationMenuKey` captures all input the same way
-  `help.open`/`map.open` do, gated in `onKeyDown` at that same priority.
-  Not yet the shared `listMenu` the plan describes — same deliberate
-  deferral as the run log (see below). `X` cancels an in-progress approach
-  instead of exiting to the mission menu. **Real bug this round**:
-  `makeSectorRoster()` builds fresh target objects from `SECTOR_POIS` but
-  wasn't copying `dockAxis` onto them, so `corridorFrame` silently fell
-  back to `(0,0,1)` — the mechanic worked, just not on the intended
-  heading. Caught by checking the reset position's `x` against hand
-  computed corridor geometry, not by the mechanic failing outright; fixed
-  by adding `dockAxis: p.dockAxis` to the target literal. Any future POI
-  data field needs the same check: `makeSectorRoster` only copies what it
-  explicitly lists.
+- **Docking (Round 13, SPEC 1.19, supersedes Round 12's SPEC 1.6)**: the
+  flown corridor is GONE — Brian: use ranges instead. `callPoi()` computes
+  `range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract`
+  (500 either way today, but tunable separately) for the "too far" gate;
+  inside that but outside `CFG.stationDockRange` (150) is a **hail**
+  (`hailText(poi)` — a status line naming what's on offer and the range to
+  dock, `influenceGreeting` folded in without duplicating "Station
+  Meridian control:"); inside `stationDockRange` is `dockAtStation(poi)`,
+  instant, no speed check, no flight instrument — the lock tick, "Locked.
+  Distance N", and R's range-with-closing (1.15) are what a pilot flies
+  the approach by now. `dockAtStation` carries over every bit of the old
+  `finishDocking`'s repair/rearm/refuel/restock + delivery-handover logic
+  unchanged, plus one new field: `docked.approachDir`, the ship's own
+  position relative to the station at the MOMENT it docked
+  (`norm(sub(ship.pos, poi.pos))`, `norm`'s own zero-length fallback
+  covers docking exactly on top of the beacon). `undock()` places the ship
+  `stationDockRange + 100` out along that stored vector instead of a
+  fixed `poi.dockAxis` — confirmed landing at exactly 250 out from two
+  different approach angles in testing. Removed entirely: `docking` state,
+  `corridorFrame`/`startDocking`/`stopDocking`/`dockOffsets`/`dockToneOn`/
+  `scheduleDockTick`/`updateDocking`/`abortToEntry`, the `dock*` corridor
+  CFG block, `dockAxis` (on `SECTOR_POIS` and in `makeSectorRoster`), the
+  `dock_abort` cue, `X`'s corridor-cancel branch, and the corridor help/
+  README text. `dock_clunk` and the station menu shell (`STATION_ITEMS`,
+  `stationMenuKey`, gated in `onKeyDown` at the same priority as
+  `help.open`/`map.open`) are unchanged — still not the shared `listMenu`
+  the plan describes, same deliberate deferral as the run log.
 - **Station economy (Round 12, SPEC 1.7)**: fleshes out `STATION_ITEMS` to
   `[Sell ore, Modules, Undock]`, reusing `profile.credits` and
   `profile.upgrades` (repurposed in place as "owned module ids" — same
@@ -578,8 +569,13 @@ under the menu), 1.19 the docking corridor is REMOVED in favor of a
 comm range and a dock range (supersedes 1.6 — the "Docking" bullet
 above describes code that will go), 1.20 lasers ×2 against ships at
 Rookie (confirmed as the tier Brian tests at). Nothing open in Part C.
-Brian's plan: Sonnet builds these next, suggested order in SPEC (1.19 →
-1.20 → 1.16 → 1.18 → 1.17).
+
+Round 13 (Sonnet) built 1.19 — see the "Docking (Round 13, SPEC 1.19...)"
+bullet above for what changed and what was removed; machine-tested (a
+hail at 400, a refusal at 1200, an instant dock at 100, the delivery
+handover through it, undock landing at exactly 250 out from two
+different approach angles, F12, no console errors), not yet heard.
+1.20 is next, then 1.16, 1.18, 1.17.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

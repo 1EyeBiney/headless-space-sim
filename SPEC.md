@@ -566,12 +566,14 @@ W. No console errors. Not yet heard.
 ### Phase 1, second pass — Brian's ideas4 (2026-09-04, evening)
 
 Five items from `ideas4.txt`, folded in here 2026-09-04 (Fable, docs
-only). Brian: Sonnet builds these next. Suggested order — 1.19 first (a
-removal, it unblocks every docking test), 1.20 (one number per tier),
-1.16 (a test, nothing to build), 1.18, then 1.17 (the biggest, and it
-waits on the clip-length decision below). Same rules as everything
-above: one commit per item, machine-test at a local server with beacons
-off, docs in sync, push, re-test at Pages, close every tab.
+only, Brian's follow-up answers folded in the same night — see Part C).
+Suggested order — 1.19 first (a removal, it unblocks every docking
+test), 1.20 (one number per tier), 1.16 (a test, nothing to build),
+1.18, then 1.17 (the biggest). Same rules as everything above: one
+commit per item, machine-test at a local server with beacons off, docs
+in sync, push, re-test at Pages, close every tab.
+
+1.19 is DONE (Sonnet, Round 13) — see below. 1.20 next.
 
 #### 1.16 Chaff is instant, any time (ideas4)
 
@@ -681,7 +683,22 @@ must be exactly that 12 s.
   list with Resume only while a mission is live.
 - KEY_DESCRIPTIONS (`escape`), help System line, README key row.
 
-#### 1.19 Station by range, not corridor (ideas4) — supersedes 1.6
+#### 1.19 Station by range, not corridor (ideas4) — supersedes 1.6 — DONE, needs Brian's ear
+
+Built and machine-tested: `C` at 400 (inside `stationCommRange` 500,
+outside `stationDockRange` 150) hails — "Station Meridian control:
+services ready — repair, rearm, chaff, and fuel once you dock. Come
+within 150 to dock."; `C` at 1200 refuses ("Too far... Get within
+500."); `C` at 100 docks instantly with the same repair/rearm/refuel/
+handover `finishDocking` always did (renamed `dockAtStation`); undock
+places the ship 250 out (`stationDockRange` + 100) along the direction
+it was actually facing when it docked, confirmed twice from two
+different approach angles; the full delivery-run handover still fires
+through the instant dock; F12 describes `C`'s new ranges; no stale
+corridor code or cue remained (`docking`/`corridorFrame`/`startDocking`/
+`dockOffsets`/`dockToneOn`/`scheduleDockTick`/`abortToEntry`/`dockAxis`/
+the `dock_abort` cue all removed, grepped clean); no console errors.
+Not yet heard.
 
 Brian: remove the landing corridor; use ranges for the communication
 and landing zones. 1.6 stays in the record as built-and-superseded; the
@@ -697,20 +714,16 @@ docking-computer module idea from 1.7/A.5 goes with it.
   `finishDocking`'s service/handover/influence all stay.
 - **Two ranges per station**, both in CFG: `stationCommRange` 500 (=
   today's `poiInteract`) and `stationDockRange` 150. `C` inside comm
-  range but outside dock range = a **hail**, no docking: "Meridian
-  control: [influence greeting if earned] services ready — repair, rearm,
-  chaff, fuel. Come within 150 to dock." (a short status, not the menu).
-  `C` inside dock range = dock, instantly, `finishDocking` as today.
-  No speed check **(accepted by default** — Brian said ranges only);
-  the lock tick and "Locked. Distance N", plus R's range-with-closing
-  from 1.15, are the landing instruments now.
-- **Undock**: place the ship `stationDockRange + 100` out along the
-  direction it arrived from (store the approach vector at dock time —
-  `dockAxis` is gone), velocity zero, as today otherwise.
+  range but outside dock range = a **hail**, no docking. `C` inside dock
+  range = dock, instantly, `finishDocking` (now `dockAtStation`) as
+  today. No speed check (Brian said ranges only); the lock tick and
+  "Locked. Distance N", plus R's range-with-closing from 1.15, are the
+  landing instruments now.
+- **Undock**: places the ship `stationDockRange + 100` out along the
+  ship's actual position relative to the station at the moment it
+  docked (`docked.approachDir`, computed fresh each dock — `dockAxis`
+  is gone), velocity zero, as today otherwise.
 - Planet and the other points: unchanged (`poiInteract` stays for them).
-- Test checklist: C at 400 hails, C at 120 docks, the delivery handover
-  still fires on the dock, undock lands outside dock range, `X` in open
-  space no longer mentions a corridor, no console errors.
 
 #### 1.20 Lasers do double damage against ships at Rookie (ideas4)
 

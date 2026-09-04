@@ -103,17 +103,10 @@ var CFG_DEFAULTS = {
 
     // sector (open space between encounters)
     poiInteract: 500,        // call (C) range for a point of interest
-    // Docking (SPEC 1.6): the station is entered by flying a corridor, not
-    // by pressing C at range. Deliberately the HARDEST version now — a
-    // docking-computer module (Phase 2) widens it.
-    dockCorridorLen: 800,     // the corridor runs from this far out to the door
-    dockRadius: 40,           // inside this + slow enough = docked
-    dockSpeedCheckDist: 300,  // "too fast" is only checked this close to the door
-    dockMaxSpeed: 25,
-    dockPanWidth: 150,        // lateral offset that saturates the centerline pan
-    dockCoachIntervalMs: 3000,
-    dockCenterTol: 15,        // coaching goes silent under this many units off-axis
-    dockClickFastMs: 80, dockClickSlowMs: 500,  // range click speeds up toward the door
+    // Station (SPEC 1.19): no flown corridor — C at range does one of two
+    // things. Supersedes the 1.6 docking-corridor mechanic entirely.
+    stationCommRange: 500,   // C this close: a hail (status, no docking)
+    stationDockRange: 150,   // C this close: docks instantly
     // Economy (SPEC 1.7): placeholder prices, all in CFG so Brian can retune.
     oreCreditRate: 10,        // 1 credit per this many ore
     influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
@@ -340,7 +333,7 @@ var SOUND_CATS = [
     { id: 'world',   label: 'World sounds',
       desc: 'Everything out in space: engines, rocks, enemy fire, explosions, and the beacons.' },
     { id: 'cockpit', label: 'Cockpit instruments',
-      desc: 'The lock tick, thrusters, tools, the shield hum, and the docking corridor.' },
+      desc: 'The lock tick, thrusters, tools, the shield hum, and station hails.' },
     { id: 'effects', label: 'Sound effects',
       desc: 'Menu clicks, chimes, warnings, and the fanfare.' }
 ];
@@ -496,11 +489,7 @@ var SECTOR_POIS = [
     { name: 'Asteroid Field Kappa', poiType: 'mining',
       desc: 'mining area',   pos: v3(-9500, -800, -2800) },
     { name: 'Station Meridian',     poiType: 'station',
-      desc: 'space station', pos: v3(2000, 0, 7000),
-      // dockAxis points FROM the door AWAY — the direction ships approach
-      // from. Picked to run outward from the sector, away from the other
-      // points, so an undock doesn't drop the pilot facing back at them.
-      dockAxis: v3(0.28, 0, 0.96) },
+      desc: 'space station', pos: v3(2000, 0, 7000) },
     { name: 'Planet Auren',         poiType: 'planet',
       desc: 'planet',        pos: v3(-5000, 1500, 9000) }
 ];
@@ -534,9 +523,7 @@ var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
-var docking = null;      // { poi, axis, right, up, coachAt, tickTimer } while approaching
-var docked = null;       // { poi } once docked; ship held, station menu active
-var dockToneNodes = null;// the corridor's centerline tone
+var docked = null;       // { poi, approachDir } once docked; ship held, station menu active
 var stationIdx = 0;      // cursor in the top-level station menu
 var stationSubmenu = null;  // null | 'modules' — which list stationMenuKey is browsing
 var moduleIdx = 0;       // cursor in the Modules submenu
@@ -723,10 +710,8 @@ var HELP_SECTIONS = [
         'You start just outside Station Meridian with a full tank. It reaches the Contested Zone; the legs after that run it dry a little short, so expect to fly the last stretch into the asteroid field and back to the station.',
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
-        'Calling the station starts a docking approach instead: a corridor from 800 out to the door, flown by instrument, not HRTF. A centerline tone tells you which way to turn — it plays from the side you should steer toward, the same convention as the lock tick. Its pitch is your glide slope: high means you are above the line, low means below.',
-        'A click on the corridor speeds up as you close the range, and every few seconds a voice reads your position: how far left or right, how far high or low, and the range, going quiet once you are centered.',
-        'Slow down as you close in. Coming in too fast near the door aborts the approach and resets you to the start of the corridor — no damage, just start over.',
-        'Dock slowly enough and close enough and you are in: the station menu opens, your hull, missiles, and warp tank are full, and the ship is held until you undock.',
+        function () { return 'The station works by range instead: C within ' + CFG.stationCommRange + ' hails it for a status report, and C within ' + CFG.stationDockRange + ' docks at once — no corridor to fly.'; },
+        'Docked, the station menu opens, your hull, missiles, chaff, and warp tank are full, and the ship is held until you undock.',
         'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
         'Every module has a real effect, a price in credits, and a mass cost — no friction in space, so a heavier ship turns and thrusts a little slower for every module it carries. Fitted modules stay with you across sessions.',
         'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
@@ -830,7 +815,7 @@ var KEY_DESCRIPTIONS = {
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
-    c: 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest.',
+    c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ' and docks within ' + CFG.stationDockRange + '.'; },
     enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
@@ -1095,7 +1080,7 @@ function beaconNote() {
 function makeSectorRoster() {
     return SECTOR_POIS.map(function (p) {
         var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
-                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true, dockAxis: p.dockAxis };
+                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
         buildPoiVoice(t);
         return t;
     });
@@ -2892,115 +2877,16 @@ function updateWarpCore(dt) {
     }
 }
 
-// ---- docking (SPEC 1.6) ---------------------------------------------------
-// A cockpit instrument like the tick, on the UI bus, not HRTF: a centerline
-// tone panned by lateral offset (drifted right of the line = tone from the
-// left = turn left, the tick's own "steer toward the tone" convention),
-// its pitch carrying glide slope (high = sharp, low = flat), and a range
-// click that quickens toward the door. Placeholder timbre for Brian's ear.
-function corridorFrame(poi) {
-    var axis = norm(poi.dockAxis || v3(0, 0, 1));
-    var right = norm(cross(v3(0, 1, 0), axis));
-    if (len(right) < 1e-6) right = v3(1, 0, 0);   // axis is near-vertical; fall back
-    return { axis: axis, right: right, up: cross(axis, right) };
-}
-
-function startDocking(poi) {
-    var f = corridorFrame(poi);
-    docking = { poi: poi, axis: f.axis, right: f.right, up: f.up, coachAt: 0, tickTimer: null };
-    scheduleDockTick();
-    say('Meridian control: cleared to dock. Approach corridor active.');
-}
-
-function stopDocking(silent) {
-    if (!docking) return;
-    var d = docking; docking = null;
-    clearTimeout(d.tickTimer);
-    dockToneOn(false);
-    if (!silent) say('Docking aborted.');
-}
-
-// Ship's offset from the ideal corridor line: lateral (+ = right of the
-// line), vertical (+ = high), and straight-line range to the door.
-function dockOffsets() {
-    var v = sub(ship.pos, docking.poi.pos);
-    return { lateral: dot(v, docking.right), vertical: dot(v, docking.up),
-             range: len(sub(docking.poi.pos, ship.pos)) };
-}
-
-function dockToneOn(on) {
-    var A = SIM.audio;
-    if (!A.ctx) return;
-    if (on && !dockToneNodes) {
-        var g = A.ctx.createGain(); g.gain.value = 0.0001;
-        var o = A.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 600;
-        var pan = A.ctx.createStereoPanner ? A.ctx.createStereoPanner() : null;
-        o.connect(g);
-        if (pan) { g.connect(pan); pan.connect(A.uiBus); } else { g.connect(A.uiBus); }
-        o.start();
-        dockToneNodes = { o: o, g: g, pan: pan };
-        A.ramp(g.gain, 0.09, 0.2);
-    } else if (!on && dockToneNodes) {
-        var n = dockToneNodes; dockToneNodes = null;
-        A.ramp(n.g.gain, 0.0001, 0.2);
-        setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 400);
-    }
-}
-
-// The range click: a real setTimeout chain (like the lock tick), independent
-// of the rAF-driven frame loop, so it keeps time even if simTick stalls.
-function scheduleDockTick() {
-    if (!docking) return;
-    var frac = clamp(dockOffsets().range / CFG.dockCorridorLen, 0, 1);
-    SIM.audio.blip(1400, 40, 0.08, 0, 'square');
-    docking.tickTimer = setTimeout(scheduleDockTick,
-        CFG.dockClickFastMs + (CFG.dockClickSlowMs - CFG.dockClickFastMs) * frac);
-}
-
-function updateDocking(dt) {
-    if (!docking) return;
-    var o = dockOffsets();
-    if (o.range <= CFG.dockRadius && len(ship.vel) <= CFG.dockMaxSpeed) { finishDocking(); return; }
-    if (o.range <= CFG.dockSpeedCheckDist && len(ship.vel) > CFG.dockMaxSpeed) { abortToEntry(); return; }
-    dockToneOn(true);
-    var pan = clamp(-o.lateral / CFG.dockPanWidth, -1, 1);
-    var pitch = 600 + clamp(o.vertical, -400, 400);
-    if (dockToneNodes) {
-        SIM.audio.ramp(dockToneNodes.o.frequency, pitch, 0.15);
-        if (dockToneNodes.pan) SIM.audio.ramp(dockToneNodes.pan.pan, pan, 0.15);
-    }
-    var now = Date.now();
-    if (now - docking.coachAt > CFG.dockCoachIntervalMs) {
-        docking.coachAt = now;
-        var lat = Math.round(Math.abs(o.lateral) / 5) * 5, vert = Math.round(Math.abs(o.vertical) / 5) * 5;
-        if (lat > CFG.dockCenterTol || vert > CFG.dockCenterTol) {
-            var bits = [];
-            if (lat > CFG.dockCenterTol) bits.push(lat + (o.lateral > 0 ? ' right' : ' left'));
-            if (vert > CFG.dockCenterTol) bits.push(vert + (o.vertical > 0 ? ' high' : ' low'));
-            say(bits.join(', ') + ', range ' + round10(o.range) + '.');
-        }
-    }
-}
-
-function abortToEntry() {
-    var entry = add(docking.poi.pos, scale(docking.axis, CFG.dockCorridorLen));
-    ship.pos = entry; ship.vel = v3(0, 0, 0);
-    var dir = norm(sub(docking.poi.pos, entry));
-    ship.yaw = Math.atan2(dir.x, -dir.z);
-    ship.pitch = Math.asin(clamp(dir.y, -1, 1));
-    docking.coachAt = Date.now();
-    SIM.cues.play('dock_abort');
-    say('Too fast. Docking aborted. Resetting to the approach corridor.');
-}
-
-// Success: repair/rearm/refuel and the delivery handover move here from the
-// old instant-call flow — they now happen on ARRIVAL, not on the call.
-function finishDocking() {
-    var poi = docking.poi;
-    stopDocking(true);
+// ---- docking (SPEC 1.19: range-only — no flown corridor) ------------------
+// C within stationDockRange docks at once; farther out (but within
+// stationCommRange) it's a hail — a status line, no docking. Repair/rearm/
+// refuel/restock and the delivery handover happen on arrival, same as they
+// always have; only the flown approach (SPEC 1.6) is gone.
+function dockAtStation(poi) {
+    var approachDir = norm(sub(ship.pos, poi.pos));
     ship.vel = v3(0, 0, 0);
     SIM.cues.play('dock_clunk');
-    docked = { poi: poi };
+    docked = { poi: poi, approachDir: approachDir };
     stationIdx = 0;
     var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
         restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax;
@@ -3052,7 +2938,7 @@ var STATION_ITEMS = [
                  profile.credits + ' credits.';
       },
       run: function () { openModules(); } },
-    { label: 'Undock', desc: 'Back out along the approach corridor, clear of the station.',
+    { label: 'Undock', desc: 'Back out to clear of the station.',
       run: function () { undock(); } }
 ];
 
@@ -3108,6 +2994,17 @@ function moduleKey(lname) {
     }
 }
 
+// A hail: within comm range but not close enough to dock. influenceGreeting
+// already reads as "Station Meridian control: good to see you again, pilot. "
+// when earned, so this only adds the station-name prefix when there is no
+// greeting to supply it.
+function hailText(poi) {
+    var greeting = influenceGreeting(poi);
+    return (greeting || (poi.name + ' control: ')) +
+           'services ready — repair, rearm, chaff, and fuel once you dock. Come within ' +
+           CFG.stationDockRange + ' to dock.';
+}
+
 function stationMenuIntro() {
     return 'Station menu. Use up and down arrows to navigate and Enter to select. ' + stationItemText();
 }
@@ -3132,11 +3029,10 @@ function influenceGreeting(poi) {
 }
 
 function undock() {
-    var poi = docked.poi;
+    var poi = docked.poi, dir = docked.approachDir;
     docked = null;
     stationSubmenu = null;
-    var dir = norm(poi.dockAxis || v3(0, 0, 1));
-    ship.pos = add(poi.pos, scale(dir, CFG.dockRadius + 100));
+    ship.pos = add(poi.pos, scale(dir, CFG.stationDockRange + 100));
     ship.vel = v3(0, 0, 0);
     ship.yaw = Math.atan2(-dir.x, dir.z); ship.pitch = 0;   // face away from the door
     say('Undocked. Clear of ' + poi.name + '.');
@@ -3246,8 +3142,9 @@ function callPoi() {
     var t = targets[selected];
     if (!t) { say('No point of interest selected. Tab cycles them.'); return; }
     var d = len(sub(t.pos, ship.pos));
-    if (d > CFG.poiInteract) {
-        say('Too far to call ' + t.name + '. Get within ' + CFG.poiInteract +
+    var range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract;
+    if (d > range) {
+        say('Too far to call ' + t.name + '. Get within ' + range +
             '. Distance ' + round10(d) + '.');
         return;
     }
@@ -3266,12 +3163,8 @@ function callPoi() {
         say('Field Kappa control: mining rights confirmed. ' + miningIntro());
     } else if (t.poiType === 'station') {
         if (docked) { say('Already docked. Escape or X undocks.'); return; }
-        if (docking) {
-            var o = dockOffsets();
-            say('Approach corridor active. Range ' + round10(o.range) + '.');
-            return;
-        }
-        startDocking(t);
+        if (d <= CFG.stationDockRange) dockAtStation(t);
+        else say(hailText(t));
     } else {
         say('Planet Auren orbital relay: atmospheric operations are not yet available. ' +
             'The view is spectacular, though.');
@@ -3410,8 +3303,7 @@ function onKeyDown(e) {
             else say('C calls points of interest in open sector space.');
             break;
         case 'x':
-            if (docking) stopDocking(false);
-            else if (sectorHome && mode !== 'sector') returnToSector();
+            if (sectorHome && mode !== 'sector') returnToSector();
             else exitToMenu();
             break;
         case 'i':      statusReport(); break;
@@ -3544,7 +3436,6 @@ function simTick(dt) {
     updateShield(dt);
     updateEnemies(dt);
     updateWarpCore(dt);
-    updateDocking(dt);
     updateStatusLine();
 }
 
@@ -3608,7 +3499,6 @@ window.__sim = {
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
-            docking: docking ? Object.assign({ poiName: docking.poi.name }, dockOffsets()) : null,
             docked: docked ? { poiName: docked.poi.name } : null,
             stationSubmenu: stationSubmenu,
             beacons: beaconMode,
@@ -3689,7 +3579,7 @@ function clearMission() {
     stopLaserSwitch();
     autoThrust = false;
     // (the warp charge itself persists across a sector run)
-    stopDocking(true); docked = null; dockToneOn(false);
+    docked = null;
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }

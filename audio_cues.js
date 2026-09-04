@@ -145,13 +145,6 @@ SIM.cues = (function () {
                   recipe: 'tone', args: { type: 'sawtooth', f1: 120, f2: 1400, dur: 2, vol: 0.15 } },
                 { id: 'dock_clunk', name: 'Docking Clunk', source: 'v12-docking',
                   recipe: 'noise', args: { dur: 0.18, vol: 0.35, filter: 'lowpass', freq: 300 } },
-                { id: 'dock_abort', name: 'Docking Too Fast Abort', source: 'v12-docking',
-                  // A short harsh buzz-down, distinct from the shield/laser tones.
-                  fn: function () {
-                      var A = SIM.audio;
-                      A.sfxNoise({ dur: 0.2, vol: 0.3, filter: 'highpass', freq: 1800 });
-                      A.sfxTone({ type: 'sawtooth', f1: 500, f2: 120, dur: 0.35, vol: 0.18 });
-                  } },
                 { id: 'warp_dry', name: 'Warp Tank Runs Dry', source: 'v12-warp',
                   // The drive gives out short of the target: a sagging sweep
                   // under the usual arrival noise. Placeholder until Brian hears it.

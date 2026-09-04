@@ -39,7 +39,7 @@ your browser. Finish a run to add to it.
 The Sound item on the menu sets a level — off, quiet, or full — for
 three kinds of sound: the world around you (engines, rocks, enemy fire,
 explosions, beacons), your cockpit instruments (the lock tick,
-thrusters, tools, the shield hum, the docking corridor), and sound
+thrusters, tools, the shield hum), and sound
 effects (clicks, chimes, warnings). Speech is never affected. In the
 sector, B cycles the four point-of-interest beacons between on, off,
 and only your selected nav target, for stretches of open flying when
@@ -59,13 +59,12 @@ The shareable challenge. The clock starts at once.
 3. Dock at Station Meridian to deliver the ore. Your run time is spoken on
    delivery.
 
-Calling the station starts a docking approach: a corridor flown by
-instrument, not by ear on the world around you. A centerline tone tells
-you which way to steer, its pitch says whether you're high or low, and a
-voice reads your position every few seconds. Slow down as you close in —
-coming in too fast resets you to the start of the corridor, no damage,
-just try again. Docking repairs your hull, rearms your eight missiles,
-and refills the warp tank. Losing your ship fails the run.
+Calling the station works by range: within 500 it hails you back with a
+status; within 150 it docks at once. Fly it in by ear — the lock tick
+and R (range, closing or opening) are your instruments — and there's no
+speed check, just get close enough. Docking repairs your hull, rearms
+your eight missiles, restocks chaff, and refills the warp tank. Losing
+your ship fails the run.
 
 Once docked, a station menu opens: **Sell ore** trades your cargo for
 credits (10 ore per credit), and **Modules** spends them on permanent
@@ -103,9 +102,9 @@ Right hand on the arrows, left hand on everything else.
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Target zone size: wide, standard, narrow |
-| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — starts a docking approach at the station |
+| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails the station within 500, docks within 150 |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
-| X | Leave the mission, or cancel a docking approach in progress |
+| X | Leave the mission |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |
 | Escape | Pause |
