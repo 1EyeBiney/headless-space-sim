@@ -1611,19 +1611,24 @@ local server and on Pages, not yet heard back.
   Station Meridian, facing away. The drive won't spool within 1500 of
   the station — thrust clear first." (was 250 out with a bare
   "Undocked.") Brian reported that after his delivery, undocking left
-  him unable to move — only the map answered. **Not reproduced**: at a
-  local server, the exact flow (delivery run, station selected, dock
-  within 150, Escape to undock, W held, arrows held) moves the ship
-  normally, and the Q-map "depart" path from an encounter clears state
-  through `returnToSector` → `newGame` like X does. `undock()` now resets
-  held keys and auto-thrust regardless, and — the real fix for the
-  *silence* — a held W/S/arrow while `over()` is holding the ship still
-  now answers instead of doing nothing (`overHeldText()`: "Ship lost. A
-  tug is on the way, N seconds out." / "Mission over. X returns to the
-  sector." / "Encounter over. Enter plays again, X ..."). If it happens
-  again, the ship will say why; that's the diagnostic. Brian: if you
-  remember the exact keys between the delivery and the undock, that's
-  the lead.
+  him unable to move — only the map answered. **Found and fixed**: since
+  SPEC 1.19, `undock()` set the yaw with the sign flipped
+  (`atan2(-dir.x, dir.z)` where `shipForward()` needs `atan2(dir.x,
+  -dir.z)`, the formula `faceSelected` already uses), so "facing away
+  from the door" actually faced the station. At 250 out, W flew the ship
+  into the 60-unit hull within a few seconds, where `updateCollisions`
+  stops it and pushes it back on every press — no net movement, and
+  only the map is unaffected. The first attempt to reproduce it
+  measured the ship moving and missed that it was moving *toward* the
+  station; the Pages check after the fix's own round caught the tell
+  ("Locked. Distance 1000" the moment after undocking, on a ship
+  supposedly facing away). Fixed to `atan2(dir.x, -dir.z)`; a W after
+  undock now opens the distance. Kept as well, since they're right
+  regardless: `undock()` resets held keys and auto-thrust, and a held
+  W/S/arrow while `over()` is holding the ship still now answers instead
+  of doing nothing (`overHeldText()`: "Ship lost. A tug is on the way, N
+  seconds out." / "Mission over. X returns to the sector." / "Encounter
+  over. Enter plays again, X ...").
 - **Comm-range and dock-range cues.** `updateStationRanges()` runs every
   sector frame next to the collision check and compares each station's
   range band (outside / comm / dock) before and after — stateless, the

@@ -530,10 +530,16 @@ static once tiers exist.
   (3) `undock()` places the ship `CFG.undockDist` 1000 out, resets
   `keysDown`/`autoThrust`, sets the station's `rangeBand` to 0 silently,
   stops the music, and says the no-warp zone still has to be thrust clear
-  of. Brian's "couldn't move after undocking" was NOT reproduced (the
-  delivery → dock → Escape → W flow moves normally at a local server);
-  the held-key branch in `onKeyDown` now answers with `overHeldText()`
-  whenever `over()` is holding the ship, so if it recurs the ship says why.
+  of. Brian's "couldn't move after undocking" was a real bug, found on
+  the Pages check: `undock()`'s yaw had the sign flipped since SPEC 1.19
+  (`atan2(-dir.x, dir.z)`; `shipForward()` is `(sin yaw, ., -cos yaw)`,
+  so facing along `dir` is `atan2(dir.x, -dir.z)`, what `faceSelected`
+  uses) — the ship faced the station, W flew it into the hull, and
+  `updateCollisions` stopped and pushed it back on every press. Fixed.
+  Lesson for any test of "did the ship move": check the distance to the
+  thing it should be leaving, not just that `pos` changed. The held-key
+  branch in `onKeyDown` also now answers with `overHeldText()` whenever
+  `over()` is holding the ship, so a frozen ship is never silent.
   (4) `updateStationRanges()` (called from `simTick` next to
   `updateCollisions` in sector mode) tracks `t.rangeBand` per station —
   0 outside / 1 comm / 2 dock — and on each crossing plays `comm_range`,
@@ -1127,9 +1133,10 @@ only. Round 16 (Fable) built Brian's **ideas6** as SPEC 2.20 — his first
 notes from actually flying the Phase 2 build (decoys, lock tones by
 target kind, undock at 1000, comm/dock range cues, the docked station
 interior, and the sound lab's vortex orbit demo; see the "ideas6" bullet
-in the Sector section). One report — couldn't move after undocking — was
-not reproduced; held keys now answer whenever the sim is holding the
-ship, so a recurrence will say why.
+in the Sector section). His "couldn't move after undocking" turned out to
+be a flipped yaw sign in `undock()` since SPEC 1.19 — the ship faced the
+station and W flew it into the hull — fixed; held keys also now answer
+whenever the sim is holding the ship, so a frozen ship is never silent.
 
 Next, per Brian (2026-09-04 evening): write the Phase 3 spec — the
 moving world, SPEC.md's Part A.10 and 3.10–3.17 — in rounds of

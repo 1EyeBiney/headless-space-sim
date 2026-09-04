@@ -3969,10 +3969,9 @@ function influenceGreeting(poi) {
 
 // ideas6: undocking drops the ship undockDist (1000) out along the arrival
 // vector, facing away — outside comm range, but still inside the no-warp
-// zone, so the pilot thrusts clear before jumping anywhere. Everything
-// that could hold the ship still is reset here on purpose (Brian once
-// undocked and couldn't move; that couldn't be reproduced, so this resets
-// held keys, auto-thrust, and the range band regardless).
+// zone, so the pilot thrusts clear before jumping anywhere. Held keys,
+// auto-thrust, and the range band are reset here too; the yaw bug that
+// actually caused Brian's "couldn't move after undocking" is fixed below.
 function undock() {
     var poi = docked.poi, dir = docked.approachDir;
     docked = null;
@@ -3980,7 +3979,13 @@ function undock() {
     keysDown = {}; autoThrust = false;
     ship.pos = add(poi.pos, scale(dir, CFG.undockDist));
     ship.vel = v3(0, 0, 0);
-    ship.yaw = Math.atan2(-dir.x, dir.z); ship.pitch = 0;   // face away from the door
+    // Face AWAY from the door: shipForward() is (sin yaw, ., -cos yaw), so
+    // forward = dir needs atan2(dir.x, -dir.z) — the same formula
+    // __sim.faceSelected uses to face TOWARD a point. The sign was flipped
+    // from SPEC 1.19 until ideas6 (Round 16): the ship faced the station,
+    // W flew it into the hull, and updateCollisions stopped and pushed it
+    // back on every press — Brian's "the controls didn't move my ship".
+    ship.yaw = Math.atan2(dir.x, -dir.z); ship.pitch = 0;
     poi.rangeBand = 0;          // outside comm range now; no crossing cue for the departure itself
     if (SIM.audio.ctx) SIM.audio.stopMusic(1);
     say('Undocked. ' + CFG.undockDist + ' out from ' + poi.name + ', facing away. The drive won\'t spool within ' +
