@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Headless Space Sim — Sound Lab</title>
+<style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { background: #121212; color: #e0e0e0; font-family: sans-serif; max-width: 960px; margin: 0 auto; padding: 20px 20px 80px; }
+    h1 { text-align: center; color: #4CAF50; margin-bottom: 5px; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 20px; }
+    nav { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px 20px; margin-bottom: 30px; position: sticky; top: 0; z-index: 100; }
+    nav h2 { margin: 0 0 10px; font-size: 0.9rem; color: #4CAF50; text-transform: uppercase; letter-spacing: 1px; }
+    nav .nav-links { display: flex; flex-wrap: wrap; gap: 6px; }
+    nav a { color: #81C784; text-decoration: none; font-size: 0.82rem; padding: 4px 10px; background: #222; border-radius: 4px; border: 1px solid #333; white-space: nowrap; }
+    nav a:hover { background: #2a3a2a; border-color: #4CAF50; }
+    .stop-btn { background: #441111 !important; color: #ff5252 !important; border-color: #ff5252 !important; font-weight: bold; cursor: pointer; }
+    .stop-btn:hover { background: #661111 !important; }
+    .section-header { border-bottom: 2px solid #4CAF50; padding-bottom: 5px; margin-top: 50px; color: #4CAF50; }
+    .section-note { color: #777; font-size: 0.85rem; margin-top: -5px; margin-bottom: 10px; }
+    .button-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 30px; }
+    button { padding: 10px 12px; font-size: 0.95rem; cursor: pointer; background: #222; color: #4CAF50; border: 1px solid #4CAF50; border-radius: 6px; text-align: left; transition: background 0.15s; }
+    button:hover { background: #1a2e1a; }
+    button:focus { background: #4CAF50; color: #000; outline: none; font-weight: bold; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .desc { color: #aaa; font-size: 0.82rem; display: block; margin-top: 2px; }
+    button:focus .desc { color: #222; }
+    #startGate { text-align: center; margin: 40px 0; }
+    #startGate button { display: inline-block; font-size: 1.2rem; padding: 16px 28px; }
+    #labBody[hidden] { display: none; }
+    audio { width: 100%; margin: 2px 0 10px; }
+    .file-row { margin-bottom: 14px; }
+    .file-row .desc { margin-bottom: 4px; }
+    #back-top { position: fixed; bottom: 20px; right: 20px; background: #4CAF50; color: #000; border: none; padding: 10px 14px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; z-index: 100; }
+</style>
+</head>
+<body>
+
+<h1>Sound Lab</h1>
+<p class="subtitle">Headless Space Sim — every generated cue, primitive, and recording, for auditioning by ear.</p>
+
+<div id="startGate">
+    <button id="startBtn">Start audio</button>
+</div>
+
+<div id="labBody" hidden>
+
+<nav>
+    <h2>Quick Navigation</h2>
+    <div class="nav-links">
+        <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
+        <a href="#sec-cues">Discrete cues</a>
+        <a href="#sec-prim">Raw primitives</a>
+        <a href="#sec-embed">Embedded recordings</a>
+        <a href="#sec-disk">On-disk recordings (not yet embedded)</a>
+        <a class="stop-btn" href="javascript:void(0)" id="stopAllBtn">&#x25A0; STOP ALL</a>
+    </div>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="sec-lock" class="section-header">Lock tone candidates (SPEC 2.11)</h2>
+<p class="section-note">The problem: a lock in combat lasts seconds and the solid 880&nbsp;Hz tone suits it; a lock on a sector beacon or a mining rock can last a whole flight, and the same tone is harsh over minutes. Combat keeps the solid tone either way. These three are candidates for what sector and mining get instead. Each plays for a few seconds then stops itself.</p>
+<div class="button-group">
+    <button id="candA">A. Soft double-blip <span class="desc">Two quiet 60&nbsp;ms sines, 330 then 440&nbsp;Hz, every 2 seconds. (Current default in the game.)</span></button>
+    <button id="candB">B. Dropped, fading tone <span class="desc">Today's tone at 440&nbsp;Hz with a slow tremolo, settling to a quarter of its level after 3 seconds and holding there.</span></button>
+    <button id="candC">C. Filtered pulse <span class="desc">A single 40&nbsp;ms lowpassed square wave at 220&nbsp;Hz, once a second.</span></button>
+    <button id="candSolid">(Reference) Today's combat lock tone <span class="desc">The solid 880&nbsp;Hz sine, unchanged, for comparison.</span></button>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-cues" class="section-header">Discrete cues (SIM.cues)</h2>
+<p class="section-note">Every entry in the game's cue registry, grouped by category. Positional cues play in front of the listener.</p>
+<div id="cuesContainer"></div>
+
+<!-- ============================================================ -->
+<h2 id="sec-prim" class="section-header">Raw primitives (SIM.audio)</h2>
+<p class="section-note">The generative building blocks every cue is made from — a few presets of each, for auditioning the palette itself.</p>
+<div class="button-group" id="primContainer"></div>
+
+<!-- ============================================================ -->
+<h2 id="sec-embed" class="section-header">Embedded recordings (audio_assets.js)</h2>
+<p class="section-note">Already decoded and wired into the game by key name.</p>
+<div class="button-group" id="embedContainer"></div>
+
+<!-- ============================================================ -->
+<h2 id="sec-disk" class="section-header">On-disk recordings (not yet embedded)</h2>
+<p class="section-note">Brian's candidate recordings under <code>audio/</code>, played directly as files — not part of the game's audio bank yet. Standard HTML5 players: Tab to reach, Space to play/pause.</p>
+<div id="diskContainer"></div>
+
+</div>
+
+<button id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#x2191;</button>
+
+<!-- The game's own audio layer, unmodified — same three files, same order. -->
+<script>
+// Minimal CFG shim: audio_engine.js and audio_cues.js read a few CFG
+// fields directly (they're written to run inside index.html's closure,
+// which exposes window.CFG). Values match CFG_DEFAULTS in index.html.
+window.CFG = {
+    masterGain: 0.7,
+    refDistance: 50, maxDistance: 2000, rolloff: 1,
+    laserOverheatMs: 5000, shieldRaiseMs: 1500, warpChargeMs: 2000
+};
+window.clamp = function (x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); };
+</script>
+<script src="audio_assets.js"></script>
+<script src="audio_engine.js"></script>
+<script src="audio_cues.js"></script>
+<script>
+(function () {
+'use strict';
+
+var startBtn = document.getElementById('startBtn');
+var startGate = document.getElementById('startGate');
+var labBody = document.getElementById('labBody');
+
+startBtn.addEventListener('click', function () {
+    SIM.audio.audioStart();
+    startGate.hidden = true;
+    labBody.hidden = false;
+    labBody.querySelector('button, a').focus();
+});
+
+// ---- shared stop-all -------------------------------------------------------
+var activeStopFns = [];
+function registerStop(fn) { activeStopFns.push(fn); }
+function stopAll() {
+    activeStopFns.forEach(function (fn) { try { fn(); } catch (e) {} });
+    activeStopFns = [];
+    document.querySelectorAll('audio').forEach(function (a) { a.pause(); });
+}
+document.getElementById('stopAllBtn').addEventListener('click', stopAll);
+
+// ---- lock tone candidates (SPEC 2.11) --------------------------------------
+var lockTimer = null, lockNodes = null;
+function stopLockDemo() {
+    if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
+    if (lockNodes) {
+        var n = lockNodes; lockNodes = null;
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.1); } catch (e) {}
+        setTimeout(function () { try { n.oscs.forEach(function (o) { o.stop(); }); n.g.disconnect(); } catch (e) {} }, 300);
+    }
+}
+registerStop(stopLockDemo);
+
+function candidateA() {
+    stopLockDemo();
+    function beat() {
+        SIM.audio.sfxTone({ type: 'sine', f1: 330, dur: 0.06, vol: 0.07 });
+        SIM.audio.sfxTone({ type: 'sine', f1: 440, dur: 0.06, vol: 0.07, at: 0.09 });
+        lockTimer = setTimeout(beat, 2000);
+    }
+    beat();
+    lockTimer = setTimeout(stopLockDemo, 6600);
+}
+
+function candidateB() {
+    stopLockDemo();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var o = A.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 440;
+    var lfo = A.ctx.createOscillator(); lfo.frequency.value = 4;
+    var lfoGain = A.ctx.createGain(); lfoGain.gain.value = 0.025;
+    lfo.connect(lfoGain); lfoGain.connect(g.gain);
+    o.connect(g); g.connect(A.uiBus);
+    o.start(); lfo.start();
+    A.ramp(g.gain, 0.12, 0.05);
+    lockNodes = { g: g, oscs: [o, lfo] };
+    lockTimer = setTimeout(function () {
+        A.ramp(g.gain, 0.03, 0.6);
+    }, 3000);
+    setTimeout(stopLockDemo, 6500);
+}
+
+function candidateC() {
+    stopLockDemo();
+    function beat() {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t0 = A.ctx.currentTime;
+        var o = A.ctx.createOscillator(); o.type = 'square'; o.frequency.value = 220;
+        var f = A.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+        var g = A.ctx.createGain(); g.gain.setValueAtTime(0.09, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.04);
+        o.connect(f); f.connect(g); g.connect(A.uiBus);
+        o.start(t0); o.stop(t0 + 0.06);
+        lockTimer = setTimeout(beat, 1000);
+    }
+    beat();
+    lockTimer = setTimeout(stopLockDemo, 6200);
+}
+
+function candidateSolid() {
+    stopLockDemo();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var o = A.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(A.uiBus); o.start();
+    A.ramp(g.gain, 0.12, 0.05);
+    lockNodes = { g: g, oscs: [o] };
+    lockTimer = setTimeout(stopLockDemo, 4000);
+}
+
+document.getElementById('candA').addEventListener('click', candidateA);
+document.getElementById('candB').addEventListener('click', candidateB);
+document.getElementById('candC').addEventListener('click', candidateC);
+document.getElementById('candSolid').addEventListener('click', candidateSolid);
+
+// ---- discrete cues, generated from SIM.cues -------------------------------
+var CUE_LABELS = {
+    combat: 'Combat', shields: 'Shields', sector: 'Sector', mining: 'Mining', ui: 'UI'
+};
+var cuesContainer = document.getElementById('cuesContainer');
+SIM.cues.categories().forEach(function (cat) {
+    var h3 = document.createElement('h3');
+    h3.textContent = CUE_LABELS[cat.id] || cat.label || cat.id;
+    h3.style.color = '#81C784';
+    h3.style.marginTop = '18px';
+    cuesContainer.appendChild(h3);
+    var group = document.createElement('div');
+    group.className = 'button-group';
+    SIM.cues.list(cat.id).forEach(function (cue) {
+        var btn = document.createElement('button');
+        btn.textContent = cue.name + ' ';
+        var desc = document.createElement('span');
+        desc.className = 'desc';
+        desc.textContent = cue.id + ' — source: ' + (cue.source || 'unlabeled');
+        btn.appendChild(desc);
+        btn.addEventListener('click', function () {
+            SIM.cues.play(cue.id, { dur: 1.5, pos: { x: 0, y: 0, z: -100 } });
+        });
+        group.appendChild(btn);
+    });
+    cuesContainer.appendChild(group);
+});
+
+// ---- raw primitives ---------------------------------------------------------
+var PRIMITIVES = [
+    { label: 'Tone: sine sweep 400→800', fn: function () { SIM.audio.sfxTone({ type: 'sine', f1: 400, f2: 800, dur: 0.3, vol: 0.2 }); } },
+    { label: 'Tone: square blip', fn: function () { SIM.audio.sfxTone({ type: 'square', f1: 600, dur: 0.1, vol: 0.15 }); } },
+    { label: 'Tone: sawtooth low drone', fn: function () { SIM.audio.sfxTone({ type: 'sawtooth', f1: 90, dur: 1.0, vol: 0.2 }); } },
+    { label: 'Tone: triangle rise', fn: function () { SIM.audio.sfxTone({ type: 'triangle', f1: 200, f2: 900, dur: 0.4, vol: 0.2 }); } },
+    { label: 'Noise: lowpass thud', fn: function () { SIM.audio.sfxNoise({ dur: 0.4, vol: 0.5, filter: 'lowpass', freq: 500 }); } },
+    { label: 'Noise: highpass hiss', fn: function () { SIM.audio.sfxNoise({ dur: 0.4, vol: 0.3, filter: 'highpass', freq: 3000 }); } },
+    { label: 'Noise: bandpass crackle', fn: function () { SIM.audio.sfxNoise({ dur: 0.3, vol: 0.3, filter: 'bandpass', freq: 1500, q: 4 }); } },
+    { label: 'Echo: descending ping', fn: function () { SIM.audio.sfxEcho({ type: 'sine', f1: 1200, f2: 400, dur: 0.3, vol: 0.2, delay: 0.15 }); } },
+    { label: 'Sweep: three-point alarm', fn: function () { SIM.audio.sfxSweep({ f1: 400, f2: 1200, f3: 300, dur: 0.8, vol: 0.2, type: 'sawtooth' }); } },
+    { label: 'Chord: minor triad', fn: function () { SIM.audio.sfxChord([300, 357, 450], 0.4, 0.3); } },
+    { label: 'Arpeggio: rising four-note', fn: function () { SIM.audio.sfxArpeggio([300, 400, 500, 600], 0.1, 0.25); } },
+    { label: 'Blip: default', fn: function () { SIM.audio.blip(660, 100, 0.15); } },
+    { label: 'Noise burst (positional)', fn: function () { SIM.audio.noiseBurst({ x: 0, y: 0, z: -100 }, 300, 0.4, 1200); } }
+];
+var primContainer = document.getElementById('primContainer');
+PRIMITIVES.forEach(function (p) {
+    var btn = document.createElement('button');
+    btn.textContent = p.label;
+    btn.addEventListener('click', p.fn);
+    primContainer.appendChild(btn);
+});
+
+// ---- embedded recordings ------------------------------------------------
+var embedContainer = document.getElementById('embedContainer');
+function buildEmbedButtons() {
+    embedContainer.innerHTML = '';
+    Object.keys(window.AUDIO_ASSETS || {}).sort().forEach(function (key) {
+        var btn = document.createElement('button');
+        var ready = SIM.audio.assetBufs[key];
+        btn.textContent = key + (ready ? '' : ' (decoding…)');
+        btn.disabled = !ready;
+        btn.addEventListener('click', function () { SIM.audio.playAsset(key, 0.5); });
+        embedContainer.appendChild(btn);
+    });
+}
+buildEmbedButtons();
+var embedPoll = setInterval(function () {
+    buildEmbedButtons();
+    var allReady = Object.keys(window.AUDIO_ASSETS || {}).every(function (k) { return SIM.audio.assetBufs[k]; });
+    if (allReady) clearInterval(embedPoll);
+}, 500);
+
+// ---- on-disk recordings, not yet embedded (plain <audio>) ------------------
+// Every file under audio/ that AUDIO_ASSETS does not already cover, grouped
+// by folder. Paths are relative to this page (served from the project root
+// by the local static server; also reachable on Pages).
+var DISK_FILES = {
+    'Explosions (8 new candidates)': [
+        'audio/Explosions/system_explosion1.mp3', 'audio/Explosions/system_explosion2.mp3',
+        'audio/Explosions/system_explosion3.mp3', 'audio/Explosions/system_explosion4.mp3',
+        'audio/Explosions/system_explosion5.mp3', 'audio/Explosions/system_explosion6.mp3',
+        'audio/Explosions/system_explosion7.mp3', 'audio/Explosions/system_explosion8.mp3'
+    ],
+    'Ship loops — corvette (1 embedded, 2-7 not)': [
+        'audio/ships/spaceship_corvette_2r.mp3', 'audio/ships/spaceship_corvette_3r.mp3',
+        'audio/ships/spaceship_corvette_4r.mp3', 'audio/ships/spaceship_corvette_5r.mp3',
+        'audio/ships/spaceship_corvette_6r.mp3', 'audio/ships/spaceship_corvette_7r.mp3'
+    ],
+    'Ship loops — cruiser (1, 3 embedded, 2/4/5 not)': [
+        'audio/ships/spaceship_cruiser_2r.mp3', 'audio/ships/spaceship_cruiser_4r.mp3',
+        'audio/ships/spaceship_cruiser_5r.mp3'
+    ],
+    'Ship loops — interceptor (1, 3 embedded, 2/4/5/6 not)': [
+        'audio/ships/spaceship_interceptor_2r.mp3', 'audio/ships/spaceship_interceptor_4r.mp3',
+        'audio/ships/spaceship_interceptor_5r.mp3', 'audio/ships/spaceship_interceptor_6r.mp3'
+    ],
+    'Warp start clips (engine 1 embedded, 2-6 not)': [
+        'audio/ships/warp/warp_start2.mp3', 'audio/ships/warp/warp_start3.mp3',
+        'audio/ships/warp/warp_start4.mp3', 'audio/ships/warp/warp_start5.mp3',
+        'audio/ships/warp/warp_start6.mp3'
+    ],
+    'Warp engaged loops (engine 1 embedded, 2-6 not)': [
+        'audio/ships/warp/warp_engaged2r.mp3', 'audio/ships/warp/warp_engaged3r.mp3',
+        'audio/ships/warp/warp_engaged4r.mp3', 'audio/ships/warp/warp_engaged5r.mp3',
+        'audio/ships/warp/warp_engaged6r.mp3'
+    ],
+    'Warp finish clips (engine 1 embedded, 2-6 not)': [
+        'audio/ships/warp/warp_finish2.mp3', 'audio/ships/warp/warp_finish3.mp3',
+        'audio/ships/warp/warp_finish4.mp3', 'audio/ships/warp/warp_finish5.mp3',
+        'audio/ships/warp/warp_finish6.mp3'
+    ],
+    'Mining laser versions 3-8 (1, 2 embedded)': [
+        'audio/weapons/lasers/Mining_laser 3.mp3', 'audio/weapons/lasers/Mining_laser 4.mp3',
+        'audio/weapons/lasers/Mining_laser 5.mp3', 'audio/weapons/lasers/Mining_laser 6.mp3',
+        'audio/weapons/lasers/Mining_laser 7.mp3', 'audio/weapons/lasers/Mining_laser 8.mp3'
+    ],
+    'Rapid-pulse laser versions 1-8 (none embedded yet)': [
+        'audio/weapons/lasers/Rapid_pulse_laser1.mp3', 'audio/weapons/lasers/Rapid_pulse_laser2.mp3',
+        'audio/weapons/lasers/Rapid_pulse_laser3.mp3', 'audio/weapons/lasers/Rapid_pulse_laser4.mp3',
+        'audio/weapons/lasers/Rapid_pulse_laser5.mp3', 'audio/weapons/lasers/Rapid_pulse_laser6.mp3',
+        'audio/weapons/lasers/Rapid_pulse_laser7.mp3', 'audio/weapons/lasers/Rapid_pulse_laser8.mp3'
+    ]
+};
+var diskContainer = document.getElementById('diskContainer');
+Object.keys(DISK_FILES).forEach(function (group) {
+    var h3 = document.createElement('h3');
+    h3.textContent = group;
+    h3.style.color = '#81C784';
+    h3.style.marginTop = '18px';
+    diskContainer.appendChild(h3);
+    DISK_FILES[group].forEach(function (path) {
+        var row = document.createElement('div');
+        row.className = 'file-row';
+        var label = document.createElement('span');
+        label.className = 'desc';
+        label.textContent = path.split('/').pop();
+        var audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.src = encodeURI(path);
+        row.appendChild(label);
+        row.appendChild(audio);
+        diskContainer.appendChild(row);
+    });
+});
+
+})();
+</script>
+</body>
+</html>

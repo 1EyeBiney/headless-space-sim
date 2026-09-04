@@ -26,6 +26,17 @@ expands.
 - (There is no longer a single-file `space_sim_demo.html`: Brian dropped it
   on 2026-09-04 now that the Pages URL is the share link. Do not regenerate
   or restore it.)
+- `soundlab.html` (SPEC 2.11) — a standalone auditioning page, NOT part of
+  the game or linked from it: loads `audio_assets.js`/`audio_engine.js`/
+  `audio_cues.js` unmodified behind a small inline `CFG`/`clamp` shim
+  (index.html's closure normally supplies these to the other two files;
+  here a minimal object stands in), then lists every `SIM.cues` entry
+  (generated from `categories()`/`list()`), a handful of raw-primitive
+  presets, every embedded recording, and every NOT-yet-embedded
+  recording under `audio/` as plain `<audio controls>` (paths with
+  spaces `encodeURI`'d). Native HTML buttons/audio elements, not the
+  game's custom key-trap shell — Tab and Enter/Space already work.
+  Test at the local server (`soundlab.html`, not `index.html`).
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's source recordings (never read at runtime, organized by
   category as of Round 12's housekeeping pass — `audio_assets.js` embeds by
@@ -235,7 +246,15 @@ static once tiers exist.
   over 0.15 s instead of starting at full volume, crossfading against
   `stopWarpEngagedLoop`'s existing 0.15 s fade-out. Confirmed by polling
   `warpFlight.phase`/`elapsed`: engaged starts at 3.5, finish at 7.0
-  (11 − 4), the full-tank leg measures 11 s. Only engine 1's three clips are embedded
+  (11 − 4), the full-tank leg measures 11 s. **SPEC 2.11**: the lock tone itself
+  now depends on mode — `lockToneUsesPulse()` true for sector/mining
+  (a soft double-blip, `playLockPulse`/`startLockPulse`/`stopLockPulse`,
+  candidate A from the new `soundlab.html`, Brian's pick pending),
+  false for combat (today's solid 880 Hz tone, unchanged). Every call
+  site that used to touch `startSolidTone()`/`stopSolidTone()` directly
+  now goes through `startLockTone()`/`stopLockTone()` so clearing a lock
+  always cancels whichever tone is live; `__sim.state().lockToneMode`
+  exposes which one for testing. Only engine 1's three clips are embedded
   (`CFG.warpEngine` default 1); an un-decoded engine falls back to the old
   synthesized `warp_charge` cue for the start phase and silence for
   engaged/finish, while the arrival stings (`warp_arrive`/`warp_dry`)

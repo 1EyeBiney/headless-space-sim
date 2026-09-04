@@ -1225,6 +1225,7 @@ function updateStabilizers(speedToShed) {
 // cockpit instrument, and its pan/pitch carry the supplementary cues (turn
 // direction, elevation) without polluting the HRTF world layer.
 var tick = { timer: null, solid: null };
+var lockPulseTimer = null;   // the sector/mining lock tone's own repeat chain
 
 function tickFreqFor(elevRad) {
     return 600 * Math.pow(2, (deg(elevRad) / 90) * 0.75);
@@ -1247,6 +1248,38 @@ function startSolidTone() {
     tick.solid = { o: o, g: g, sp: sp };
     SIM.audio.ramp(g.gain, 0.12, 0.05);
 }
+
+// SPEC 2.11: a lock in combat lasts seconds and the solid tone suits it;
+// a lock on a beacon in the sector or on a rock while mining can last a
+// whole flight, and the same tone is harsh over minutes. Combat keeps the
+// solid tone; sector/mining get a soft double-blip every 2 s instead.
+// CFG.lockToneMode names which pick is live so the sound lab can offer
+// the same three candidates without duplicating this dispatch.
+function lockToneUsesPulse() { return mode === 'sector' || mode === 'mining'; }
+
+function playLockPulse() {
+    SIM.audio.sfxTone({ type: 'sine', f1: 330, dur: 0.06, vol: 0.07 });
+    SIM.audio.sfxTone({ type: 'sine', f1: 440, dur: 0.06, vol: 0.07, at: 0.09 });
+}
+
+function startLockPulse() {
+    if (lockPulseTimer) return;
+    playLockPulse();
+    lockPulseTimer = setTimeout(function repeat() {
+        if (!locked || !lockToneUsesPulse()) { lockPulseTimer = null; return; }
+        playLockPulse();
+        lockPulseTimer = setTimeout(repeat, 2000);
+    }, 2000);
+}
+
+function stopLockPulse() {
+    if (!lockPulseTimer) return;
+    clearTimeout(lockPulseTimer);
+    lockPulseTimer = null;
+}
+
+function startLockTone() { if (lockToneUsesPulse()) startLockPulse(); else startSolidTone(); }
+function stopLockTone() { stopLockPulse(); stopSolidTone(); }
 
 function scheduleTick() {
     clearTimeout(tick.timer);
@@ -1290,7 +1323,7 @@ function selectNearest() {
     });
     selected = best;
     locked = false;
-    stopSolidTone();
+    stopLockTone();
 }
 
 // dir +1 (Tab) steps outward through the nearest-first order, -1 (Shift+T,
@@ -1308,7 +1341,7 @@ function cycleTarget(dir) {
     selected = at < 0 ? alive[dir > 0 ? 0 : alive.length - 1]
                       : alive[(at + dir + alive.length) % alive.length];
     locked = false;
-    stopSolidTone();
+    stopLockTone();
     lastCycleAt = Date.now();
     say(bearingText(targets[selected]));
 }
@@ -1363,13 +1396,13 @@ function updateTargeting() {
     if (!locked && a.err < z.lockOn) {
         locked = true;
         SIM.cues.play('lock_acquired');
-        startSolidTone();
+        startLockTone();
         // The tick has walked the pilot onto the target; the one number that
         // matters now is how far away it is (laser reach, missile flight).
         if (Date.now() - lastCycleAt > 1500) say('Locked. Distance ' + round10(a.dist) + '.');
     } else if (locked && a.err > z.lockOff) {
         locked = false;
-        stopSolidTone();
+        stopLockTone();
         SIM.cues.play('lock_lost');
     }
 }
@@ -2490,7 +2523,7 @@ function rockEvent(t) {
         var child = len(sub(a.pos, ship.pos)) <= len(sub(b.pos, ship.pos)) ? a : b;
         selected = targets.indexOf(child);
         locked = false;
-        stopSolidTone();
+        stopLockTone();
         say(t.name + ' breaks apart! Auto targeting child: ' +
             ROCK_SIZES[childSize].label + ' ' + t.type.name + ' asteroid, ' +
             child.name + ', distance ' + round10(len(sub(child.pos, ship.pos))) + '.');
@@ -2736,7 +2769,7 @@ function startDemo() {
     placeAtStationStart();
     // The first objective is the nav target from the start, so H works at once.
     targets.forEach(function (t, i) { if (t.poiType === 'combat') selected = i; });
-    locked = false; stopSolidTone();
+    locked = false; stopLockTone();
     say(demoIntro());
 }
 
@@ -2857,7 +2890,7 @@ function mapKey(lname) {
         if (mode === 'sector') {
             selected = targets.indexOf(item);
             locked = false;
-            stopSolidTone();
+            stopLockTone();
             closeMap('Nav target set: ' + item.name + '. H hyperwarps to it, or fly it by the tick.');
         } else {
             // Depart the encounter for the chosen point.
@@ -2869,7 +2902,7 @@ function mapKey(lname) {
                 returnToSector(true);          // silent: the warp narrates
                 var idx = -1;
                 targets.forEach(function (t, i) { if (t.name === item.name) idx = i; });
-                if (idx >= 0) { selected = idx; locked = false; stopSolidTone(); }
+                if (idx >= 0) { selected = idx; locked = false; stopLockTone(); }
                 startWarp();
             }
         }
@@ -3300,7 +3333,7 @@ function returnToSector(silent) {
     ship.pos = home.pos; ship.yaw = home.yaw; ship.pitch = home.pitch;
     var idx = -1;
     targets.forEach(function (t, i) { if (t.name === home.poiName) idx = i; });
-    if (idx >= 0) { selected = idx; locked = false; stopSolidTone(); }
+    if (idx >= 0) { selected = idx; locked = false; stopLockTone(); }
     refillWarp();                                  // the core cooled while you were busy
     if (!silent) {
         say('Back in open space near ' + home.poiName + '. Warp tank full. Ore hold ' + ore + '. Q for the map.');
@@ -3635,6 +3668,7 @@ window.__sim = {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
+            locked: locked, lockToneMode: lockToneUsesPulse() ? 'pulse' : 'solid',
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
@@ -3715,7 +3749,7 @@ function clearMission() {
     killMissile();
     stopBeam(true);
     thrusterSync(null);
-    stopSolidTone();
+    stopLockTone();
     clearDebris();
     dustSeq = 0;
     targets = [];

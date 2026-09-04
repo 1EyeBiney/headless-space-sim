@@ -935,7 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 is DONE (Sonnet). 2.11 next.
+2.10 and 2.11 are DONE (Sonnet). 2.12/2.13 next.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -968,7 +968,37 @@ the crossfade quality is the thing for Brian's ear.
   ends. `warpJumpLongDist` stays 10606, so the delivery run's first leg is
   exactly 11 s — confirm it, as 1.17 did for 12.
 
-#### 2.11 The sound lab, and the open-space lock tone (ideas5)
+#### 2.11 The sound lab, and the open-space lock tone (ideas5) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: `soundlab.html` loads
+`audio_assets.js`/`audio_engine.js`/`audio_cues.js` unmodified (a small
+inline `CFG`/`clamp` shim stands in for what index.html's closure
+normally exposes) behind a "Start audio" gesture button, then five
+sections — the lock-tone candidates, all 26 `SIM.cues` entries generated
+from `SIM.cues.categories()`/`list()` grouped by category, 13 hand-picked
+primitive presets, all 23 embedded assets (each button disabled until
+its buffer finishes decoding, confirmed all enable within the poll
+window), and all 50 not-yet-embedded recordings as native
+`<audio controls>` elements grouped by folder (paths with spaces
+`encodeURI`'d, confirmed against `Mining_laser 3.mp3`). No console
+errors; both a plain audio file and a synthesized cue play cleanly.
+Keyboard access is native HTML buttons/audio controls (Tab, Enter/
+Space) rather than a custom key-trap shell — the right call for a
+browse-and-click tool, not the always-listening game shell.
+
+**The lock tone itself**: `lockToneUsesPulse()` returns true for
+`sector`/`mining`, false for `combat`; `startLockTone()`/`stopLockTone()`
+replace every direct `startSolidTone()`/`stopSolidTone()` call site (9
+of them, `selectNearest`, `cycleTarget`, `updateTargeting` ×2,
+`shatterCore`'s auto-track, `startDemo`, the map's set-nav-target and
+depart-to-a-different-point branches, `returnToSector`, `clearMission`)
+so every lock-clearing path also cancels the pulse's own repeat chain.
+Candidate A (the soft double-blip) ships as the live default —
+confirmed by a new `lockToneMode` field on `__sim.state()`: `pulse` in
+sector, `solid` in combat, lock still speaks "Locked. Distance N." in
+both. The pulse's own `setTimeout` chain checks `locked` and the mode
+before each repeat, so it self-terminates even if a call site were ever
+missed. Not yet heard — Brian picks A, B, or C from the lab.
 
 - `soundlab.html` — this project's own `.soundtester`-style page,
   loading the same `audio_assets.js`/`audio_engine.js`/`audio_cues.js`
