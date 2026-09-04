@@ -358,6 +358,11 @@ static once tiers exist.
   sector space refuses; at the mission menu D still jumps to Delivery run.
   Cue `chaff_burst` (UI bus). The `profile.chaff` field from the 1.4
   schema is still unused — chaff is per-sortie state like missiles.
+  **Confirmed instant/any-time (SPEC 1.16, Round 13)**: no code change —
+  `fireChaff()` never gated on a burst or on raised shields; a D press
+  mid-burst spends chaff and answers in the same frame while the burst
+  keeps running untouched, and a D press with shields fully up does the
+  same. This is now the documented rule, not an accident.
 - **Shields (`G`)** (damage pool as of Round 11): 1.5 s spool (2.5 s at Ace,
   rising sweep) → clunk + hum on the UI bus. Weapons offline while up; own
   missile AND incoming missiles lose guidance (go ballistic, coast 1.5 s,
@@ -583,7 +588,9 @@ Round 13 also built 1.20: Rookie's `laserShipMult` 2 doubles ship
 damage only (confirmed 54 vs Veteran's 27 on the identical tick; a rock
 tick at 29 confirmed untouched), and the Difficulty/help text reflect it
 only when the multiplier is above 1. Machine-tested, not yet heard.
-1.16 is next, then 1.18, 1.17.
+
+Round 13 also confirmed 1.16 (chaff instant/any time) needed no code
+change — see the chaff bullet above. 1.18 is next, then 1.17.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

@@ -573,18 +573,21 @@ test), 1.20 (one number per tier), 1.16 (a test, nothing to build),
 commit per item, machine-test at a local server with beacons off, docs
 in sync, push, re-test at Pages, close every tab.
 
-1.19 and 1.20 are DONE (Sonnet, Round 13) — see below. 1.16 next.
+1.19, 1.20, and 1.16 are DONE (Sonnet, Round 13) — see below. 1.18 next.
 
-#### 1.16 Chaff is instant, any time (ideas4)
+#### 1.16 Chaff is instant, any time (ideas4) — CONFIRMED, no code change
 
 Brian: "chaff is instant, can be used during laser or shields." Already
 true as 1.8 was built — `fireChaff()` has no gate on a burst in progress
-or on raised shields, and D answers in the same frame. This item makes
-it a RULE rather than an accident: D never gets a gate beyond "in an
-encounter, not paused, not over." Test checklist: D mid-burst spoofs the
-missile and the burst keeps running; D with shields up spends a round
-("That missile was already ballistic") since the shield already broke
-its guidance.
+or on raised shields, only the same `!paused && !over()` every key
+respects; verified rather than built. Confirmed at a local server:
+pressed mid-burst, chaff spent and answered in the same frame while the
+burst kept ticking down untouched (`burstLeft` 5→4 across the press);
+pressed with shields fully raised, same — answered instantly (a laser
+threat had started in the background, so the reply was correctly
+"Chaff does nothing against a laser. Shields."), shields stayed up. No
+code changed; this is the rule going forward, not an accident of how
+1.8 happened to be written.
 
 #### 1.17 Warp takes time: a three-phase recorded warp, 25 % minimum charge (ideas4)
 
