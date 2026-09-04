@@ -89,6 +89,12 @@ var CFG_DEFAULTS = {
     collisionDmgPerSpeed: 2,
     repairCreditPerPoint: 5,
 
+    // Death by tug (SPEC 2.16): a lost ship in the sector campaign or the
+    // delivery run waits for pickup instead of Enter-restarting in place.
+    tugBaseS: 90,             // base wait, halved by influence or the credit fee (each independently)
+    tugInfluenceFactor: 0.5,  // multiplier once Station Meridian remembers you
+    tugFeeCredits: 50,        // Enter pays this once to halve whatever's left
+
     refDistance: 50, maxDistance: 2000, rolloff: 1,
     masterGain: 0.7, targetGain: 0.25,
 
@@ -675,6 +681,8 @@ var warpFlight = null;   // { poi, dir, fromPos, travel, dry, totalTime, elapsed
 var warpEngagedNode = null;
 var sectorHome = null;   // set while inside an encounter entered from the sector
 var lost = false;        // hull breached: the encounter is over, like won
+var tug = null;          // SPEC 2.16: { total, remaining, poiData, paid } while a
+                          // lost ship in the sector campaign waits for pickup
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
@@ -839,7 +847,7 @@ var HELP_SECTIONS = [
         function () { return 'D fires chaff: a decoy burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Chaff does nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
-        'If your hull reaches zero the encounter is lost. Enter tries again.'
+        'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve it.'
     ] },
     { heading: 'Delivery run', items: [
         'The delivery run is the first item on the mission menu, and the shareable demo. The clock starts at once and I reads it.',
@@ -984,7 +992,7 @@ var KEY_DESCRIPTIONS = {
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
     c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ' and docks within ' + CFG.stationDockRange + '.'; },
-    enter: 'At the mission menu, selects the highlighted item. After a victory or a lost ship, starts a fresh run of the same mission.',
+    enter: function () { return 'At the mission menu, selects the highlighted item. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run.'; },
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
     escape: 'Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves. Escape again also resumes.',
@@ -2438,9 +2446,18 @@ function shipDestroyed(source) {
     keysDown = {};
     thrusterSync(null);
     SIM.cues.play('ship_destroyed');
+    // SPEC 2.16: the sector campaign and the delivery run (tugCandidate())
+    // no longer offer an Enter-restart or an X-back-to-sector escape after
+    // a loss — a tug is dispatched and that's the only way back, on the
+    // clock like everything else. A standalone training drill from the
+    // mission menu keeps the old instant retry (the else branch, untouched).
+    var tugged = tugCandidate();
+    if (tugged) startTug();
     setTimeout(function () {
-        var tail = demo
-            ? 'Delivery run failed at ' + fmtTime(demo.elapsed) + '. Enter restarts the run from the beginning, X for the mission menu.'
+        var tail = tugged
+            ? 'Tug dispatched from ' + tug.poiData.name + ', ' + Math.ceil(tug.total) + ' seconds' +
+              (tug.total < CFG.tugBaseS ? ' — they remember you there' : '') +
+              '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait, once.'
             : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
         say('Hull breached by ' + source + '. Ship lost. ' + tail);
     }, 900);
@@ -3263,7 +3280,8 @@ function updateWarpCore(dt) {
 // stationCommRange) it's a hail — a status line, no docking. Repair/rearm/
 // refuel/restock and the delivery handover happen on arrival, same as they
 // always have; only the flown approach (SPEC 1.6) is gone.
-function dockAtStation(poi) {
+function dockAtStation(poi, extra) {
+    extra = extra || '';
     var approachDir = norm(sub(ship.pos, poi.pos));
     ship.vel = v3(0, 0, 0);
     SIM.cues.play('dock_clunk');
@@ -3311,14 +3329,75 @@ function dockAtStation(poi) {
                       : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
                       : '';
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
-        say(greeting + 'Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
+        say(extra + greeting + 'Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
             'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service + stationMenuIntro());
     } else {
-        say(greeting + 'Docked at ' + poi.name + '. ' + service +
+        say(extra + greeting + 'Docked at ' + poi.name + '. ' + service +
             (demo && !demo.delivered
                 ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
                 : 'Your cargo hold reads ' + ore + ' ore, ' + profile.credits + ' credits.') + ' ' + stationMenuIntro());
     }
+}
+
+// ---- death by tug (SPEC 2.16) ----------------------------------------------
+// A lost ship in the sector campaign (an encounter reached via the sector,
+// or the delivery run itself — both always leave sectorHome set or mode
+// 'sector') no longer Enter-restarts in place: it waits for a tug, on the
+// clock, same as any other consequence in this game. A standalone training
+// drill from the mission menu (no sectorHome, mode never 'sector') keeps
+// today's instant Enter-to-retry — tugCandidate() is the one place that
+// decides which applies.
+function tugCandidate() { return !!(sectorHome || mode === 'sector'); }
+
+function startTug() {
+    var poiData = null;
+    SECTOR_POIS.forEach(function (p) { if (p.poiType === 'station') poiData = p; });
+    // Read influence BEFORE anything this death might bump — same ordering
+    // rule as influenceGreeting, so the halved wait reflects standing
+    // earned before now, not credit for the wreck currently happening.
+    var s = profile.stations[poiData.name];
+    var influenced = s && s.influence >= CFG.influenceThreshold;
+    var total = CFG.tugBaseS * (influenced ? CFG.tugInfluenceFactor : 1);
+    tug = { total: total, remaining: total, poiData: poiData, paid: false };
+}
+
+function updateTug(dt) {
+    var beforeStep = Math.floor(tug.remaining / 10);
+    tug.remaining = Math.max(0, tug.remaining - dt);
+    var afterStep = Math.floor(tug.remaining / 10);
+    if (tug.remaining <= 0) { tugArrives(); return; }
+    if (afterStep < beforeStep) say('Tug in ' + Math.ceil(tug.remaining) + ' seconds.');
+}
+
+function payTugFee() {
+    if (tug.paid) { say('Already paid. Tug in ' + Math.ceil(tug.remaining) + ' seconds.'); return; }
+    if (profile.credits < CFG.tugFeeCredits) {
+        SIM.cues.play('refusal_wait');
+        say('Need ' + CFG.tugFeeCredits + ' credits to rush the tug; you have ' + profile.credits + '.');
+        return;
+    }
+    profile.credits -= CFG.tugFeeCredits;
+    tug.remaining /= 2;
+    tug.paid = true;
+    saveProfile();
+    say('Paid ' + CFG.tugFeeCredits + ' credits. Tug in ' + Math.ceil(tug.remaining) + ' seconds.');
+}
+
+// Docked exactly like flying in and calling the station, minus the flying —
+// full repair/rearm/refuel/restock and the delivery handover if the hold
+// already meets the goal, same code path dockAtStation always ran.
+function tugArrives() {
+    var poiData = tug.poiData;
+    tug = null;
+    sectorHome = null;
+    newGame('sector');
+    var idx = -1;
+    targets.forEach(function (t, i) { if (t.name === poiData.name) idx = i; });
+    if (idx < 0) return;   // shouldn't happen: makeSectorRoster always includes the station
+    var poi = targets[idx];
+    ship.pos = add(poi.pos, scale(v3(0, 0, 1), CFG.stationDockRange + 100));
+    selected = idx; locked = false; stopLockTone();
+    dockAtStation(poi, 'Tug arrives. ');
 }
 
 // ---- station menu shell (SPEC 1.7 fleshes out the item list) --------------
@@ -3916,6 +3995,7 @@ function onKeyDown(e) {
     // 'w' and would otherwise just be a held thrust key.
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
         if (e.repeat) return;
+        if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
         if (over()) { say('Enter restarts.'); return; }
         if (lname === 'w') toggleAutoThrust();
         else if (lname === 'r') radarPing();
@@ -3961,7 +4041,8 @@ function onKeyDown(e) {
             else say('C calls points of interest in open sector space.');
             break;
         case 'x':
-            if (sectorHome && mode !== 'sector') returnToSector();
+            if (tug) say('A tug is already on the way, ' + Math.ceil(tug.remaining) + ' seconds out. Sit tight.');
+            else if (sectorHome && mode !== 'sector') returnToSector();
             else exitToMenu();
             break;
         case 'i':      statusReport(); break;
@@ -3990,14 +4071,22 @@ function onKeyDown(e) {
             openMissionMenuOverlay();
             break;
         case 'enter':
-            if (lost && demo) {
-                // A lost ship fails the delivery run: the whole thing restarts.
-                startDemo();
+            // SPEC 2.16: a lost ship waiting on a tug (sector campaign or
+            // the delivery run) answers Enter by paying to rush the tug,
+            // not by restarting anything — tugCandidate() is what routed
+            // shipDestroyed() into the tug in the first place, so `tug`
+            // being set here always means this loss came from there.
+            if (tug) {
+                payTugFee();
             } else if (over()) {
                 // A fresh drill run from the menu starts a fresh hold and a
                 // full magazine; a replay inside a sector run keeps the
                 // cargo and the missile count. A retry after a loss always
                 // comes with a repaired hull (there is no other way back).
+                // (A lost ship reaches here only for a standalone training
+                // drill now — every sector/demo loss is routed to the tug
+                // above instead, so `lost` alongside `sectorHome` no longer
+                // happens at this point.)
                 if (mode === 'mining' && !sectorHome) ore = 0;
                 if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; }
                 if (lost || !sectorHome) hull = CFG.shipHull;
@@ -4040,9 +4129,15 @@ function frame(now) {
 }
 
 function simTick(dt) {
-    // The delivery clock runs whenever the sim is live, hyperwarp included.
+    // The delivery clock runs whenever the sim is live, hyperwarp included —
+    // and, as of SPEC 2.16, through a tug wait too: the tug is a consequence
+    // on the clock, not a pause of it.
     if (demo && !demo.delivered && running && !help.open && !map.open &&
-        !menuOpen && !over() && dt > 0) demo.elapsed += dt;
+        !menuOpen && (!over() || tug) && dt > 0) demo.elapsed += dt;
+    // The tug countdown runs on the same real/game-time gate as everything
+    // else that's frozen by help/map/menu — it just isn't gated on !over(),
+    // since being lost is exactly the condition that starts it.
+    if (tug && running && !help.open && !map.open && !menuOpen && dt > 0) updateTug(dt);
     if (!running || over() || help.open || map.open || docked || hailMenu.open || dt <= 0) {
         thrusterSync(null); updateStabilizers(0); return;
     }
@@ -4175,6 +4270,7 @@ window.__sim = {
     state: function () {
         return {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
+            tug: tug ? { remaining: Math.round(tug.remaining * 10) / 10, total: Math.round(tug.total * 10) / 10, paid: tug.paid, poi: tug.poiData.name } : null,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
             locked: locked, lockToneMode: lockToneUsesPulse() ? 'pulse' : 'solid',
@@ -4252,6 +4348,9 @@ window.__sim = {
         if (o && o.chaff !== undefined) chaff = o.chaff;
         if (o && o.rcs !== undefined) rcs = o.rcs;
         if (o && o.rcsBattery !== undefined) rcsBattery = o.rcsBattery;
+        if (o && o.tugRemaining !== undefined && tug) tug.remaining = o.tugRemaining;
+        if (o && o.kill) shipDestroyed('test rig');
+        if (o && o.credits !== undefined && profile) profile.credits = o.credits;
         if (o && o.pos !== undefined) ship.pos = v3(o.pos.x, o.pos.y, o.pos.z);
         if (o && o.vel !== undefined) ship.vel = v3(o.vel.x, o.vel.y, o.vel.z);
         if (o && o.collisionDamage !== undefined) collisionDamage = o.collisionDamage;
@@ -4272,7 +4371,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false;
+    won = false; lost = false; locked = false; tug = null;
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;

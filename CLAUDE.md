@@ -243,7 +243,10 @@ static once tiers exist.
   Field Kappa refuses mining rights until the Contested Zone is cleared;
   Station Meridian takes the delivery once ore ≥ `CFG.demoOreGoal` (15,000)
   and speaks the run time. Station always repairs hull + rearms missiles.
-  Losing the ship fails the run; Enter restarts it from scratch.
+  Losing the ship no longer restarts the run from scratch (SPEC 2.16,
+  supersedes this): a tug is dispatched instead, on the clock, which
+  keeps running through the wait — see "Death by tug" in the Combat
+  section above.
 - **Sector**: real flyable space, 4 POI audio beacons (Contested Zone war-drum
   throb / Asteroid Field Kappa rumble / Station Meridian blinking 660 tone /
   Planet Auren 45 Hz drone). Long-range beacon panners (ref 800, rolloff 1.2,
@@ -462,6 +465,56 @@ static once tiers exist.
   `rcsBattery` — a raw override, not a real refill; use `addRcs`/
   `refillRcs` semantics by poking both fields together if a test needs
   battery cleared).
+  **Death by tug (Round 15, SPEC 2.16)**: `tugCandidate()` (`sectorHome ||
+  mode === 'sector'`) is the one branch point in `shipDestroyed()` — true
+  for anything reached via the sector (an encounter entered from it, OR
+  dying in open sector flight itself, e.g. a collision, with no encounter
+  at all) and for the delivery run (always inside one of those two);
+  false only for a standalone training drill started directly from the
+  mission menu, which keeps the old instant Enter-retry untouched.
+  `startTug()` reads `profile.stations['Station Meridian'].influence`
+  BEFORE this death (same ordering rule as `influenceGreeting`) and sets
+  `tug = { total, remaining, poiData, paid }`, `total` = `CFG.tugBaseS`
+  90 halved by `CFG.tugInfluenceFactor` 0.5 past `CFG.influenceThreshold`.
+  `updateTug(dt)` runs from `simTick` on the same help/map/menu gate as
+  the delivery clock but NOT gated on `!over()` (being lost is what
+  starts it), speaking "Tug in N seconds" on every whole-10-second
+  boundary crossed — the same before/after bucket comparison the
+  warp-core alert already used. At zero, `tugArrives()` clears `tug`/
+  `sectorHome`, rebuilds the sector roster, places the ship just outside
+  Station Meridian, and calls `dockAtStation(poi, 'Tug arrives. ')` — the
+  SAME repair/rearm/refuel/restock/delivery-handover path a normal
+  docking always runs, `dockAtStation` having grown an `extra` param
+  (prepended to its own single `say()`) for exactly this, so the arrival
+  line and the docking line stay one combined announcement rather than
+  repeating the SPEC 2.15 double-`say()` bug on purpose. `payTugFee()`
+  (Enter, while `tug` is set) spends `CFG.tugFeeCredits` 50 once
+  (`tug.paid` guards a second press) halving whatever's left AT THAT
+  MOMENT — stacks multiplicatively with an influence halving, not
+  additively. X and the Shift+W/T/R chord both refuse during the wait
+  ("A tug is already on the way...") instead of their usual
+  return-to-sector/restart, since the tug is now the only way back for a
+  sector-campaign loss; `clearMission()` clears `tug` too so abandoning
+  the wait via the mission menu doesn't leak stale state into whatever
+  mission comes next (that abandonment itself is unchanged SPEC 1.18
+  behavior — selecting anything else already tore down a live mission
+  before this). `__sim.poke()` gained `kill` (calls `shipDestroyed`
+  directly, skipping the need to actually land a killing hit in a test)
+  and `credits` (sets `profile.credits`), both test-only. Machine-tested:
+  a drill death still says "Enter tries again" with no `tug`; a
+  sector-encounter death and an open-sector-flight death both start a
+  90 s tug; a seeded influence of 5 halves it to 45 s; paying with 50+
+  credits halves whatever remains and a second Enter says "Already
+  paid"; paying with 0 credits refuses and charges nothing; X and the
+  Shift-chord both refuse mid-wait; the countdown was confirmed firing
+  at each 10-second boundary via `__sim.step()`; arrival repairs hull to
+  100, refills reaction mass, leaves cargo untouched, opens the station
+  menu, and includes the influence greeting when earned; the delivery
+  run's own death was confirmed routed to the same tug (not the old
+  full-restart) with its clock confirmed STILL ADVANCING through the
+  wait (elapsed 3 at death, 13 ten seconds into the wait, 53 at
+  arrival) and the `demo` object surviving intact. Zero console errors.
+  Not yet heard by Brian.
 - **Docking (Round 13, SPEC 1.19, supersedes Round 12's SPEC 1.6)**: the
   flown corridor is GONE — Brian: use ranges instead. `callPoi()` computes
   `range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract`
@@ -578,7 +631,9 @@ static once tiers exist.
   they telegraph (3 rising chirps at THEIR position + "X locking on!") for
   1.2 s then a 5 s beam, 6 dmg/s; farther out they launch a missile with its
   own HRTF voice (25 dmg). Grace 8 s at start, gap 7–12 s. Player hull 100;
-  0 = `lost` (Enter retries with a repaired hull). A missile survivor is
+  0 = `lost` (Enter retries with a repaired hull in a standalone training
+  drill; in the sector campaign or the delivery run, SPEC 2.16's tug
+  instead — see "Death by tug" below). A missile survivor is
   "alerted": evade burst across the line of sight (burner whoosh, engine
   pitch-up, direction spoken) and it attacks within 2.5 s. **Chaff (`D`,
   SPEC 1.8)**: `chaff` magazine (`CFG.chaffMax` 4, refilled wherever
@@ -916,10 +971,23 @@ save with an unknown field, all at a local server with zero console
 errors. Built retroactively — the original brief wanted it landed
 before 2.14/2.15, but those had already shipped earlier this session
 with no tester save yet in existence to lose, so nothing was at risk.
-2.10 through 2.15, 2.18, and 2.19 are all DONE now. 2.16 (death by tug)
-is next, then 2.17 (escort and defend missions) — the last two Phase 2
-items before the Sunday 2026-09-06 demo target. Nothing from Rounds
-10-15 has been heard or flown by Brian yet.
+Round 15 also built **SPEC 2.16** (death by tug — see the "Death by
+tug" bullet in the Combat section above for the full shape): a lost
+ship in the sector campaign or the delivery run now waits for a tug on
+the clock instead of Enter-restarting in place, halved by influence or
+by paying a credit fee once; a standalone training drill keeps the old
+instant retry, untouched. Machine-tested at a local server across
+every branch (drill vs. campaign, sector-encounter vs. open-flight
+death, the influence halving, the fee halving and its once-only guard,
+X and the Shift-chord refusals mid-wait, the 10-second countdown
+cadence, the arrival service, and the delivery run's clock confirmed
+still advancing through the wait with the `demo` object surviving
+intact) with zero console errors; not yet heard by Brian.
+
+2.10 through 2.16, 2.18, and 2.19 are all DONE now. 2.17 (escort and
+defend missions) is next — the last Phase 2 item before the Sunday
+2026-09-06 demo target. Nothing from Rounds 10-15 has been heard or
+flown by Brian yet.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

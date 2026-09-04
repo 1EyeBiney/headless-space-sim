@@ -935,7 +935,8 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.15, 2.18, and 2.19 are DONE (Sonnet). 2.16 next, then 2.17.
+2.10 through 2.16, 2.18, and 2.19 are DONE (Sonnet). 2.17 next — the last
+item in Phase 2.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1215,21 +1216,71 @@ placeholders for his ear.
   warp charge, hydrogen (0 until 2.8), credits, missiles, chaff — each
   with a few words on what it's for. Same shell as F2.
 
-#### 2.16 Death by tug (ideas5)
+#### 2.16 Death by tug (ideas5) — DONE
 
-- In the sector campaign and the delivery run, a lost ship is no longer
-  Enter-to-retry: "Hull breached. Ship lost. Tug dispatched from Station
-  Meridian, N seconds." A countdown every 10 s in game time; at zero the
-  pilot is docked at the station, hull repaired, reaction mass full,
-  cargo intact, and the station menu opens. The delivery clock keeps
-  running. Training drills from the menu keep today's Enter-to-retry.
-- `tugBaseS` 90. Influence at that station past the threshold halves it
-  (`tugInfluenceFactor` 0.5). During the wait, Enter offers "Pay
-  `tugFeeCredits` 50 to halve the wait" — one press, once. Experience as a
-  lever comes later.
-- For the delivery run this REPLACES the restart-from-scratch: a loss is a
-  tug ride on the clock, not a reset **(accepted by default — a reset was
-  the crippling version)**.
+Built as specified. `tugCandidate()` is the one gate: `sectorHome ||
+mode === 'sector'` — true for any loss reached via the sector (an
+encounter entered from it, or dying in open flight itself, e.g. to a
+collision) and for the delivery run (which is always inside one of
+those two), false for a standalone training drill started directly
+from the mission menu. `shipDestroyed()` checks it once and either
+calls `startTug()` or falls through to the untouched old "Enter tries
+again" path. `startTug()` reads `profile.stations['Station
+Meridian'].influence` BEFORE this death could touch it (same ordering
+rule as `influenceGreeting`) and sets `tug = { total, remaining,
+poiData, paid }`, `total` = `CFG.tugBaseS` (90) halved by
+`CFG.tugInfluenceFactor` (0.5) once influence clears
+`CFG.influenceThreshold`. `updateTug(dt)` runs from `simTick` on the
+same help/map/menu-gated clock as the delivery timer (NOT gated on
+`!over()`, since being lost is what starts it) and speaks "Tug in N
+seconds" on every whole-10-second boundary crossed, exactly like the
+warp-core alert's before/after bucket comparison; at zero it calls
+`tugArrives()`, which clears `tug`/`sectorHome`, rebuilds the sector
+roster, drops the ship just outside Station Meridian, and calls
+`dockAtStation(poi, 'Tug arrives. ')` — the same repair/rearm/refuel/
+restock/delivery-handover path a normal docking always runs, with the
+new `extra` param prepended so the whole thing is still one `say()`
+call (the SPEC 2.15 double-call lesson applied on purpose here).
+`payTugFee()` (Enter, while `tug` is set) spends `CFG.tugFeeCredits`
+(50) once (`tug.paid` guards a second press), halving whatever's left
+at that moment — stacks multiplicatively with an influence halving,
+not additively, since it operates on `tug.remaining` directly. X and
+the Shift+T/R/W chord are refused during the wait ("A tug is already
+on the way...") instead of returning to the sector or restarting,
+since the tug is now the only way back for a sector-campaign loss;
+`clearMission()` clears `tug` too, so abandoning the wait via the
+mission menu (Escape, then a different item — the existing SPEC 1.18
+"selecting anything else abandons the live mission" behavior, untouched
+by this) doesn't leak stale tug state into whatever comes next. Help
+text (the "Shields and enemy fire" section) and `KEY_DESCRIPTIONS.enter`
+both updated to describe the split between a drill's retry and a
+campaign's tug.
+
+Machine-tested at a local server (a `kill` and a `credits` poke added
+to `__sim` for this, matching the existing test-hook convention): a
+standalone Combat training drill death still answers "Enter tries
+again" with no `tug` set, unchanged from before; a death inside a
+sector-entered combat encounter and a death in plain open sector flight
+(no encounter at all) both correctly start a 90 s tug at Station
+Meridian; a seeded influence of 5 (threshold 3) halves that to 45 s;
+paying the fee with 50+ credits halves whatever remains and a second
+Enter refuses ("Already paid"); paying with 0 credits refuses and
+charges nothing; X and the Shift-chord are both refused mid-wait with
+the tug-specific message instead of the old ones; the countdown was
+confirmed firing at each 10-second game-time boundary (90 -> 80 -> 70 ->
+60 -> 50 -> 45 after a mid-wait pay -> 40 -> 30 -> 20 -> 10 -> arrival)
+stepped through `__sim.step()`, each announcement landing as its own
+distinct speech (not collapsed, since `updateTug`'s `say()` calls are
+naturally spaced by real/game seconds apart, unlike the SPEC 2.15 bug);
+arrival correctly repairs hull to 100, refills reaction mass, leaves
+cargo untouched, and opens the station menu, with the influence greeting
+included when earned. The delivery run's own death was confirmed
+routed to the same tug (no more "Delivery run failed... restarts from
+the beginning") and its clock confirmed STILL ADVANCING through the
+wait (elapsed 3 at the moment of death, 13 ten seconds into the tug
+wait, 53 at arrival) — the demo object survives the tug arrival intact
+(`combatCleared`/`delivered` unchanged) and resumes normally afterward.
+Zero console errors throughout. Not yet heard by Brian.
 
 #### 2.17 Escort and defend missions (ideas5)
 
