@@ -67,14 +67,20 @@ Right hand on the arrows, left hand on everything else.
 
 ## How combat works
 
-Every ship is passive until you hit it, and hostile from then on. A hostile
-ship within 600 paints you with three rising chirps from its position and a
-spoken warning, then burns a five-second beam that bites once a second. A
-hostile ship farther out launches a missile you hear fly in. The answer to both is
-G: shields take 1.5 seconds to come up, hold for at most 10 seconds, and
-recharge in proportion to how long they were held. Get them up two seconds
-into a beam and only two bites land. A ship that survives one of your
-missiles breaks away hard and hits back within seconds.
+At Rookie, every ship is passive until you hit it, and hostile from then
+on; Veteran and Ace start every ship hostile. A hostile ship within 600
+paints you with three rising chirps from its position and a spoken
+warning, then burns a five-second beam that bites once a second. A hostile
+ship farther out launches a missile you hear fly in. The answer to both is
+G: shields take 1.5 seconds to come up (2.5 at Ace) and hold as long as you
+want, but every hit they absorb drains their charge — get them up two
+seconds into a beam and only two bites land. Drain them to nothing and they
+go into disrepair for a stretch, repaired by a damage-control crew you can
+hear working, and come back at half charge; drop them yourself before that
+and whatever charge is left keeps recovering. A ship that survives one of
+your missiles breaks away hard and hits back within seconds — except a
+Rookie-tier Cruiser, which only ever answers by missile and never bothers
+with the dramatic evade.
 
 ## Files
 

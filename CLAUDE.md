@@ -85,12 +85,21 @@ static once tiers exist.
   0 = `lost` (Enter retries with a repaired hull). A missile survivor is
   "alerted": evade burst across the line of sight (burner whoosh, engine
   pitch-up, direction spoken) and it attacks within 2.5 s.
-- **Shields (`G`)**: 1.5 s spool (rising sweep) → clunk + hum on the UI bus.
-  Weapons offline while up; own missile AND incoming missiles lose guidance
-  (go ballistic, coast 1.5 s, pop — an unguided incoming missile still
-  splashes on a raised shield or hurts if dropped early). Hold max 10 s then
-  collapse; recharge = 6 s × (held/10), min 1 s; double-blip warning 3 s
-  before collapse; chime + "Shields ready."
+- **Shields (`G`)** (damage pool as of Round 11): 1.5 s spool (2.5 s at Ace,
+  rising sweep) → clunk + hum on the UI bus. Weapons offline while up; own
+  missile AND incoming missiles lose guidance (go ballistic, coast 1.5 s,
+  pop — an unguided incoming missile still splashes on a raised shield or
+  hurts if dropped early). No hold timer: `CFG.shieldPool` 45 (1.5× a full
+  enemy beam) drains by the exact damage of every absorbed hit
+  (`absorbShield()`), so a beam can partially drain the pool then spill the
+  remaining ticks onto the hull mid-burst. "Shields failing" once, the
+  first time the pool drops under 25%. Pool hits 0 → DISREPAIR
+  (`shield.repairing`, `CFG.shieldRepairS` 12 s, audible ratchet-tick loop
+  on the UI bus quickening as it nears done): shields can't be raised again
+  until it finishes, then return at `shieldRepairReturn` 0.5 of the pool +
+  chime. A manual drop (`G` while up, pool not empty) skips disrepair
+  entirely — whatever charge is left just regenerates at `shieldRegenPerS`
+  3/s like any other down-and-not-full shield.
 - **Weapons**: laser range 600, damage ×1.6 at point-blank tapering to ×1 at
   range (`laserRangeMult`); two zero-damage bursts inside 8 s = overheat 5 s
   (hiss + slowing hot-metal pings + ready chime). Missiles: magazine 8
@@ -149,12 +158,23 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
 - Test silently: boot via JS `.click()` (suspended context = no sound) and
   ALWAYS close every browser-pane tab + kill the local server when done —
   leftover audio fights Brian's screen reader.
-- Hidden-tab gotchas: rAF doesn't run; timers throttle after minutes; the
-  pane injects Space/Enter with empty e.key (dispatch KeyboardEvents
-  instead). Enemy fire keeps running between tool calls, so run a whole
-  combat scenario inside ONE script (MutationObserver on #announce = speech
-  log). `window.__sim`: state / faceSelected / warpToSelected / poke
-  ({threatIn, ore, hull, combatCleared, enemyHp}).
+- Hidden-tab gotcha (confirmed Round 11, calibrated at 0 simulated seconds
+  over 10 real seconds): a backgrounded/hidden browser pane (`document.hidden`
+  true) fully suspends `requestAnimationFrame`, not just throttles it — the
+  entire `frame()` loop (ship physics, shields, enemy fire, missiles) can
+  stall completely regardless of how long a script `await`s real time. Fix:
+  `frame(now)` now just computes `dt` and calls `simTick(dt)`, which is also
+  exposed as `window.__sim.step(dtSeconds, chunkSeconds)` — steps the sim in
+  small chunks (default 1/30 s) without rAF. Genuine `setTimeout`-driven
+  choreography (menu select beat, speech staggering, sound sequencing) is
+  UNRELATED to rAF and still needs real waits. So a test script needs BOTH
+  clocks moving together: a `tick(ms)` helper that does
+  `await wait(chunk); __sim.step(chunk/1000);` in a loop, not step() alone
+  and not real waits alone. The pane also injects Space/Enter with empty
+  e.key (dispatch KeyboardEvents instead). Run a whole scenario inside ONE
+  script (MutationObserver on #announce = speech log). `window.__sim`:
+  state / faceSelected / warpToSelected / step / poke ({threatIn, ore, hull,
+  combatCleared, enemyHp}).
 - All tuning numbers live in CFG and the data tables (ZONES, ROCK_TYPES,
   ROCK_SIZES, SECTOR_POIS, THRUSTER_DEFS) — tune there, not inline.
 - Brian's ear is the tiebreaker on all sound decisions. Report every file

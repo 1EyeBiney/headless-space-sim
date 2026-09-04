@@ -126,8 +126,10 @@ var CFG_DEFAULTS = {
     // ship survival
     shipHull: 100,
     shieldRaiseMs: 1500,     // spool-up before the shield is actually up
-    shieldHoldS: 10,         // longest continuous hold before it collapses
-    shieldRechargeS: 6,      // recharge after a FULL hold (shorter holds, shorter waits)
+    shieldPool: 45,          // damage a raised shield can absorb (1.5x a full enemy beam)
+    shieldRegenPerS: 3,      // pool regen while down (not raising, not in disrepair)
+    shieldRepairS: 12,       // disrepair duration after the pool is drained to zero
+    shieldRepairReturn: 0.5, // fraction of a full pool the shield returns with
 
     // enemy fire (combat only, one attack in progress at a time)
     enemyFirstAttackS: 8,    // grace after the encounter starts
@@ -292,7 +294,8 @@ var lost = false;        // hull breached: the encounter is over, like won
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
-var shield = { up: false, raising: -1, held: 0, recharge: 0, warned: false, nodes: null };
+var shield = { up: false, raising: -1, pool: 0, repairing: 0, warnedLow: false, nodes: null };
+var shieldRepairTimer = null;   // the ratchet tick loop while in disrepair
 var threat = null;       // the one enemy attack in progress (combat only)
 var threatIn = 0;        // seconds until the next enemy attack
 var coachedShield = 0;   // how many times the lock warning has said "G"
@@ -422,8 +425,8 @@ var HELP_SECTIONS = [
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
-        'Shields hold for ' + CFG.shieldHoldS + ' seconds at most, then collapse and need time to recharge. A short hold recharges fast, a full hold recharges slowly, so time them rather than hiding behind them.',
-        'G again drops them, and a chime tells you when they are ready after a recharge.',
+        'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
+        'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
         'If your hull reaches zero the encounter is lost. Enter tries again.'
     ] },
     { heading: 'Delivery run', items: [
@@ -538,7 +541,7 @@ var KEY_DESCRIPTIONS = {
     s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector.',
     ' ': 'Fire the laser beam. It burns for two seconds, bites harder up close, and each spoken damage tick depends on how centered the target is. Two empty bursts overheat it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
-    g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up, and keep your weapons offline.',
+    g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: 'At the mission menu, jumps to the delivery run.',
     m: 'At the mission menu, jumps to space mining.',
     tab: 'Cycle to the next target and speak its bearing.',
@@ -1862,7 +1865,7 @@ function stepThreat(dt) {
             say(t.name + ' loses the beam. Out of range.');
             return;
         }
-        if (shield.up) { th.absorbed++; shieldSplash(); }
+        if (shield.up) { th.absorbed++; absorbShield(CFG.enemyLaserTickDmg); }
         else hullHit(CFG.enemyLaserTickDmg, t.name);
         if (lost) return;
         if (th.ticks >= CFG.enemyLaserTicks) {
@@ -1893,7 +1896,7 @@ function stepThreat(dt) {
     if (th.nodes) movePanner(th.nodes.p, th.pos);
     if (len(sub(th.pos, ship.pos)) < CFG.missileHit * 1.5) {
         endThreat();
-        if (shield.up) { shieldSplash(); say('Shields absorb the missile.'); }
+        if (shield.up) { absorbShield(CFG.enemyMissileDamage); say('Shields absorb the missile.'); }
         else hullHit(CFG.enemyMissileDamage, t.name + ' missile');
     } else if (th.age > CFG.enemyMissileLifeS) {
         noiseBurst(th.pos, 300, 0.35, 1200);
@@ -1943,17 +1946,46 @@ function shieldKey() {
     if (mode !== 'combat') { say('Shields are only needed in combat. Nothing here is shooting.'); return; }
     if (shield.up) { shieldDrop(false, 'manual'); return; }
     if (shield.raising >= 0) { say('Shields already coming up.'); return; }
-    if (shield.recharge > 0) {
+    if (shield.repairing > 0) {
         blip(200, 120, 0.1);
-        say('Shields recharging. ' + Math.ceil(shield.recharge) + ' seconds.');
+        say('Shields in disrepair. Damage control needs ' + Math.ceil(shield.repairing) + ' seconds.');
         return;
     }
     shield.raising = 0;
+    shield.warnedLow = false;
     stopBeam(true);
     var secs = CFG.shieldRaiseMs / 1000;
     sfxTone({ type: 'triangle', f1: 180, f2: 720, dur: secs, vol: 0.14 });
     sfxNoise({ dur: secs, vol: 0.08, filter: 'bandpass', freq: 900, q: 2 });
     say('Raising shields.');
+}
+
+// Absorb one hit into the pool: splash cue, drain, a one-time "failing"
+// warning under 25%, and a drop into disrepair if it empties the pool.
+// Returns true if that hit was the one that dropped the shield.
+function absorbShield(dmg) {
+    shieldSplash();
+    shield.pool = Math.max(0, shield.pool - dmg);
+    if (!shield.warnedLow && shield.pool > 0 && shield.pool <= CFG.shieldPool * 0.25) {
+        shield.warnedLow = true;
+        blip(520, 70, 0.1); setTimeout(function () { blip(520, 70, 0.1); }, 140);
+        say('Shields failing.');
+    }
+    if (shield.pool <= 0) { shieldDrop(false, 'depleted'); return true; }
+    return false;
+}
+
+// The disrepair crew: a ratchet/welding-tick loop on the UI bus that
+// quickens as the repair nears done, entirely separate from the HRTF world.
+function scheduleRepairTick() {
+    if (shield.repairing <= 0) { shieldRepairTimer = null; return; }
+    sfxNoise({ dur: 0.06, vol: 0.1, filter: 'bandpass', freq: 500, q: 4 });
+    sfxTone({ type: 'square', f1: 300, dur: 0.05, vol: 0.05 });
+    var frac = clamp(shield.repairing / CFG.shieldRepairS, 0, 1);
+    shieldRepairTimer = setTimeout(scheduleRepairTick, 250 + frac * 650);
+}
+function stopRepairSound() {
+    if (shieldRepairTimer) { clearTimeout(shieldRepairTimer); shieldRepairTimer = null; }
 }
 
 function shieldHum(on) {
@@ -1986,25 +2018,25 @@ function updateShield(dt) {
     if (shield.raising >= 0) {
         shield.raising += dt;
         if (shield.raising * 1000 >= CFG.shieldRaiseMs) {
-            shield.raising = -1; shield.up = true; shield.held = 0; shield.warned = false;
+            shield.raising = -1; shield.up = true;
             sfxNoise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 400 });   // clunk
             shieldHum(true);
             say('Shields up.');
         }
     } else if (shield.up) {
-        shield.held += dt;
-        if (!shield.warned && shield.held >= CFG.shieldHoldS - 3) {
-            shield.warned = true;
-            blip(520, 70, 0.1); setTimeout(function () { blip(520, 70, 0.1); }, 140);
-        }
-        if (shield.held >= CFG.shieldHoldS) shieldDrop(false, 'collapse');
-    } else if (shield.recharge > 0) {
-        shield.recharge -= dt;
-        if (shield.recharge <= 0) {
-            shield.recharge = 0;
+        // No timed collapse: the pool only drains on an absorbed hit,
+        // handled in absorbShield() where the damage lands.
+    } else if (shield.repairing > 0) {
+        shield.repairing -= dt;
+        if (shield.repairing <= 0) {
+            shield.repairing = 0;
+            stopRepairSound();
+            shield.pool = CFG.shieldPool * CFG.shieldRepairReturn;
             blip(660, 80, 0.12); setTimeout(function () { blip(990, 110, 0.12); }, 90);
-            say('Shields ready.');
+            say('Shields back online, ' + Math.round(CFG.shieldRepairReturn * 100) + ' percent.');
         }
+    } else if (shield.pool < CFG.shieldPool) {
+        shield.pool = Math.min(CFG.shieldPool, shield.pool + CFG.shieldRegenPerS * dt);
     }
 }
 
@@ -2012,20 +2044,26 @@ function shieldDrop(silent, why) {
     if (!shield.up) { shield.raising = -1; return; }
     shield.up = false;
     shieldHum(false);
-    shield.recharge = Math.max(1, CFG.shieldRechargeS * shield.held / CFG.shieldHoldS);
-    if (silent) return;
-    if (why === 'collapse') {
+    if (why === 'depleted') {
+        shield.repairing = CFG.shieldRepairS;
+        stopRepairSound();
+        scheduleRepairTick();
+        if (silent) return;
         sfxTone({ type: 'sawtooth', f1: 600, f2: 90, dur: 0.7, vol: 0.18 });
-        say('Shields collapsed! Recharging ' + Math.ceil(shield.recharge) + ' seconds.');
+        say('Shields down. Damage control on it.');
     } else {
+        // Manual drop: whatever charge is left in the pool keeps regenerating.
+        if (silent) return;
         sfxTone({ type: 'triangle', f1: 600, f2: 200, dur: 0.3, vol: 0.12 });
         say('Shields down. Weapons hot.');
     }
 }
 
-// Full reset between missions: no hum, no recharge debt.
+// Full reset between missions: full pool, no disrepair debt, no hum.
 function shieldReset() {
-    shield.up = false; shield.raising = -1; shield.held = 0; shield.recharge = 0; shield.warned = false;
+    shield.up = false; shield.raising = -1; shield.pool = CFG.shieldPool;
+    shield.repairing = 0; shield.warnedLow = false;
+    stopRepairSound();
     shieldHum(false);
 }
 
@@ -2322,9 +2360,10 @@ function statusReport() {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ');
     }
     if (mode === 'combat') {
-        line += shield.up ? 'Shields up. '
+        line += shield.up ? 'Shields up, ' + Math.round(shield.pool / CFG.shieldPool * 100) + ' percent. '
               : shield.raising >= 0 ? 'Shields coming up. '
-              : shield.recharge > 0 ? 'Shields recharging, ' + Math.ceil(shield.recharge) + ' seconds. '
+              : shield.repairing > 0 ? 'Shields in disrepair, ' + Math.ceil(shield.repairing) + ' seconds. '
+              : shield.pool < CFG.shieldPool ? 'Shields down, ' + Math.round(shield.pool / CFG.shieldPool * 100) + ' percent, recharging. '
               : 'Shields down. ';
         if (laserHot()) line += 'Laser overheated. ';
     }
@@ -2729,6 +2768,10 @@ function frame(now) {
     requestAnimationFrame(frame);
     var dt = Math.min((now - lastFrame) / 1000, 0.1);
     lastFrame = now;
+    simTick(dt);
+}
+
+function simTick(dt) {
     // The delivery clock runs whenever the sim is live, hyperwarp included.
     if (demo && !demo.delivered && running && !paused && !help.open && !map.open &&
         !menuOpen && !over() && dt > 0) demo.elapsed += dt;
@@ -2777,6 +2820,21 @@ function frame(now) {
     updateStatusLine();
 }
 
+// Test-only manual clock: advances the sim by dtSeconds (default a 60 Hz
+// frame) without requestAnimationFrame, so a script can drive a scenario
+// even while the tab is backgrounded. Steps in real frame-sized chunks
+// (capped like simTick's own dt) rather than one giant dt, so nothing that
+// assumes per-frame granularity (spool timers, tick schedulers) skips state.
+function stepSim(dtSeconds, chunk) {
+    var left = dtSeconds === undefined ? 1 / 60 : dtSeconds;
+    var step = chunk || 1 / 30;
+    while (left > 1e-6) {
+        var d = Math.min(step, left);
+        simTick(d);
+        left -= d;
+    }
+}
+
 // Visual sanity line for a sighted co-tester. aria-hidden, never read.
 var lastStatusAt = 0;
 function updateStatusLine() {
@@ -2797,7 +2855,7 @@ function updateStatusLine() {
                     : 'Targets alive: ' + aliveTargets().length) +
                (missile ? '   missile in flight' + (missile.guided ? '' : ' (ballistic)') : ''));
     lines.push('Hull ' + hull + '   missiles ' + missiles +
-               '   shields ' + (shield.up ? 'UP' : shield.raising >= 0 ? 'raising' : shield.recharge > 0 ? 'recharging' : 'down') +
+               '   shields ' + (shield.up ? 'UP ' + Math.round(shield.pool / CFG.shieldPool * 100) + '%' : shield.raising >= 0 ? 'raising' : shield.repairing > 0 ? 'disrepair' : 'down') +
                (laserHot() ? '   LASER HOT' : '') +
                (threat ? '   threat: ' + threat.type + ' from ' + threat.t.name : '') +
                (demo ? '   clock ' + Math.floor(demo.elapsed) + 's' : ''));
@@ -2812,7 +2870,7 @@ window.__sim = {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, laserHot: laserHot(),
-            shield: { up: shield.up, raising: shield.raising, recharge: shield.recharge },
+            shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
@@ -2844,6 +2902,13 @@ window.__sim = {
         ship.pos = sub(t.pos, scale(dir, d || 100));
         return true;
     },
+    // Test-only manual clock: advances the sim by dtSeconds (default one
+    // 60 Hz frame) without requestAnimationFrame, in small chunks so every
+    // per-frame system (spool timers, tick schedulers) still sees each
+    // step — not one giant dt. Needed because a backgrounded/hidden browser
+    // tab suspends rAF almost entirely (Chrome Page Visibility throttling),
+    // which would otherwise stall shields, enemy fire, missiles, everything.
+    step: function (dtSeconds, chunk) { stepSim(dtSeconds, chunk); },
     // Test-only knobs: pull the next enemy attack forward, or set the hold.
     poke: function (o) {
         if (o && o.threatIn !== undefined) threatIn = o.threatIn;
