@@ -1,0 +1,2926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Headless Space Sim — HRTF Combat Demo</title>
+<!--
+  Headless Space Sim — 3D-audio (HRTF) combat tech demo.
+
+  Purpose: evaluate whether Web Audio's PannerNode in HRTF mode (the browser
+  equivalent of OpenAL) is good enough to carry a full audio-only space sim.
+
+  Runs by double-clicking this file (file://). No build, no modules, no CDN.
+  Shell patterns (focus trap, one keydown listener, one live region) are
+  ported from accessible_football (DESIGN.md 21.1 / 21.2 / 21.3 there).
+-->
+<style>
+    html, body { height: 100%; }
+    body {
+        margin: 0; padding: 2rem; box-sizing: border-box;
+        background: #000; color: #9fb4c8;
+        font-family: system-ui, sans-serif;
+    }
+    .sr-only {
+        position: absolute; width: 1px; height: 1px;
+        margin: -1px; padding: 0; border: 0;
+        clip: rect(0 0 0 0); overflow: hidden; white-space: nowrap;
+    }
+    #initBtn { font-size: 1.4rem; padding: 1rem 2rem; }
+    h1 { font-size: 1.2rem; font-weight: normal; margin: 0 0 1rem 0; }
+    /* Visual status for a sighted co-tester only. aria-hidden, never read. */
+    #status { font-size: 1.4rem; white-space: pre-wrap; line-height: 1.6; }
+</style>
+</head>
+<body role="application">
+
+<!-- The one standard control. Pressing it creates the audio context (browsers
+     only allow that inside a user gesture), hides itself, shows the container
+     and focuses it. From then on the screen reader is in focus mode and every
+     key goes to the game. -->
+<button id="initBtn" autofocus>Press Enter to Begin</button>
+
+<div id="game" tabindex="0" hidden
+     aria-label="Headless Space Sim. A space sim played entirely by ear. Press F1 for help, or F12 to hear what any key does without doing it.">
+    <!-- One voice. Nothing else in the page is ever read. -->
+    <div id="announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <h1 aria-hidden="true">Headless Space Sim — HRTF demo</h1>
+    <div id="status" aria-hidden="true"></div>
+</div>
+
+<script src="audio_assets.js"></script>
+<script>
+(function () {
+'use strict';
+
+// ============================== 1. CONFIG ===================================
+var CFG = {
+    turnRate:   Math.PI / 3,     // 60 deg/s yaw and pitch while arrow held
+    pitchLimit: 85 * Math.PI / 180,
+    thrust:     70,              // u/s^2 along the nose while W held
+    brakeKeep:  0.05,            // vel *= brakeKeep^dt while S held
+    dampKeep:   0.7,             // passive damping, vel *= dampKeep^dt
+    maxSpeed:   100,             // u/s cap
+
+    refDistance: 50, maxDistance: 2000, rolloff: 1,
+    masterGain: 0.7, targetGain: 0.25,
+
+    // front/back cue: lowpass cutoff vs dot(forward, dirToTarget)
+    lpMax: 20000, lpMin: 800,
+
+    // lock tick
+    tickArc:    60 * Math.PI / 180,   // beyond this: searching tock
+    tickFast:   80,                   // ms interval near lock
+    tickSlow:   500,                  // ms interval at 60 deg error
+
+    laserRange: 600,
+    laserCloseMult: 1.6,     // damage x this at point-blank, tapering to x1 at laserRange
+    beamTicks: 4,            // damage ticks per beam burst
+    beamTickMs: 500,         // one tick every half second (2 s beam)
+    beamMaxDamage: 25,       // per tick when the target is dead center
+    beamCooldownMs: 700,     // recharge after the beam ends
+    laserMissWindowMs: 8000, // two zero-damage bursts inside this window...
+    laserOverheatMs: 5000,   // ...and the laser is down for this long (audible)
+
+    // mining
+    cloudRadius: 800,        // a rock past this distance from origin is lost
+    rockFriction: 0.85,      // vel *= friction^dt — rocks bleed energy, ~15%/s
+    beamPush: 6,             // u/s of shove per laser damage tick, scaled by size
+    vacRange: 300,           // core extractor (E) reach
+    vacArc: 20 * Math.PI / 180,
+    vacTickMs: 600,
+
+    // particulates: every laser tick and every stage blast sheds dust that
+    // hangs where it was knocked loose; the vacuum (V) filters it up.
+    debrisScale: 0.75,       // every dust amount x this (Brian: 25% less dust)
+    debrisPerDamage: 8,      // dust per point of laser damage
+    debrisEventBase: 300,    // base mist from a stage blast (scaled by size)
+    debrisMergeDist: 80,     // dust this close congeals into one field
+    dustVacRange: 250,       // vacuum reach (no aiming — it filters the area)
+    dustVacTickMs: 600,
+
+    // sector (open space between encounters)
+    poiInteract: 500,        // call (C) range for a point of interest
+    warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
+    warpChargeMs: 2000,      // spool-up before the jump
+    warpMinDist: 1200,       // closer than this: just fly it
+    // Beacon panners use long-range params so every POI stays faintly
+    // audible across the sector (sensor conceit, not real acoustics). The
+    // steep-ish rolloff plus the distance-haze lowpass (see updateTargeting)
+    // is what makes a beacon 11,000 out actually SOUND far away.
+    beaconRef: 800, beaconMax: 40000, beaconRolloff: 1.2,
+    beaconGainScale: 2,
+
+    missileMax: 8,                    // magazine; Station Meridian rearms
+    missileDamage: 75,
+    missileSpeed: 130,                // u/s
+    missileTurn:  70 * Math.PI / 180, // max steer per second
+    missileHit:   25,                 // hit radius, u
+    missileLifeS: 11,                 // ~1400 u of reach at missileSpeed
+    // Semi-active homing: the pilot must hold the target inside the missile
+    // zone for the whole flight. Out of the cone longer than the grace and
+    // the missile goes ballistic, coasts straight, then pops.
+    missileGuideGraceS: 0.5,
+    missileCoastS: 1.5,
+
+    // ship survival
+    shipHull: 100,
+    shieldRaiseMs: 1500,     // spool-up before the shield is actually up
+    shieldHoldS: 10,         // longest continuous hold before it collapses
+    shieldRechargeS: 6,      // recharge after a FULL hold (shorter holds, shorter waits)
+
+    // enemy fire (combat only, one attack in progress at a time)
+    enemyFirstAttackS: 8,    // grace after the encounter starts
+    enemyAttackMinS: 7, enemyAttackMaxS: 12,   // gap between attacks
+    enemyAlertAttackS: 2.5,  // a missile survivor strikes back this soon
+    enemyLaserRange: 600,
+    enemyLaserTelegraphS: 1.2,   // lock-on chirps before the beam bites
+    enemyLaserTicks: 5, enemyLaserTickS: 1, enemyLaserTickDmg: 6,   // 5 s beam, 30 total
+    enemyMissileRange: 1600,
+    enemyMissileSpeed: 150, enemyMissileDamage: 25, enemyMissileLifeS: 14,
+    enemyMissileTurn: 60 * Math.PI / 180,
+    evadeSpeed: 260, evadeKeep: 0.4,   // missile survivor's break-away burst and its decay
+
+    // delivery run (the timed demo)
+    demoOreGoal: 15000,
+
+    radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0   // +6 dB
+};
+
+// Target roster. Each voice is a distinct timbre so identity survives motion.
+function makeRoster() {
+    return [
+        // shipAsset = recorded engine loop (audio/ships), pitched per hull
+        // class; the oscillator voice is the fallback if decoding fails.
+        { name: 'Freighter', hp: 120, pos: v3(0, 0, -300),    voice: { type: 'sawtooth', freq: 55,  trem: 3 },
+          shipAsset: { name: 'ship_cruiser_1', rate: 0.8 } },
+        { name: 'Raider',    hp: 80,  pos: v3(250, 40, -100), voice: { type: 'square',   freq: 110, trem: 8 },
+          shipAsset: { name: 'ship_interceptor_1', rate: 1.15 } },
+        { name: 'Scout',     hp: 60,  pos: v3(-200, 120, 150),voice: { type: 'triangle', freq: 330, vib: 5, vibDepth: 12 },
+          shipAsset: { name: 'ship_interceptor_3', rate: 1.35 } },
+        { name: 'Drone',     hp: 40,  pos: v3(100, -150, -400),voice:{ type: 'beat',     freq: 165 },
+          shipAsset: { name: 'ship_corvette_1', rate: 1.2 } },
+        { name: 'Cruiser',   hp: 150, pos: v3(350, 60, 0),    voice: { type: 'detuned',  freq: 82,  trem: 2 },
+          shipAsset: { name: 'ship_cruiser_3', rate: 0.95 },
+          orbit: { radius: 350, y: 60, degPerSec: 8, angle: 0 } }
+    ];
+}
+
+// Target zone presets. Beginners need a bigger center to land shots; later,
+// skill progression and pickups will resize this at runtime, so all aim arcs
+// live here rather than in fixed config. Z cycles wide -> standard -> narrow.
+var ZONES = [
+    { name: 'Wide',     laser: 10, lockOn: 8,   lockOff: 12,  missile: 25 },
+    { name: 'Standard', laser: 4,  lockOn: 3,   lockOff: 5,   missile: 15 },
+    { name: 'Narrow',   laser: 2,  lockOn: 1.5, lockOff: 2.5, missile: 10 }
+];
+
+// ---- mining data model ------------------------------------------------------
+// Three rock types, keyed to the three recorded asteroid loops. `hardness`
+// multiplies laser damage taken, `splitChance` decides break-apart vs chip
+// at a stage event, `ore` is what the final core holds. Stage thresholds are
+// HIDDEN: hp is rolled per rock per stage inside a range the player never
+// hears, so nobody can count ticks to the next event.
+var ROCK_TYPES = [
+    { name: 'Ice',   asset: 'asteroid1', hardness: 1.3, splitChance: 0.75, ore: 3000 },
+    { name: 'Iron',  asset: 'asteroid2', hardness: 0.7, splitChance: 0.25, ore: 6750 },
+    { name: 'Stone', asset: 'asteroid3', hardness: 1.0, splitChance: 0.5,  ore: 4500 }
+];
+// Size classes, biggest first. `rate` pitches the rock's loop (big = low),
+// `push` scales how far laser shoves and blasts throw it (small = flighty).
+// `push` is the whole movement philosophy: the top two sizes barely move
+// under laser fire or blasts (they absorb it), while smaller rocks get
+// flightier and harder to hold — so debris is always the fallback harvest.
+var ROCK_SIZES = [
+    { label: 'huge',   hpMin: 150, hpMax: 220, rate: 0.65, push: 0.3 },
+    { label: 'large',  hpMin: 100, hpMax: 150, rate: 0.85, push: 0.6 },
+    { label: 'medium', hpMin: 60,  hpMax: 100, rate: 1.05, push: 1.3 },
+    { label: 'small',  hpMin: 35,  hpMax: 60,  rate: 1.3,  push: 2.2 }
+];
+// Past 'small' a rock becomes a resource core: mineable with the extractor.
+
+// ---- sector data model ------------------------------------------------------
+// The sector is real flyable space: four points of interest, each an audio
+// beacon with its own signature so the whole sector is navigable by ear.
+// Calling (C) a combat or mining POI transitions into that encounter; the
+// station and planet are the future economy endpoints (placeholder hails).
+var SECTOR_POIS = [
+    { name: 'Contested Zone',       poiType: 'combat',
+      desc: 'combat area',   pos: v3(6000, 500, -9000) },
+    { name: 'Asteroid Field Kappa', poiType: 'mining',
+      desc: 'mining area',   pos: v3(-8000, -800, -4000) },
+    { name: 'Station Meridian',     poiType: 'station',
+      desc: 'space station', pos: v3(2000, 0, 7000) },
+    { name: 'Planet Auren',         poiType: 'planet',
+      desc: 'planet',        pos: v3(-5000, 1500, 9000) }
+];
+
+// ============================== 2. STATE ====================================
+var mode = null;         // 'combat' | 'mining' | 'sector' | null (menu decides)
+var menuOpen = false;
+var ore = 0;             // extracted this mining run
+var rockSeq = 0;         // numbers rocks: "Iron 3"
+var assetBufs = {};      // decoded AudioBuffers from audio_assets.js
+var ship = { pos: v3(0, 0, 0), vel: v3(0, 0, 0), yaw: 0, pitch: 0 };
+var targets = [];        // built in newGame()
+var selected = -1;       // index into targets
+var missile = null;
+var locked = false;
+var keysDown = {};       // held-key map for arrows / w / s
+var describeMode = false;
+var paused = false;
+var won = false;
+var running = false;     // true after the init button
+var lastLaserAt = 0;
+var radarBusy = false;
+var zoneIdx = 0;         // start Wide: a big center for first-time pilots
+var help = { open: false, idx: -1, lines: [] };
+var map = { open: false, idx: -1 };   // the Q quadrant map overlay
+var warping = false;
+var sectorHome = null;   // set while inside an encounter entered from the sector
+var lost = false;        // hull breached: the encounter is over, like won
+var hull = 100;          // set from CFG.shipHull at mission start
+var missiles = 0;        // magazine, set from CFG.missileMax
+var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
+var shield = { up: false, raising: -1, held: 0, recharge: 0, warned: false, nodes: null };
+var threat = null;       // the one enemy attack in progress (combat only)
+var threatIn = 0;        // seconds until the next enemy attack
+var coachedShield = 0;   // how many times the lock warning has said "G"
+var demo = null;         // the timed delivery run, while active
+function over() { return won || lost; }
+
+function zoneRad() {
+    var z = ZONES[zoneIdx], k = Math.PI / 180;
+    return { laser: z.laser * k, lockOn: z.lockOn * k,
+             lockOff: z.lockOff * k, missile: z.missile * k };
+}
+
+// ============================== 3. MATH =====================================
+function v3(x, y, z) { return { x: x, y: y, z: z }; }
+function add(a, b)   { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+function sub(a, b)   { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+function scale(a, s) { return v3(a.x * s, a.y * s, a.z * s); }
+function dot(a, b)   { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function len(a)      { return Math.sqrt(dot(a, a)); }
+function norm(a)     { var l = len(a); return l > 1e-9 ? scale(a, 1 / l) : v3(0, 0, -1); }
+function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+// Ship basis. yaw 0 / pitch 0 faces -Z (Web Audio native forward).
+// Positive yaw = nose right, positive pitch = nose up.
+function shipForward() {
+    var cy = Math.cos(ship.yaw), sy = Math.sin(ship.yaw);
+    var cp = Math.cos(ship.pitch), sp = Math.sin(ship.pitch);
+    return v3(sy * cp, sp, -cy * cp);
+}
+function shipUp() {
+    var cy = Math.cos(ship.yaw), sy = Math.sin(ship.yaw);
+    var cp = Math.cos(ship.pitch), sp = Math.sin(ship.pitch);
+    return v3(-sy * sp, cp, cy * sp);
+}
+function shipRight() {
+    return v3(Math.cos(ship.yaw), 0, Math.sin(ship.yaw));
+}
+
+// Angular relationship between the nose and a world point.
+function aim(pos) {
+    var dir = norm(sub(pos, ship.pos));
+    var f = dot(dir, shipForward());
+    var r = dot(dir, shipRight());
+    var u = dot(dir, shipUp());
+    return {
+        err: Math.acos(clamp(f, -1, 1)),      // total angular error
+        azimuth: Math.atan2(r, f),            // + = target to the right
+        elev: Math.asin(clamp(u, -1, 1)),     // + = target above
+        facing: f,                            // dot(forward, dir) for the lowpass
+        dist: len(sub(pos, ship.pos))
+    };
+}
+
+function deg(rad) { return rad * 180 / Math.PI; }
+function round5(x) { return Math.round(x / 5) * 5; }
+function round10(x) { return Math.round(x / 10) * 10; }
+
+// ============================== 4. SPEECH ===================================
+var liveEl = null, statusEl = null;
+
+// One voice. aria-live assertive gives free barge-in through NVDA's own synth.
+function say(text) {
+    if (!liveEl) return;
+    var t = String(text || '');
+    // The same string twice in a row can be dropped by a screen reader, so a
+    // hair space is alternated on to force it to speak again.
+    if (liveEl.textContent === t) t = t + ' ';
+    liveEl.textContent = t;
+}
+
+function prettyKey(name) {
+    var map = { ' ': 'Space', arrowleft: 'Left arrow', arrowright: 'Right arrow',
+                arrowup: 'Up arrow', arrowdown: 'Down arrow', enter: 'Enter',
+                escape: 'Escape' };
+    var k = String(name).toLowerCase();
+    if (map[k]) return map[k];
+    return name.length === 1 ? name.toUpperCase() : name;
+}
+
+// Help is a virtual pop-up screen: Up and Down arrows read line by line at
+// the reader's own pace, H and Shift H jump between section headings (the
+// same habit as browse-mode heading nav), Escape closes. The simulation
+// freezes and the world audio ducks while it is open.
+var HELP_SECTIONS = [
+    { heading: 'Flying', items: [
+        'Left and Right arrows yaw the ship.',
+        'Up and Down arrows pitch the nose up and down.',
+        'W thrusts forward along the nose. Hold it to accelerate.',
+        'S brakes to a stop.',
+        'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
+        'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
+        'I speaks your speed, the selected target, and how many targets remain.'
+    ] },
+    { heading: 'Targeting', items: [
+        'T cycles through the targets, nearest first, and speaks a bearing.',
+        'Tab repeats the selected target\'s full bearing and distance without cycling away from it.',
+        'The tick tone speeds up as the selected target nears your nose.',
+        'Higher tick pitch means the target is above you, lower means below.',
+        'The tick comes from the side you should turn toward.',
+        'A solid tone means locked on.',
+        'Targets behind you sound muffled, as if behind the hull.',
+        'Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.'
+    ] },
+    { heading: 'Weapons', items: [
+        'Space fires the laser beam. It burns for two seconds and ticks damage four times.',
+        'Each damage tick is bigger the more centered the target is at that moment, and the number is spoken as it lands.',
+        'The beam\'s pitch rises with your aim quality, so you can steer into a better burn mid-shot.',
+        'The laser reaches ' + CFG.laserRange + '. If your aim is true but the target is beyond that, the beam tells you to thrust closer instead of a mystery miss.',
+        'The laser bites harder up close: at point-blank range every tick does up to ' + Math.round((CFG.laserCloseMult - 1) * 100) + ' percent more. Closing in is worth it, but it shortens your warning time when the enemy fires back.',
+        'Two bursts in a row that do no damage overheat the laser. It hisses and pings while it cools for ' + (CFG.laserOverheatMs / 1000) + ' seconds, and a chime tells you it is ready again.',
+        'Targets have different hull strengths. T and I report hull percent, and weak spots die to a single good burn.',
+        'F fires a homing missile for ' + CFG.missileDamage + ' damage. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.',
+        'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
+        'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
+        'Weapon and tool keys sit under the left hand — Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
+        'R sounds a radar ping of every surviving target in order, nearest first.'
+    ] },
+    { heading: 'Shields and enemy fire', items: [
+        'Enemies shoot back. Your hull starts at ' + CFG.shipHull + ' percent, and I reports it.',
+        'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
+        'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
+        'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.',
+        'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
+        'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
+        'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
+        'Shields hold for ' + CFG.shieldHoldS + ' seconds at most, then collapse and need time to recharge. A short hold recharges fast, a full hold recharges slowly, so time them rather than hiding behind them.',
+        'G again drops them, and a chime tells you when they are ready after a recharge.',
+        'If your hull reaches zero the encounter is lost. Enter tries again.'
+    ] },
+    { heading: 'Delivery run', items: [
+        'D at the mission menu starts the timed delivery run, the shareable demo. The clock starts at once and I reads it.',
+        'First, clear the Contested Zone. Asteroid Field Kappa refuses mining rights while hostiles hold the zone.',
+        'Then mine ' + CFG.demoOreGoal + ' ore. Cores are the rich haul, dust is the top-up, and Enter after a cloud is cleared spawns a fresh one.',
+        'Finally, call Station Meridian with the ore aboard. The station always repairs your hull and rearms your missiles, and takes the delivery when the hold reads ' + CFG.demoOreGoal + '.',
+        'Your run time is spoken on delivery. Losing your ship fails the run; Enter restarts it from the beginning.'
+    ] },
+    { heading: 'Mining', items: [
+        'From the mission menu, D starts the delivery run, S the sector, C combat training, and M space mining. X leaves any mission and returns to the menu.',
+        'Asteroids drift inside a cloud, and each type sings its own looping sound: Ice is soft and splits easily, Iron is hard and chips, Stone is in between.',
+        'The mining laser chips away at a rock, but you never know exactly how much a stage needs — every rock rolls its strength in secret.',
+        'When a stage gives way you hear a real blast: the rock may break in two, or be chipped down a size with a higher voice.',
+        'Laser fire and blasts shove rocks around. A fast rock is hard to hold in the beam — let it slow down and try again.',
+        'A rock pushed outside the cloud is lost forever.',
+        'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
+        'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
+        'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
+        'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
+        'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
+        'Careful: lasering or missiling a finished core shatters it. Most of the ore is lost; only a dust mist remains.',
+        'When a rock breaks in two, your targeting follows the nearer child automatically and announces its size and type.'
+    ] },
+    { heading: 'Sector', items: [
+        'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
+        'The combat area throbs like a war drum, the mining field rumbles like distant rock, the station sends a clean blinking tone, and the planet is a deep slow drone.',
+        'Q opens the quadrant map: up and down browse the points with bearing and distance, Enter sets one as your nav target, Escape closes.',
+        'T and Tab work on beacons too, and the tick guides you onto your nav target just like any other.',
+        'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
+        'Within 500, C calls the point: combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
+        'Q also works inside encounters: any time while mining, or in a combat zone once every hostile is down. Enter on a map line departs straight for that point.',
+        'Your ore hold, hull, and missile count ride with you for the whole sector run. Calling the station repairs and rearms you.',
+        'Weapons and mining tools are cold in open sector space.'
+    ] },
+    { heading: 'System', items: [
+        'Escape pauses and resumes the simulation.',
+        'F12 turns on explore mode, where every key describes itself safely.',
+        'F1 opens this help screen. Escape closes it.',
+        'F5 and control R belong to the browser and reload the page.'
+    ] }
+];
+
+function buildHelpLines() {
+    var lines = [];
+    HELP_SECTIONS.forEach(function (s) {
+        lines.push({ text: s.heading + ', heading.', heading: true });
+        s.items.forEach(function (it) { lines.push({ text: it, heading: false }); });
+    });
+    return lines;
+}
+
+function openHelp() {
+    help.open = true;
+    help.idx = -1;
+    help.lines = buildHelpLines();
+    keysDown = {};
+    thrusterSync(null);
+    stopBeam(true);
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    say('Help. ' + HELP_SECTIONS.length + ' sections, ' + help.lines.length +
+        ' lines. Down arrow reads line by line, H jumps to the next heading, Escape closes.');
+}
+
+function closeHelp() {
+    help.open = false;
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    say('Help closed.' + (paused ? ' Still paused.' : ''));
+}
+
+function helpSpeakLine() {
+    var ln = help.lines[help.idx];
+    if (ln) say(ln.text);
+}
+
+function helpKey(lname, shift) {
+    if (lname === 'escape' || lname === 'f1') { closeHelp(); return; }
+    if (lname === 'arrowdown') {
+        if (help.idx < help.lines.length - 1) { help.idx++; helpSpeakLine(); }
+        else { blip(220, 80, 0.1); say('End of help. Escape closes.'); }
+    } else if (lname === 'arrowup') {
+        if (help.idx > 0) { help.idx--; helpSpeakLine(); }
+        else { help.idx = 0; blip(220, 80, 0.1); say('Top of help.'); }
+    } else if (lname === 'h') {
+        var i = help.idx;
+        if (shift) {
+            for (i = help.idx - 1; i >= 0; i--) if (help.lines[i].heading) break;
+            if (i < 0) { blip(220, 80, 0.1); say('No previous heading.'); return; }
+        } else {
+            for (i = help.idx + 1; i < help.lines.length; i++) if (help.lines[i].heading) break;
+            if (i >= help.lines.length) { blip(220, 80, 0.1); say('No next heading.'); return; }
+        }
+        help.idx = i; helpSpeakLine();
+    } else if (lname === 'home') {
+        help.idx = 0; helpSpeakLine();
+    } else if (lname === 'end') {
+        help.idx = help.lines.length - 1; helpSpeakLine();
+    } else {
+        say('That key does nothing in help. Up and down arrows read, H jumps headings, Escape closes.');
+    }
+}
+
+var KEY_DESCRIPTIONS = {
+    arrowleft: 'Yaw left. Hold to keep turning.',
+    arrowright: 'Yaw right. Hold to keep turning.',
+    arrowup: 'Pitch the nose up. Hold to keep turning.',
+    arrowdown: 'Pitch the nose down. Hold to keep turning.',
+    w: 'Thrust forward along the nose. Hold to accelerate.',
+    s: 'Brake. Hold to slow to a stop. At the mission menu, enters the sector.',
+    ' ': 'Fire the laser beam. It burns for two seconds, bites harder up close, and each spoken damage tick depends on how centered the target is. Two empty bursts overheat it.',
+    f: 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.',
+    g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up, and keep your weapons offline.',
+    d: 'At the mission menu, starts the timed delivery run.',
+    m: 'At the mission menu, starts space mining.',
+    t: 'Cycle to the next target and speak its bearing.',
+    tab: 'Repeat the selected target\'s bearing and distance without cycling.',
+    r: 'Radar ping. Plays each surviving target at its true position, nearest first.',
+    i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
+    z: 'Cycle the target zone size: wide, standard, or narrow.',
+    e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
+    v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
+    x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
+    q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
+    h: 'Hyperwarp to your nav target, in open sector space.',
+    c: 'At the mission menu, starts combat training. In open sector space, calls the selected point of interest.',
+    enter: 'After a victory or a lost ship, starts a fresh run of the same mission.',
+    f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
+    f12: 'Turns key exploring off again.',
+    escape: 'Pauses and resumes the simulation.',
+    f5: 'Belongs to the browser. Outside explore mode it reloads the page.',
+    f6: 'Belongs to the browser. Outside explore mode it moves browser focus.',
+    f11: 'Belongs to the browser. Outside explore mode it toggles full screen.'
+};
+
+// ============================== 5. AUDIO ====================================
+var ctx = null, masterGain = null, uiBus = null, noiseBuf = null;
+
+function audioStart() {
+    try {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) ctx = new Ctx();
+    } catch (e) { ctx = null; }
+    if (!ctx) return;
+
+    masterGain = ctx.createGain();
+    masterGain.gain.value = CFG.masterGain;
+    masterGain.connect(ctx.destination);
+
+    // Instrumentation bus (lock tick, laser, thrust hum) - stereo, not HRTF,
+    // so the "cockpit instruments" stay separate from the world outside.
+    uiBus = ctx.createGain();
+    uiBus.gain.value = 1;
+    uiBus.connect(masterGain);
+
+    // A short quiet tone so the first real sound does not stutter.
+    var g = ctx.createGain(); g.gain.value = 0.0001; g.connect(ctx.destination);
+    var o = ctx.createOscillator(); o.frequency.value = 440;
+    o.connect(g); o.start(); o.stop(ctx.currentTime + 0.03);
+
+    // Shared 1-second white-noise buffer for explosions and thuds.
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+    decodeAssets();
+}
+
+// Decode the base64 MP3s from audio_assets.js into AudioBuffers. No fetch —
+// fetch of anything is unreliable on a file:// page — just atob into bytes.
+function decodeAssets() {
+    if (!ctx || !window.AUDIO_ASSETS) return;
+    Object.keys(window.AUDIO_ASSETS).forEach(function (name) {
+        try {
+            var bin = atob(window.AUDIO_ASSETS[name].split(',')[1]);
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            ctx.decodeAudioData(bytes.buffer,
+                function (buf) { assetBufs[name] = buf; },
+                function () { /* decode failed; assetsReady() stays false */ });
+        } catch (e) {}
+    });
+}
+
+function assetsReady() {
+    return !!(assetBufs.asteroid1 && assetBufs.asteroid2 && assetBufs.asteroid3 &&
+              assetBufs.asteroid_explosion1 && assetBufs.asteroid_explosion2 &&
+              assetBufs.asteroid_explosion3);
+}
+
+// Smoothly move an AudioParam. cancel + set + linear ramp is the standard
+// idiom; assigning .value every frame produces zipper clicks.
+function ramp(param, value, seconds) {
+    if (!ctx) return;
+    var t = ctx.currentTime;
+    param.cancelScheduledValues(t);
+    param.setValueAtTime(param.value, t);
+    param.linearRampToValueAtTime(value, t + (seconds || 0.06));
+}
+
+function makePanner(pos) {
+    var p = ctx.createPanner();
+    p.panningModel = 'HRTF';
+    p.distanceModel = 'inverse';
+    p.refDistance = CFG.refDistance;
+    p.maxDistance = CFG.maxDistance;
+    p.rolloffFactor = CFG.rolloff;
+    if (p.positionX) {
+        p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z;
+    } else if (p.setPosition) {
+        p.setPosition(pos.x, pos.y, pos.z);
+    }
+    return p;
+}
+
+function movePanner(p, pos) {
+    if (p.positionX) {
+        ramp(p.positionX, pos.x); ramp(p.positionY, pos.y); ramp(p.positionZ, pos.z);
+    } else if (p.setPosition) {
+        p.setPosition(pos.x, pos.y, pos.z);
+    }
+}
+
+// The listener is the ship. Position and orientation ramped every frame.
+function updateListener() {
+    if (!ctx) return;
+    var L = ctx.listener, f = shipForward(), u = shipUp();
+    if (L.positionX) {
+        ramp(L.positionX, ship.pos.x); ramp(L.positionY, ship.pos.y); ramp(L.positionZ, ship.pos.z);
+        ramp(L.forwardX, f.x); ramp(L.forwardY, f.y); ramp(L.forwardZ, f.z);
+        ramp(L.upX, u.x); ramp(L.upY, u.y); ramp(L.upZ, u.z);
+    } else {
+        if (L.setPosition) L.setPosition(ship.pos.x, ship.pos.y, ship.pos.z);
+        if (L.setOrientation) L.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z);
+    }
+}
+
+// Build a target's continuous voice:
+//   osc(s) [+LFO] -> gain -> lowpass -> HRTF panner -> master
+// Each simultaneous HRTF panner costs a pair of short convolutions; the demo
+// runs 6-8 at once, and ~30 would still be comfortable on a modern machine,
+// so a full sim has plenty of headroom.
+function buildVoice(t) {
+    if (!ctx) return;
+    var voice = t.voice;
+    var gain = ctx.createGain();
+    gain.gain.value = CFG.targetGain;
+    var lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
+    var panner = makePanner(t.pos);
+    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
+
+    // Recorded engine loop when available (same loop hygiene as the rocks:
+    // skip the MP3 padding, random start offset so ships don't phase-lock).
+    if (t.shipAsset && assetBufs[t.shipAsset.name]) {
+        var buf = assetBufs[t.shipAsset.name];
+        var src = ctx.createBufferSource();
+        src.buffer = buf; src.loop = true;
+        src.loopStart = 0.15; src.loopEnd = buf.duration - 0.15;
+        src.playbackRate.value = t.shipAsset.rate * (0.97 + Math.random() * 0.06);
+        t.baseRate = src.playbackRate.value;
+        src.connect(gain);
+        src.start(0, 0.15 + Math.random() * (buf.duration - 0.5));
+        t.nodes = { gain: gain, lp: lp, panner: panner, oscs: [src], src: src };
+        return;
+    }
+
+    var oscs = [], lfos = [];
+    function osc(type, freq) {
+        var o = ctx.createOscillator();
+        o.type = type; o.frequency.value = freq;
+        oscs.push(o); return o;
+    }
+    if (voice.type === 'beat') {
+        osc('sine', voice.freq).connect(gain);
+        osc('sine', voice.freq * 2.02).connect(gain);
+    } else if (voice.type === 'detuned') {
+        var a = osc('sawtooth', voice.freq), b = osc('sawtooth', voice.freq);
+        b.detune.value = 7;
+        a.connect(gain); b.connect(gain);
+    } else {
+        osc(voice.type, voice.freq).connect(gain);
+    }
+    if (voice.trem) {              // amplitude LFO
+        var lg = ctx.createGain(); lg.gain.value = CFG.targetGain * 0.5;
+        var lo = ctx.createOscillator(); lo.frequency.value = voice.trem;
+        lo.connect(lg); lg.connect(gain.gain); lfos.push(lo);
+    }
+    if (voice.vib) {               // frequency LFO on the first oscillator
+        var vg = ctx.createGain(); vg.gain.value = voice.vibDepth || 10;
+        var vo = ctx.createOscillator(); vo.frequency.value = voice.vib;
+        vo.connect(vg); vg.connect(oscs[0].frequency); lfos.push(vo);
+    }
+    oscs.concat(lfos).forEach(function (o) { o.start(); });
+    t.nodes = { gain: gain, lp: lp, panner: panner, oscs: oscs.concat(lfos) };
+}
+
+function stopVoice(t) {
+    if (!t.nodes) return;
+    try {
+        t.nodes.oscs.forEach(function (o) { o.stop(); });
+        t.nodes.panner.disconnect();
+    } catch (e) {}
+    t.nodes = null;
+}
+
+// A rock's voice is its recorded loop: buffer -> gain -> lowpass -> HRTF
+// panner, exactly the shape of a combat voice so the tick, radar boost, and
+// behind-the-hull filter all work unchanged. playbackRate carries size (big
+// rocks rumble low, chips sing high) — and it is an AudioParam, so a chip
+// event can audibly RAISE the same rock's pitch. loopStart/End skip the MP3
+// encoder padding so the loop never clicks, and a random start offset keeps
+// two rocks of the same type from playing in lockstep.
+function buildRockVoice(t) {
+    if (!ctx || !assetBufs[t.type.asset]) return;
+    var buf = assetBufs[t.type.asset];
+    var gain = ctx.createGain();
+    gain.gain.value = CFG.targetGain * 1.15;
+    var lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
+    var panner = makePanner(t.pos);
+    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
+    var src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    src.loopStart = 0.15; src.loopEnd = buf.duration - 0.15;
+    src.playbackRate.value = rockRate(t) * (0.95 + Math.random() * 0.1);
+    src.connect(gain);
+    src.start(0, 0.15 + Math.random() * (buf.duration - 0.5));
+    t.nodes = { gain: gain, lp: lp, panner: panner, oscs: [src], src: src };
+}
+
+function rockRate(t) { return t.resource ? 1.6 : ROCK_SIZES[t.size].rate; }
+
+function rollHp(size) {
+    var s = ROCK_SIZES[size];
+    return s.hpMin + Math.floor(Math.random() * (s.hpMax - s.hpMin));
+}
+
+function spawnRock(type, size, pos, vel) {
+    rockSeq++;
+    var t = {
+        kind: 'rock',
+        name: type.name + ' ' + rockSeq,
+        type: type, size: size, resource: false,
+        hp: rollHp(size),
+        oreLeft: 0,
+        pos: pos, vel: vel || v3(0, 0, 0),
+        alive: true
+    };
+    buildRockVoice(t);
+    return t;
+}
+
+function makeMiningRoster() {
+    rockSeq = 0;
+    var rocks = [];
+    var plan = [0, 1, 1, 2];   // one huge, two large, one medium
+    plan.forEach(function (size, i) {
+        var type = ROCK_TYPES[Math.floor(Math.random() * ROCK_TYPES.length)];
+        if (i === 0) type = ROCK_TYPES[i % ROCK_TYPES.length];
+        var ang = Math.random() * Math.PI * 2;
+        var r = 250 + Math.random() * 200;
+        var pos = v3(Math.cos(ang) * r, -120 + Math.random() * 240, Math.sin(ang) * r);
+        var drift = v3(Math.random() * 8 - 4, Math.random() * 4 - 2, Math.random() * 8 - 4);
+        rocks.push(spawnRock(type, size, pos, drift));
+    });
+    return rocks;
+}
+
+// Beacon voices. Same node shape as every other voice (gain -> lowpass ->
+// HRTF panner) so the tick, radar, and behind-the-hull muffle all work, but
+// the panner uses long-range sensor params so a beacon 15,000 out is still
+// faintly audible. Each POI type has an unmistakable signature.
+function buildPoiVoice(t) {
+    if (!ctx) return;
+    var G = CFG.targetGain * CFG.beaconGainScale;
+    var gain = ctx.createGain();
+    gain.gain.value = G;
+    var lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
+    var panner = makePanner(t.pos);
+    panner.refDistance = CFG.beaconRef;
+    panner.maxDistance = CFG.beaconMax;
+    panner.rolloffFactor = CFG.beaconRolloff;
+    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
+    var oscs = [];
+    function osc(type, freq) {
+        var o = ctx.createOscillator();
+        o.type = type; o.frequency.value = freq;
+        oscs.push(o); return o;
+    }
+    function tremolo(rate, depth, lfoType) {
+        var lg = ctx.createGain(); lg.gain.value = depth;
+        var lo = osc(lfoType || 'sine', rate);
+        lo.connect(lg); lg.connect(gain.gain);
+    }
+    if (t.poiType === 'combat') {
+        // Low menacing war-drum throb.
+        osc('sawtooth', 70).connect(gain);
+        tremolo(1.2, G * 0.6);
+    } else if (t.poiType === 'mining') {
+        // Distant rockfall rumble: deep noise through a tight lowpass.
+        var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        var rlp = ctx.createBiquadFilter();
+        rlp.type = 'lowpass'; rlp.frequency.value = 220;
+        src.connect(rlp); rlp.connect(gain);
+        oscs.push(src);
+        tremolo(0.7, G * 0.5);
+    } else if (t.poiType === 'station') {
+        // Friendly rhythmic nav beacon: clean tone gated on and off.
+        osc('sine', 660).connect(gain);
+        tremolo(1.8, G, 'square');
+    } else {
+        // Planet: vast, slow atmospheric drone with a lazy shimmer.
+        osc('sine', 45).connect(gain);
+        var b = osc('sine', 45 * 2.01); b.connect(gain);
+        tremolo(0.25, G * 0.35);
+    }
+    oscs.forEach(function (o) { o.start(); });
+    t.nodes = { gain: gain, lp: lp, panner: panner, oscs: oscs };
+}
+
+function makeSectorRoster() {
+    return SECTOR_POIS.map(function (p) {
+        var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
+                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
+        buildPoiVoice(t);
+        return t;
+    });
+}
+
+// Stage-event blast: one of the three recorded explosions, positioned at the
+// rock through a throwaway HRTF panner (falls back to the synth explosion).
+function playRockExplosion(pos) {
+    var names = ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
+    var buf = assetBufs[names[Math.floor(Math.random() * names.length)]];
+    if (!ctx || !buf) { explosionAt(pos); return; }
+    var out = worldOut(pos, Math.ceil(buf.duration * 1000));
+    var g = ctx.createGain(); g.gain.value = 0.9;
+    var src = ctx.createBufferSource(); src.buffer = buf;
+    src.connect(g); g.connect(out);
+    src.start();
+}
+
+// ---- SFX primitives ---------------------------------------------------------
+// Same fire-and-forget generator palette as the Bunker Audio Laboratory
+// (.soundtester v2.0.html) and the ag / kc audio engines: tone with a
+// frequency ramp and exponential decay, filtered noise, chords, arpeggios.
+// One upgrade for this project: every primitive takes an optional `out` node,
+// so the identical vocabulary plays either on the stereo instrument bus
+// (cockpit sounds) or through an HRTF panner at a world position (3D events).
+
+function sfxOut(o) {
+    // Resolve the destination: explicit node > stereo pan on the UI bus > UI bus.
+    if (o && o.out) return o.out;
+    if (o && o.pan && ctx.createStereoPanner) {
+        var sp = ctx.createStereoPanner();
+        sp.pan.value = clamp(o.pan, -1, 1);
+        sp.connect(uiBus);
+        return sp;
+    }
+    return uiBus;
+}
+
+// Tone with optional frequency glide: sfxTone({type,f1,f2,dur,vol,at,pan,out})
+function sfxTone(o) {
+    if (!ctx) return;
+    var t0 = ctx.currentTime + (o.at || 0);
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(o.vol || 0.15, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
+    g.connect(sfxOut(o));
+    var osc = ctx.createOscillator();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(o.f1, t0);
+    if (o.f2) {
+        try { osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur); }
+        catch (e) { osc.frequency.setValueAtTime(o.f2, t0 + o.dur); }
+    }
+    osc.connect(g);
+    osc.start(t0); osc.stop(t0 + o.dur + 0.02);
+}
+
+// Filtered noise burst: sfxNoise({dur,vol,filter,freq,q,at,pan,out})
+function sfxNoise(o) {
+    if (!ctx) return;
+    var t0 = ctx.currentTime + (o.at || 0);
+    var src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(o.vol || 0.2, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
+    var tail = src;
+    if (o.freq) {
+        var f = ctx.createBiquadFilter();
+        f.type = o.filter || 'lowpass';
+        f.frequency.value = o.freq;
+        if (o.q) f.Q.value = o.q;
+        src.connect(f); tail = f;
+    }
+    tail.connect(g); g.connect(sfxOut(o));
+    src.start(t0); src.stop(t0 + o.dur + 0.05);
+}
+
+// Chord and arpeggio, straight from the Bunker Lab vocabulary.
+function sfxChord(freqs, dur, vol, o) {
+    freqs.forEach(function (f) {
+        sfxTone(Object.assign({ f1: f, dur: dur, vol: vol / freqs.length }, o || {}));
+    });
+}
+function sfxArpeggio(freqs, noteDur, vol, o) {
+    freqs.forEach(function (f, i) {
+        sfxTone(Object.assign({ f1: f, dur: noteDur * 1.5, vol: vol,
+                                at: i * noteDur }, o || {}));
+    });
+}
+
+// Compatibility wrapper used by the tick scheduler and small cues.
+function blip(freq, ms, gainVal, pan, type) {
+    sfxTone({ type: type || 'sine', f1: freq, dur: ms / 1000, vol: gainVal, pan: pan || 0 });
+}
+
+// One-shot playback of a decoded recording. Returns false if the asset
+// isn't ready so callers can fall back to a generated cue.
+function playAsset(name, vol, out) {
+    if (!ctx || !assetBufs[name]) return false;
+    var src = ctx.createBufferSource(); src.buffer = assetBufs[name];
+    var g = ctx.createGain(); g.gain.value = vol || 0.3;
+    src.connect(g); g.connect(out || uiBus);
+    src.start();
+    return true;
+}
+
+// (The old snap-shot laser sound was replaced by the sustained beam in
+// SECTION 7 — the beam builds its own wobbling carrier + shimmer graph.)
+
+// A throwaway HRTF panner at a world position that cleans itself up.
+function worldOut(pos, ms) {
+    if (!ctx) return null;
+    var p = makePanner(pos);
+    p.connect(masterGain);
+    setTimeout(function () { try { p.disconnect(); } catch (e) {} }, ms + 400);
+    return p;
+}
+
+// Generic thud / pop at a world position (missile self-destruct, laser splash).
+function noiseBurst(pos, ms, gainVal, cutoff) {
+    var out = worldOut(pos, ms);
+    if (!out) return;
+    sfxNoise({ dur: ms / 1000, vol: gainVal, filter: 'lowpass', freq: cutoff, out: out });
+}
+
+// Kill explosion: filtered noise body plus a low sine thump underneath,
+// all positioned at the dying target so the blast itself is a 3D event.
+function explosionAt(pos) {
+    var out = worldOut(pos, 900);
+    if (!out) return;
+    sfxNoise({ dur: 0.6, vol: 0.8, filter: 'lowpass', freq: 2500, out: out });
+    sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
+    sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
+}
+
+// Victory: ascending arpeggio resolving into a held major chord.
+function winArpeggio() {
+    sfxArpeggio([523, 659, 784, 1047], 0.16, 0.18, { type: 'triangle' });
+    sfxChord([523, 659, 784], 0.9, 0.45, { type: 'sine', at: 0.65 });
+}
+
+// ---- maneuvering thrusters --------------------------------------------------
+// One little looped-noise puffer per control, running while its key is held.
+// The pairs are deliberately mismatched — left vs right and up vs down sit at
+// slightly different band frequencies (and yaw pans toward the turn) so each
+// maneuver is audibly its own sound before the world even responds. The main
+// drive (W) and retro brake (S) also carry a low hum at different pitches.
+// Physically honest jets: the sound comes from the thruster doing the work,
+// which sits OPPOSITE the motion. Turn left → right-side jets (panned right).
+// Pitch up → belly jets firing downward (the low voice). Thrust forward →
+// the aft engines behind you (deep). Brake → forward retros (bright).
+var THRUSTER_DEFS = {
+    arrowleft:  { freq: 950,  pan:  0.6, vol: 0.05 },
+    arrowright: { freq: 1080, pan: -0.6, vol: 0.05 },
+    arrowup:    { freq: 720,  pan:  0,   vol: 0.05 },
+    arrowdown:  { freq: 1350, pan:  0,   vol: 0.045 },
+    w:          { freq: 500,  pan:  0,   vol: 0.07, hum: 82 },   // aft engines
+    s:          { freq: 170,  pan:  0,   vol: 0.09, hum: 55 }    // fore retros
+};
+var thrusters = {};   // live nodes per channel
+
+function thrusterStart(name) {
+    if (!ctx || thrusters[name]) return;
+    var def = THRUSTER_DEFS[name];
+    var g = ctx.createGain(); g.gain.value = 0.0001;
+    var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    var f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = def.freq; f.Q.value = 1.2;
+    src.connect(f); f.connect(g);
+    if (ctx.createStereoPanner) {
+        var sp = ctx.createStereoPanner(); sp.pan.value = def.pan;
+        g.connect(sp); sp.connect(uiBus);
+    } else g.connect(uiBus);
+    var hum = null;
+    if (def.hum) {
+        hum = ctx.createOscillator(); hum.type = 'triangle'; hum.frequency.value = def.hum;
+        hum.connect(g); hum.start();
+    }
+    src.start();
+    thrusters[name] = { src: src, hum: hum, g: g };
+    ramp(g.gain, def.vol, 0.08);
+}
+
+function thrusterStop(name) {
+    var n = thrusters[name];
+    if (!n) return;
+    delete thrusters[name];
+    ramp(n.g.gain, 0.0001, 0.12);
+    setTimeout(function () {
+        try { n.src.stop(); if (n.hum) n.hum.stop(); n.g.disconnect(); } catch (e) {}
+    }, 220);
+}
+
+// Match the sounding set to what is actually held; pass null to silence all.
+function thrusterSync(held) {
+    for (var name in THRUSTER_DEFS) {
+        var wantOn = !!(held && held[name]);
+        if (wantOn && !thrusters[name]) thrusterStart(name);
+        if (!wantOn && thrusters[name]) thrusterStop(name);
+    }
+}
+
+// ---- automatic stabilizers --------------------------------------------------
+// This is a space sim people can PLAY, not a Newtonian flight sim: nobody
+// should have to counter their own thrust. Mechanically the ship already
+// bleeds momentum every frame (dampKeep); the stabilizers make that audible
+// and diegetic — soft pulsing jets that fire on their own after you coast,
+// fading out as the ship settles. Silence means you have stopped.
+var stabNodes = null;
+
+function updateStabilizers(speedToShed) {
+    if (!ctx) return;
+    if (speedToShed > 0 && !stabNodes) {
+        var g = ctx.createGain(); g.gain.value = 0.0001;
+        var f = ctx.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 1150; f.Q.value = 1.5;
+        var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        var lfo = ctx.createOscillator(); lfo.frequency.value = 5;   // puff-puff
+        var lg = ctx.createGain(); lg.gain.value = 0.0;
+        lfo.connect(lg); lg.connect(g.gain);
+        src.connect(f); f.connect(g); g.connect(uiBus);
+        src.start(); lfo.start();
+        stabNodes = { src: src, lfo: lfo, lg: lg, g: g };
+    }
+    if (stabNodes) {
+        if (speedToShed > 0) {
+            var vol = 0.006 + clamp(speedToShed / CFG.maxSpeed, 0, 1) * 0.04;
+            ramp(stabNodes.g.gain, vol, 0.2);
+            ramp(stabNodes.lg.gain, vol * 0.6, 0.2);
+        } else {
+            var n = stabNodes; stabNodes = null;
+            ramp(n.g.gain, 0.0001, 0.25);
+            setTimeout(function () {
+                try { n.src.stop(); n.lfo.stop(); n.g.disconnect(); } catch (e) {}
+            }, 400);
+        }
+    }
+}
+
+// ---- lock tick --------------------------------------------------------------
+// The targeting instrument. Deliberately StereoPanner, not HRTF: it is a
+// cockpit instrument, and its pan/pitch carry the supplementary cues (turn
+// direction, elevation) without polluting the HRTF world layer.
+var tick = { timer: null, solid: null };
+
+function tickFreqFor(elevRad) {
+    return 600 * Math.pow(2, (deg(elevRad) / 90) * 0.75);
+}
+
+function stopSolidTone() {
+    if (!tick.solid) return;
+    var n = tick.solid; tick.solid = null;
+    try { ramp(n.g.gain, 0.0001, 0.05); } catch (e) {}
+    setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 120);
+}
+
+function startSolidTone() {
+    if (!ctx || tick.solid) return;
+    var g = ctx.createGain(); g.gain.value = 0.0;
+    var sp = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (sp) { g.connect(sp); sp.connect(uiBus); } else g.connect(uiBus);
+    var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); o.start();
+    tick.solid = { o: o, g: g, sp: sp };
+    ramp(g.gain, 0.12, 0.05);
+}
+
+function scheduleTick() {
+    clearTimeout(tick.timer);
+    tick.timer = setTimeout(tickBeat, 120);
+}
+
+function tickBeat() {
+    if (!running || paused || over() || help.open || map.open || menuOpen || warping) { tick.timer = setTimeout(tickBeat, 250); return; }
+    var t = targets[selected];
+    if (!t || !t.alive) { tick.timer = setTimeout(tickBeat, 250); return; }
+    var a = aim(t.pos);
+    var interval;
+    if (locked) {
+        // Solid tone carries the locked state; the scheduler just idles.
+        interval = 200;
+    } else if (a.err > CFG.tickArc) {
+        // Searching: soft slow tock, out of the tracking arc.
+        blip(260, 60, 0.06, 0, 'sine');
+        interval = 1000;
+    } else {
+        var z = zoneRad();
+        var span = CFG.tickArc - z.lockOff;
+        var frac = clamp((a.err - z.lockOff) / span, 0, 1);
+        interval = CFG.tickFast + (CFG.tickSlow - CFG.tickFast) * frac;
+        var pan = clamp(Math.sin(a.azimuth) * 1.5, -1, 1);
+        blip(tickFreqFor(a.elev), 45, 0.11, pan, 'square');
+    }
+    tick.timer = setTimeout(tickBeat, interval);
+}
+
+// ============================== 6. TARGETING ================================
+function aliveTargets() { return targets.filter(function (t) { return t.alive; }); }
+function aliveRocks()   { return targets.filter(function (t) { return t.alive && t.kind === 'rock'; }); }
+
+function selectNearest() {
+    var best = -1, bestD = Infinity;
+    targets.forEach(function (t, i) {
+        if (!t.alive) return;
+        var d = len(sub(t.pos, ship.pos));
+        if (d < bestD) { bestD = d; best = i; }
+    });
+    selected = best;
+    locked = false;
+    stopSolidTone();
+}
+
+function cycleTarget() {
+    var alive = targets.map(function (t, i) { return t.alive ? i : -1; })
+                       .filter(function (i) { return i >= 0; });
+    if (!alive.length) { say('No targets remain.'); return; }
+    // Nearest-first order, stepping from the current selection.
+    alive.sort(function (x, y) {
+        return len(sub(targets[x].pos, ship.pos)) - len(sub(targets[y].pos, ship.pos));
+    });
+    var at = alive.indexOf(selected);
+    selected = alive[(at + 1) % alive.length];
+    locked = false;
+    stopSolidTone();
+    say(bearingText(targets[selected]));
+}
+
+function bearingText(t) {
+    var a = aim(t.pos);
+    var az = round5(Math.abs(deg(a.azimuth)));
+    var el = round5(Math.abs(deg(a.elev)));
+    var bits = [];
+    bits.push(az === 0 ? 'Centered' : 'Bearing ' + az + (a.azimuth >= 0 ? ' right' : ' left'));
+    if (el >= 5) bits.push(el + (a.elev >= 0 ? ' high' : ' low'));
+    if (a.facing < -0.2) bits.push('behind');
+    var line = t.name;
+    if (t.kind === 'rock') {
+        // No hull reading for rocks — stage thresholds stay hidden.
+        line += t.resource ? ', mineable core' : ', ' + ROCK_SIZES[t.size].label + ' asteroid';
+    } else if (t.kind === 'dust') {
+        line += ', dust field, about ' + round10(t.amount) + ' units';
+    } else if (t.kind === 'poi') {
+        line += ', ' + t.desc;
+    }
+    line += '. ' + bits.join(', ') + '. Distance ' + round10(a.dist) + '.';
+    if (!t.kind) line += ' Hull ' + hullPercent(t) + ' percent.';
+    return line;
+}
+
+// Lock hysteresis + per-target front/back lowpass, run every frame.
+function updateTargeting() {
+    targets.forEach(function (t) {
+        if (!t.alive || !t.nodes || !t.nodes.lp) return;   // dust has no filter
+        var a = aim(t.pos);
+        // Behind-the-hull muffling: cutoff tracks dot(forward, dir).
+        var f = clamp((a.facing + 1) / 1.2, 0, 1);
+        var cutoff = CFG.lpMin + (CFG.lpMax - CFG.lpMin) * f;
+        if (t.kind === 'poi') {
+            // Distance haze: far beacons are muffled as well as quiet, the
+            // strongest "that is far away" cue human ears know. Full
+            // brightness inside 1,000; ~1.3 kHz at 7,000; ~600 Hz at 11,000.
+            var haze = 20000 * Math.pow(1000 / Math.max(a.dist, 1000), 1.4);
+            cutoff = Math.min(cutoff, clamp(haze, 500, CFG.lpMax));
+        }
+        t.nodes.lp.frequency.setTargetAtTime(cutoff, ctx ? ctx.currentTime : 0, 0.1);
+    });
+    var t = targets[selected];
+    if (!t || !t.alive) return;
+    var a = aim(t.pos);
+    var z = zoneRad();
+    if (!locked && a.err < z.lockOn) {
+        locked = true;
+        blip(660, 100, 0.15); setTimeout(function () { blip(880, 120, 0.15); }, 110);
+        startSolidTone();
+    } else if (locked && a.err > z.lockOff) {
+        locked = false;
+        stopSolidTone();
+        blip(330, 120, 0.12);
+    }
+}
+
+// ============================== 7. WEAPONS ==================================
+function destroyTarget(t) {
+    t.alive = false;
+    explosionAt(t.pos);
+    stopVoice(t);
+    if (targets[selected] === t) selectNearest();
+    if (threat && threat.t === t) endThreat();
+    var left = aliveTargets().length;
+    if (left === 0) {
+        won = true;
+        shieldReset();
+        setTimeout(winArpeggio, 400);
+        setTimeout(function () {
+            var tail;
+            if (demo && !demo.combatCleared) {
+                demo.combatCleared = true;
+                tail = 'Contested Zone cleared. Clock ' + fmtTime(demo.elapsed) +
+                       '. Next: mine ' + CFG.demoOreGoal + ' ore at Asteroid Field Kappa. X returns to the sector.';
+            } else {
+                tail = 'Press Enter to play again, or X ' +
+                       (sectorHome ? 'to return to the sector.' : 'for the mission menu.');
+            }
+            say('All targets destroyed. Victory. ' + tail);
+        }, 900);
+        return true;
+    }
+    return false;
+}
+
+function hullPercent(t) {
+    return Math.max(0, Math.round(t.hp / t.maxHp * 100));
+}
+
+// Apply damage; returns true if the target died (kill speech handled here).
+function damageTarget(t, dmg) {
+    t.hp -= dmg;
+    if (t.hp <= 0) {
+        var name = t.name;
+        var over = destroyTarget(t);
+        if (!over) say(name + ' destroyed. ' + aliveTargets().length + ' targets remain.');
+        return true;
+    }
+    return false;
+}
+
+// ---- laser beam -------------------------------------------------------------
+// The laser is a sustained two-second beam, not a snap shot. It ticks damage
+// every half second, and each tick scales with how centered the selected
+// target is AT THAT INSTANT relative to the current zone — so a drifting
+// target gives different spoken damage numbers tick by tick. The beam's own
+// carrier pitch rises and falls with the same quality, narrating your aim,
+// and a vibrato LFO plus a noise shimmer keep the cue alive over its length.
+var beam = null;   // { nodes, ticksLeft, totalDamage, timer }
+
+function beamQuality() {
+    var t = targets[selected];
+    if (!t || !t.alive) return 0;
+    var a = aim(t.pos);
+    if (a.dist > CFG.laserRange) return 0;
+    return clamp(1 - a.err / zoneRad().laser, 0, 1);
+}
+
+// Point-blank bonus: x laserCloseMult at zero distance, x1 at laserRange.
+// The reward for closing in — and the risk, since a close enemy's beam
+// gives less warning than a far one's missile.
+function laserRangeMult(dist) {
+    return 1 + (CFG.laserCloseMult - 1) * clamp(1 - dist / CFG.laserRange, 0, 1);
+}
+
+// ---- laser overheat ---------------------------------------------------------
+// Two zero-damage bursts inside the window and the laser is down for a few
+// seconds. The cooldown is never silent: a venting hiss plus hot-metal pings
+// that slow as it cools, then a ready chime.
+function laserHot() { return Date.now() < laser.hotUntil; }
+
+function laserMiss() {
+    var now = Date.now();
+    laser.misses = laser.misses.filter(function (t) { return now - t < CFG.laserMissWindowMs; });
+    laser.misses.push(now);
+    if (laser.misses.length < 2) return;
+    laser.misses = [];
+    laser.hotUntil = now + CFG.laserOverheatMs;
+    var secs = CFG.laserOverheatMs / 1000;
+    sfxNoise({ dur: secs, vol: 0.14, filter: 'highpass', freq: 3200 });
+    var pings = [0.25, 0.6, 1.05, 1.6, 2.25, 3.0, 3.85];
+    pings.forEach(function (at, i) {
+        sfxTone({ type: 'triangle', f1: 2000 - i * 140, dur: 0.12, vol: 0.09, at: at });
+    });
+    setTimeout(function () {
+        if (!running || mode === 'sector' || menuOpen) return;
+        blip(660, 80, 0.12); setTimeout(function () { blip(990, 110, 0.12); }, 90);
+        say('Laser ready.');
+    }, CFG.laserOverheatMs);
+    say('Laser overheated. ' + secs + ' seconds to cool.');
+}
+
+// tool = 'laser' (default) or 'vac' (the ore extractor). Same machinery, two
+// different sound builds: the laser is a bright wobbling saw with high
+// shimmer; the extractor is a deep slow pulse with low rumbling suction.
+function startBeam(tool) {
+    tool = tool || 'laser';
+    if (beam) return;                              // already firing (audible)
+    if (tool === 'laser') {
+        if (shieldsBusy()) { blip(200, 60, 0.08); say('Shields up. Weapons offline. G drops them.'); return; }
+        if (laserHot()) {
+            sfxNoise({ dur: 0.3, vol: 0.15, filter: 'highpass', freq: 2500 });
+            say('Laser overheated. ' + Math.ceil((laser.hotUntil - Date.now()) / 1000) + ' seconds.');
+            return;
+        }
+    }
+    if (Date.now() - lastLaserAt < CFG.beamCooldownMs) {
+        blip(200, 60, 0.08);                       // recharging: a dud click,
+        return;                                    // never a silent nothing
+    }
+    var nodes = null;
+    // Per-tool voices: laser = bright wobbling saw with high shimmer;
+    // vac (E, core extractor) = deep fast pulse with low rumble;
+    // dust (V, particulate vacuum) = airy slow breath with mid hiss.
+    var P = tool === 'vac'  ? { type: 'sine', f: 140, lp: 900,  vibF: 9,   vibD: 25, shT: 'lowpass',  shF: 400,  shG: 0.05, vol: 0.14 }
+          : tool === 'dust' ? { type: 'sine', f: 90,  lp: 600,  vibF: 4,   vibD: 15, shT: 'lowpass',  shF: 1200, shG: 0.07, vol: 0.13 }
+          :                   { type: 'sawtooth', f: 900, lp: 2600, vibF: 6.5, vibD: 45, shT: 'highpass', shF: 3800, shG: 0.03, vol: 0.16 };
+    if (ctx) {
+        var g = ctx.createGain(); g.gain.value = 0.0001;
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.value = P.lp;
+        var o = ctx.createOscillator();
+        o.type = P.type; o.frequency.value = P.f;
+        var vib = ctx.createOscillator(); vib.frequency.value = P.vibF;
+        var vg = ctx.createGain(); vg.gain.value = P.vibD;
+        vib.connect(vg); vg.connect(o.frequency);
+        var sh = ctx.createBufferSource(); sh.buffer = noiseBuf; sh.loop = true;
+        var shf = ctx.createBiquadFilter();
+        shf.type = P.shT; shf.frequency.value = P.shF;
+        var shg = ctx.createGain(); shg.gain.value = P.shG;
+        sh.connect(shf); shf.connect(shg); shg.connect(uiBus);
+        o.connect(lp); lp.connect(g); g.connect(uiBus);
+        o.start(); vib.start(); sh.start();
+        ramp(g.gain, P.vol, 0.06);
+        nodes = { g: g, o: o, vib: vib, sh: sh, shg: shg };
+    }
+    beam = { tool: tool, nodes: nodes,
+             ticksLeft: tool === 'laser' ? CFG.beamTicks : 999,
+             totalDamage: 0, timer: null };
+    beam.timer = setTimeout(beamTick,
+        tool === 'vac' ? CFG.vacTickMs : tool === 'dust' ? CFG.dustVacTickMs : CFG.beamTickMs);
+}
+
+function stopBeam(silent) {
+    if (!beam) return;
+    var b = beam; beam = null;
+    clearTimeout(b.timer);
+    lastLaserAt = Date.now();
+    if (b.nodes) {
+        ramp(b.nodes.g.gain, 0.0001, 0.1);
+        ramp(b.nodes.shg.gain, 0.0001, 0.1);
+        setTimeout(function () {
+            try { b.nodes.o.stop(); b.nodes.vib.stop(); b.nodes.sh.stop();
+                  b.nodes.g.disconnect(); b.nodes.shg.disconnect(); } catch (e) {}
+        }, 220);
+    }
+    if (!silent && b.tool === 'laser' && b.totalDamage === 0 && !b.saidDust) {
+        if (!b.saidRange) { blip(120, 150, 0.1, 0, 'sine'); say('Miss.'); }
+        laserMiss();                               // out-of-range bursts heat it too
+    }
+}
+
+function beamTick() {
+    if (!beam) return;
+    if (!running || paused || help.open || over()) { stopBeam(true); return; }
+    if (beam.tool === 'vac') { vacTick(); return; }
+    if (beam.tool === 'dust') { dustTick(); return; }
+    var t = targets[selected];
+    var q = beamQuality();
+    var dmg = Math.ceil(CFG.beamMaxDamage * q *
+                        (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1));
+    if (beam.nodes) {
+        // The carrier pitch narrates the same quality the number reports.
+        ramp(beam.nodes.o.frequency, 700 + 700 * q, 0.15);
+    }
+    // Aimed true but out of reach: say so once, instead of a mystery miss.
+    if (t && t.alive) {
+        var reach = aim(t.pos);
+        if (reach.err < zoneRad().laser && reach.dist > CFG.laserRange && !beam.saidRange) {
+            beam.saidRange = true;
+            blip(180, 220, 0.12, 0, 'square');
+            say('Out of range. Distance ' + round10(reach.dist) + ', the laser reaches ' +
+                CFG.laserRange + '. Thrust closer.');
+        }
+    }
+    if (dmg > 0 && t && t.alive) {
+        if (t.kind === 'dust') {
+            // Nothing solid to cut. Say so once, then just scorch.
+            if (!beam.saidDust) {
+                beam.saidDust = true;
+                say('The laser passes through the dust. Get close and vacuum it with V.');
+            } else {
+                blip(140, 90, 0.06, 0, 'sine');
+            }
+        } else if (t.kind === 'rock') {
+            // Hidden hardness roll obscures the stage threshold, and every
+            // tick shoves the rock along the beam line.
+            var actual = Math.ceil(dmg * t.type.hardness * (0.7 + Math.random() * 0.6));
+            beam.totalDamage += actual;
+            pushRock(t, scale(norm(sub(t.pos, ship.pos)), CFG.beamPush * rockPush(t)));
+            if (t.resource) { shatterCore(t); stopBeam(true); return; }
+            // Every bite of the laser sheds particulates where the rock is.
+            addDebris(t.pos, actual * CFG.debrisPerDamage);
+            t.hp -= actual;
+            if (t.hp <= 0) { rockEvent(t); return; }   // rockEvent stops the beam
+            say(String(actual));
+        } else {
+            beam.totalDamage += dmg;
+            if (damageTarget(t, dmg)) { stopBeam(true); return; }
+            say(String(dmg));
+        }
+    } else {
+        blip(140, 90, 0.06, 0, 'sine');       // scorching empty space
+    }
+    beam.ticksLeft--;
+    if (beam.ticksLeft <= 0) stopBeam(false);
+    else beam.timer = setTimeout(beamTick, CFG.beamTickMs);
+}
+
+// One extractor tick: recheck the hold conditions, then pull ore. The
+// carrier pitch sinks as the core empties, narrating progress.
+function vacTick() {
+    var t = targets[selected];
+    if (!t || !t.alive || !t.resource) { stopBeam(true); say('Extraction interrupted.'); return; }
+    var a = aim(t.pos);
+    if (a.dist > CFG.vacRange || a.err > CFG.vacArc) {
+        stopBeam(true);
+        say('Extraction lost. Stay close and centered on the core.');
+        return;
+    }
+    var amount = Math.min(t.oreLeft, 300 + Math.floor(Math.random() * 300));
+    t.oreLeft -= amount;
+    ore += amount;
+    oreGained();
+    // Gentle tractor pull so the core drifts toward the ship, not away.
+    pushRock(t, scale(norm(sub(ship.pos, t.pos)), 2));
+    if (beam.nodes) ramp(beam.nodes.o.frequency, 100 + 120 * (t.oreLeft / t.type.ore), 0.2);
+    if (t.oreLeft <= 0) {
+        stopBeam(true);
+        t.alive = false;
+        stopVoice(t);
+        blip(900, 200, 0.15, 0, 'sine');
+        say('Core depleted. Ore hold ' + ore + '.');
+        if (targets[selected] === t) selectNearest();
+        checkMiningEnd();
+        return;
+    }
+    say(String(amount));       // the gain this tick; I reports the full hold
+    beam.timer = setTimeout(beamTick, CFG.vacTickMs);
+}
+
+// One vacuum tick: filter dust from the nearest field within range of the
+// SHIP (no aiming — it cleans the neighborhood). Runs until the area is
+// clear or the pilot drifts out of range of any remaining dust.
+function dustTick() {
+    var f = null, best = CFG.dustVacRange;
+    debris.forEach(function (d) {
+        var dd = len(sub(d.pos, ship.pos));
+        if (dd < best) { best = dd; f = d; }
+    });
+    if (!f) {
+        stopBeam(true);
+        if (debrisTotal() === 0 && aliveTargets().length === 0) { checkMiningEnd(); return; }
+        say(debrisTotal() > 0
+            ? 'No more dust within range. Ore hold ' + ore + '.'
+            : 'Area filtered clean. Ore hold ' + ore + '.');
+        return;
+    }
+    var amount = Math.min(f.amount, 150 + Math.floor(Math.random() * 250));
+    f.amount -= amount;
+    ore += amount;
+    oreGained();
+    updateDustVolume(f);
+    if (f.amount <= 0) removeDust(f);
+    say(String(amount));
+    beam.timer = setTimeout(beamTick, CFG.dustVacTickMs);
+}
+
+function fireMissile() {
+    if (missile) { say('Missile already away.'); return; }
+    if (shieldsBusy()) { blip(200, 60, 0.08); say('Shields up. Weapons offline. G drops them.'); return; }
+    if (missiles <= 0) {
+        blip(200, 120, 0.1);
+        say('No missiles left.' + (sectorHome ? ' Station Meridian rearms.' : ''));
+        return;
+    }
+    var t = targets[selected];
+    if (!t || !t.alive) { say('No target selected.'); return; }
+    if (t.kind === 'dust') { say('Missiles cannot lock onto dust. V vacuums it up.'); return; }
+    var a = aim(t.pos);
+    if (a.err > zoneRad().missile) {
+        say('No lock. Missile needs the target inside ' +
+            ZONES[zoneIdx].missile + ' degrees.');
+        return;
+    }
+    // The missile is a real world object with its own HRTF voice - hearing it
+    // fly away and converge on the target's hum is the demo's best showcase.
+    var m = {
+        target: t,
+        pos: v3(ship.pos.x, ship.pos.y, ship.pos.z),
+        vel: scale(shipForward(), CFG.missileSpeed),
+        age: 0,
+        guided: true, outCone: 0, coast: 0
+    };
+    missiles--;
+    if (ctx) {
+        var g = ctx.createGain(); g.gain.value = 0.22;
+        var p = makePanner(m.pos);
+        g.connect(p); p.connect(masterGain);
+        var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 300;
+        var lg = ctx.createGain(); lg.gain.value = 0.11;
+        var lo = ctx.createOscillator(); lo.frequency.value = 12;
+        lo.connect(lg); lg.connect(g.gain);
+        o.connect(g); o.start(); lo.start();
+        m.nodes = { g: g, p: p, oscs: [o, lo] };
+    }
+    missile = m;
+    if (!playAsset('missile_fire', 0.4)) blip(500, 120, 0.2, 0, 'sawtooth');
+    say('Missile away. ' + missiles + ' left.');
+}
+
+// The missile goes ballistic: straight line, short coast, then it pops.
+function loseGuidance(why) {
+    var m = missile;
+    if (!m || !m.guided) return;
+    m.guided = false; m.coast = 0;
+    blip(300, 220, 0.12, 0, 'sawtooth');
+    say(why);
+}
+
+// Steer a velocity toward a wanted direction with a capped turn rate
+// (pure pursuit, slerp step). Shared by both sides' missiles.
+function steerToward(vel, want, speed, maxTurn) {
+    var cur = norm(vel);
+    var ang = Math.acos(clamp(dot(cur, want), -1, 1));
+    if (ang < 1e-4 || ang <= maxTurn) return scale(want, speed);
+    var s = Math.sin(ang);
+    var w1 = Math.sin(ang - maxTurn) / s, w2 = Math.sin(maxTurn) / s;
+    return scale(norm(add(scale(cur, w1), scale(want, w2))), speed);
+}
+
+function killMissile() {
+    if (!missile) return;
+    if (missile.nodes) {
+        try {
+            missile.nodes.oscs.forEach(function (o) { o.stop(); });
+            missile.nodes.p.disconnect();
+        } catch (e) {}
+    }
+    missile = null;
+}
+
+function stepMissile(dt) {
+    if (!missile) return;
+    var m = missile;
+    m.age += dt;
+    if (!m.target.alive) {           // target died to the laser mid-flight
+        noiseBurst(m.pos, 250, 0.3, 1500);
+        killMissile();
+        return;
+    }
+    // Semi-active homing: the ship's own sensors illuminate the target, so
+    // the pilot has to keep it inside the missile zone for the whole flight.
+    // Shields cut the illumination outright.
+    if (m.guided) {
+        if (shieldsBusy()) {
+            loseGuidance('Missile guidance lost. Shields up.');
+        } else if (aim(m.target.pos).err > zoneRad().missile) {
+            m.outCone += dt;
+            if (m.outCone > CFG.missileGuideGraceS) {
+                loseGuidance('Missile guidance lost. Keep the target in the missile zone.');
+            }
+        } else {
+            m.outCone = 0;
+        }
+    }
+    if (m.guided) {
+        m.vel = steerToward(m.vel, norm(sub(m.target.pos, m.pos)), CFG.missileSpeed, CFG.missileTurn * dt);
+    } else {
+        m.coast += dt;
+        if (m.coast > CFG.missileCoastS) {
+            noiseBurst(m.pos, 300, 0.35, 1200);
+            killMissile();
+            return;
+        }
+    }
+    m.pos = add(m.pos, scale(m.vel, dt));
+    if (m.nodes) movePanner(m.nodes.p, m.pos);
+
+    if (len(sub(m.target.pos, m.pos)) < CFG.missileHit) {
+        var t = m.target;
+        var impactDir = norm(m.vel);
+        killMissile();
+        if (t.kind === 'rock') {
+            if (t.resource) { shatterCore(t); return; }
+            addDebris(t.pos, 200 + Math.floor(Math.random() * 200));
+            if (t.size <= 1) {
+                // Huge and large rocks ABSORB the blast: deep cracking
+                // damage, very little motion. This is the missile's job.
+                pushRock(t, scale(impactDir, 8));
+                t.hp -= Math.ceil(CFG.missileDamage * t.type.hardness);
+                if (t.hp <= 0) { rockEvent(t); }
+                else {
+                    noiseBurst(t.pos, 350, 0.5, 1800);
+                    say(t.name + ' cracks deep under the missile.');
+                }
+            } else {
+                // A smaller rock can't absorb it: the blast hurls it away,
+                // and it will usually leave the cloud entirely. Wasteful.
+                playRockExplosion(t.pos);
+                pushRock(t, scale(impactDir, 150));
+                say(t.name + ' is blasted out of control and hurtles toward the edge of the cloud!');
+            }
+        } else if (!damageTarget(t, CFG.missileDamage)) {
+            // Survived: impact thump at the target plus a hull report — and
+            // now it KNOWS. It breaks away hard and comes back at you.
+            noiseBurst(t.pos, 350, 0.5, 1800);
+            var dirWord = alertTarget(t);
+            say(t.name + ' hit. Hull ' + hullPercent(t) + ' percent. It breaks away hard' +
+                (dirWord ? ', ' + dirWord : '') + '!');
+        }
+    } else if (m.age > CFG.missileLifeS) {
+        noiseBurst(m.pos, 300, 0.35, 1200);
+        killMissile();
+        say('Missile lost.');
+    }
+}
+
+// ---- enemy evasion ----------------------------------------------------------
+// A ship that survives a missile is suddenly aware: it burns hard across the
+// line of sight (sideways, and a little up or down), pitches its engine up
+// while it does, and its next attack comes early. Orbiters get the same
+// burst as an offset plus an extra spin on their orbit. Returns a word for
+// the direction it broke, relative to the pilot, for the spoken report.
+function alertTarget(t) {
+    t.alert = true;
+    var toShip = norm(sub(ship.pos, t.pos));
+    var side = norm(v3(-toShip.z, 0, toShip.x));
+    var s = Math.random() < 0.5 ? -1 : 1;
+    var dir = norm(add(scale(side, s), v3(0, Math.random() * 1.2 - 0.6, 0)));
+    t.vel = add(t.vel || v3(0, 0, 0), scale(dir, CFG.evadeSpeed));
+    if (t.orbit) t.orbit.spin = (t.orbit.spin || 0) + s * 40;
+    // Burner: a rising noise whoosh at the ship, and its engine pitches up.
+    var out = worldOut(t.pos, 1200);
+    if (out) {
+        sfxNoise({ dur: 1.1, vol: 0.6, filter: 'bandpass', freq: 500, q: 1.5, out: out });
+        sfxTone({ type: 'sawtooth', f1: 90, f2: 260, dur: 1.0, vol: 0.25, out: out });
+    }
+    if (t.nodes && t.nodes.src && t.baseRate) {
+        ramp(t.nodes.src.playbackRate, t.baseRate * 1.35, 0.3);
+        setTimeout(function () {
+            if (t.nodes && t.nodes.src) ramp(t.nodes.src.playbackRate, t.baseRate, 1.5);
+        }, 2500);
+    }
+    threatIn = Math.min(threatIn, CFG.enemyAlertAttackS);
+    var r = dot(dir, shipRight()), u = dot(dir, shipUp());
+    var words = [];
+    if (Math.abs(u) > 0.35) words.push(u > 0 ? 'high' : 'low');
+    if (Math.abs(r) > 0.35) words.push(r > 0 ? 'right' : 'left');
+    return words.join(' ');
+}
+
+// Per-frame motion for combat ships: evade bursts decay, orbiters keep
+// orbiting (plus any evade spin) around their offset.
+function stepCombatShips(dt) {
+    targets.forEach(function (t) {
+        if (!t.alive || t.kind) return;
+        var moved = false;
+        if (t.vel && len(t.vel) > 0.5) {
+            var dv = scale(t.vel, dt);
+            if (t.orbit) t.off = add(t.off || v3(0, 0, 0), dv);
+            else t.pos = add(t.pos, dv);
+            t.vel = scale(t.vel, Math.pow(CFG.evadeKeep, dt));
+            moved = true;
+        }
+        if (t.orbit) {
+            var o = t.orbit;
+            if (o.spin) { o.angle += o.spin * Math.PI / 180 * dt; o.spin *= Math.pow(CFG.evadeKeep, dt); if (Math.abs(o.spin) < 0.5) o.spin = 0; }
+            o.angle += o.degPerSec * Math.PI / 180 * dt;
+            t.pos = add(v3(Math.cos(o.angle) * o.radius, o.y, Math.sin(o.angle) * o.radius),
+                        t.off || v3(0, 0, 0));
+            moved = true;
+        }
+        if (moved && t.nodes) movePanner(t.nodes.panner, t.pos);
+    });
+}
+
+// ---- enemy fire -------------------------------------------------------------
+// The other half of combat. One enemy attack runs at a time so the sky stays
+// readable: a ship inside laser range paints the hull first (three rising
+// chirps from ITS position, plus speech) and then burns a five-second beam
+// that bites once a second; a ship farther out launches a missile with its
+// own voice that the pilot hears fly in. Both are answered by the shields.
+function scheduleNextThreat() {
+    threatIn = CFG.enemyAttackMinS + Math.random() * (CFG.enemyAttackMaxS - CFG.enemyAttackMinS);
+}
+
+function updateEnemies(dt) {
+    if (mode !== 'combat') return;
+    stepCombatShips(dt);
+    if (threat) { stepThreat(dt); return; }
+    threatIn -= dt;
+    if (threatIn > 0) return;
+    var cands = aliveTargets().filter(function (t) {
+        return !t.kind && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
+    });
+    if (!cands.length) { threatIn = 2; return; }
+    var alert = cands.filter(function (t) { return t.alert; });
+    var pool = alert.length ? alert : cands;
+    var t = pool[Math.floor(Math.random() * pool.length)];
+    t.alert = false;
+    if (len(sub(t.pos, ship.pos)) <= CFG.enemyLaserRange) startEnemyLaser(t);
+    else startEnemyMissile(t);
+}
+
+function shieldCoach() {
+    if (coachedShield >= 2) return '';
+    coachedShield++;
+    return ' Shields, G.';
+}
+
+function startEnemyLaser(t) {
+    threat = { type: 'laser', t: t, phase: 'lock', clock: 0, ticks: 0, absorbed: 0, nodes: null };
+    var out = worldOut(t.pos, CFG.enemyLaserTelegraphS * 1000);
+    if (out) {
+        for (var i = 0; i < 3; i++) {
+            sfxTone({ type: 'square', f1: 1100 + i * 250, f2: 1500 + i * 250, dur: 0.18,
+                      vol: 0.3, at: i * 0.35, out: out });
+        }
+    }
+    say(t.name + ' locking on!' + shieldCoach());
+}
+
+function enemyBeamVoice(t) {
+    if (!ctx) return null;
+    var g = ctx.createGain(); g.gain.value = 0.0001;
+    var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    var p = makePanner(t.pos);
+    var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 380;
+    var vib = ctx.createOscillator(); vib.frequency.value = 7;
+    var vg = ctx.createGain(); vg.gain.value = 30;
+    vib.connect(vg); vg.connect(o.frequency);
+    o.connect(lp); lp.connect(g); g.connect(p); p.connect(masterGain);
+    o.start(); vib.start();
+    ramp(g.gain, 0.22, 0.08);
+    return { g: g, p: p, oscs: [o, vib] };
+}
+
+function startEnemyMissile(t) {
+    var pos = v3(t.pos.x, t.pos.y, t.pos.z);
+    var th = { type: 'missile', t: t, pos: pos,
+               vel: scale(norm(sub(ship.pos, pos)), CFG.enemyMissileSpeed),
+               age: 0, guided: true, coast: 0, nodes: null };
+    if (ctx) {
+        var g = ctx.createGain(); g.gain.value = 0.26;
+        var p = makePanner(pos);
+        var o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 190;
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+        var lg = ctx.createGain(); lg.gain.value = 0.13;
+        var lo = ctx.createOscillator(); lo.frequency.value = 20;
+        lo.connect(lg); lg.connect(g.gain);
+        o.connect(lp); lp.connect(g); g.connect(p); p.connect(masterGain);
+        o.start(); lo.start();
+        th.nodes = { g: g, p: p, oscs: [o, lo] };
+    }
+    threat = th;
+    var out = worldOut(pos, 1500);
+    if (!playAsset('missile_fire', 0.5, out)) sfxTone({ type: 'sawtooth', f1: 500, f2: 200, dur: 0.4, vol: 0.3, out: out });
+    say(t.name + ' missile launch! Incoming.' + shieldCoach());
+}
+
+function endThreat() {
+    if (!threat) return;
+    var th = threat; threat = null;
+    if (th.nodes) {
+        try {
+            ramp(th.nodes.g.gain, 0.0001, 0.1);
+            setTimeout(function () {
+                try { th.nodes.oscs.forEach(function (o) { o.stop(); }); th.nodes.p.disconnect(); } catch (e) {}
+            }, 200);
+        } catch (e) {}
+    }
+    scheduleNextThreat();
+}
+
+function stepThreat(dt) {
+    var th = threat, t = th.t;
+    if (!t.alive) { endThreat(); return; }
+    if (th.type === 'laser') {
+        th.clock += dt;
+        if (th.phase === 'lock') {
+            if (th.clock >= CFG.enemyLaserTelegraphS) {
+                th.phase = 'beam'; th.clock = 0;
+                th.nodes = enemyBeamVoice(t);
+            }
+            return;
+        }
+        if (th.nodes) movePanner(th.nodes.p, t.pos);
+        if (th.clock < CFG.enemyLaserTickS) return;
+        th.clock -= CFG.enemyLaserTickS; th.ticks++;
+        if (len(sub(t.pos, ship.pos)) > CFG.enemyLaserRange * 1.5) {
+            endThreat();
+            say(t.name + ' loses the beam. Out of range.');
+            return;
+        }
+        if (shield.up) { th.absorbed++; shieldSplash(); }
+        else hullHit(CFG.enemyLaserTickDmg, t.name);
+        if (lost) return;
+        if (th.ticks >= CFG.enemyLaserTicks) {
+            var abs = th.absorbed;
+            endThreat();
+            if (abs > 0) say(abs === CFG.enemyLaserTicks ? 'Shields held.' : 'Shields caught the rest.');
+        }
+        return;
+    }
+    // missile
+    th.age += dt;
+    if (th.guided && shield.up) {
+        th.guided = false; th.coast = 0;
+        blip(300, 220, 0.12, 0, 'sawtooth');
+        say('Incoming missile lost guidance.');
+    }
+    if (th.guided) {
+        th.vel = steerToward(th.vel, norm(sub(ship.pos, th.pos)), CFG.enemyMissileSpeed, CFG.enemyMissileTurn * dt);
+    } else {
+        th.coast += dt;
+        if (th.coast > CFG.missileCoastS) {
+            noiseBurst(th.pos, 300, 0.35, 1200);
+            endThreat();
+            return;
+        }
+    }
+    th.pos = add(th.pos, scale(th.vel, dt));
+    if (th.nodes) movePanner(th.nodes.p, th.pos);
+    if (len(sub(th.pos, ship.pos)) < CFG.missileHit * 1.5) {
+        endThreat();
+        if (shield.up) { shieldSplash(); say('Shields absorb the missile.'); }
+        else hullHit(CFG.enemyMissileDamage, t.name + ' missile');
+    } else if (th.age > CFG.enemyMissileLifeS) {
+        noiseBurst(th.pos, 300, 0.35, 1200);
+        endThreat();
+        say('Incoming missile burned out.');
+    }
+}
+
+// Hull damage: a low thud in the cockpit and the number. Hull is out of 100
+// so the raw value IS the percent.
+function hullHit(dmg, source) {
+    hull = Math.max(0, hull - dmg);
+    sfxNoise({ dur: 0.25, vol: 0.5, filter: 'lowpass', freq: 600 });
+    sfxTone({ type: 'sine', f1: 80, f2: 40, dur: 0.3, vol: 0.4 });
+    if (hull <= 0) { shipDestroyed(source); return; }
+    say('Your hull ' + hull + '.');
+}
+
+function shipDestroyed(source) {
+    lost = true;
+    endThreat();
+    stopBeam(true);
+    killMissile();
+    shieldReset();
+    keysDown = {};
+    thrusterSync(null);
+    sfxNoise({ dur: 1.3, vol: 0.9, filter: 'lowpass', freq: 1500 });
+    sfxTone({ type: 'sine', f1: 120, f2: 30, dur: 1.3, vol: 0.6 });
+    setTimeout(function () {
+        var tail = demo
+            ? 'Delivery run failed at ' + fmtTime(demo.elapsed) + '. Enter restarts the run from the beginning, X for the mission menu.'
+            : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
+        say('Hull breached by ' + source + '. Ship lost. ' + tail);
+    }, 900);
+}
+
+// ---- shields ----------------------------------------------------------------
+// The pilot's answer to enemy fire. Six-axis dogfighting is not this game's
+// thing, so instead of jinking the pilot listens for the warning and gets
+// the shields up. They take a moment to raise (a rising sweep, then a clunk
+// and a steady hum), hold for a limited time before collapsing, and recharge
+// in proportion to how long they were held. While up: weapons offline, and
+// every missile in flight — theirs or yours — loses guidance.
+function shieldsBusy() { return shield.up || shield.raising >= 0; }
+
+function shieldKey() {
+    if (mode !== 'combat') { say('Shields are only needed in combat. Nothing here is shooting.'); return; }
+    if (shield.up) { shieldDrop(false, 'manual'); return; }
+    if (shield.raising >= 0) { say('Shields already coming up.'); return; }
+    if (shield.recharge > 0) {
+        blip(200, 120, 0.1);
+        say('Shields recharging. ' + Math.ceil(shield.recharge) + ' seconds.');
+        return;
+    }
+    shield.raising = 0;
+    stopBeam(true);
+    var secs = CFG.shieldRaiseMs / 1000;
+    sfxTone({ type: 'triangle', f1: 180, f2: 720, dur: secs, vol: 0.14 });
+    sfxNoise({ dur: secs, vol: 0.08, filter: 'bandpass', freq: 900, q: 2 });
+    say('Raising shields.');
+}
+
+function shieldHum(on) {
+    if (!ctx) return;
+    if (on && !shield.nodes) {
+        var g = ctx.createGain(); g.gain.value = 0.0001;
+        var a = ctx.createOscillator(); a.type = 'sine'; a.frequency.value = 110;
+        var b = ctx.createOscillator(); b.type = 'triangle'; b.frequency.value = 220;
+        var bg = ctx.createGain(); bg.gain.value = 0.35;
+        var lfo = ctx.createOscillator(); lfo.frequency.value = 1.5;
+        var lg = ctx.createGain(); lg.gain.value = 0.02;
+        lfo.connect(lg); lg.connect(g.gain);
+        a.connect(g); b.connect(bg); bg.connect(g); g.connect(uiBus);
+        a.start(); b.start(); lfo.start();
+        shield.nodes = { g: g, oscs: [a, b, lfo] };
+        ramp(g.gain, 0.06, 0.15);
+    } else if (!on && shield.nodes) {
+        var n = shield.nodes; shield.nodes = null;
+        ramp(n.g.gain, 0.0001, 0.2);
+        setTimeout(function () { try { n.oscs.forEach(function (o) { o.stop(); }); n.g.disconnect(); } catch (e) {} }, 300);
+    }
+}
+
+function shieldSplash() {
+    sfxNoise({ dur: 0.3, vol: 0.25, filter: 'highpass', freq: 2500 });
+    sfxTone({ type: 'triangle', f1: 1400, f2: 900, dur: 0.25, vol: 0.15 });
+}
+
+function updateShield(dt) {
+    if (shield.raising >= 0) {
+        shield.raising += dt;
+        if (shield.raising * 1000 >= CFG.shieldRaiseMs) {
+            shield.raising = -1; shield.up = true; shield.held = 0; shield.warned = false;
+            sfxNoise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 400 });   // clunk
+            shieldHum(true);
+            say('Shields up.');
+        }
+    } else if (shield.up) {
+        shield.held += dt;
+        if (!shield.warned && shield.held >= CFG.shieldHoldS - 3) {
+            shield.warned = true;
+            blip(520, 70, 0.1); setTimeout(function () { blip(520, 70, 0.1); }, 140);
+        }
+        if (shield.held >= CFG.shieldHoldS) shieldDrop(false, 'collapse');
+    } else if (shield.recharge > 0) {
+        shield.recharge -= dt;
+        if (shield.recharge <= 0) {
+            shield.recharge = 0;
+            blip(660, 80, 0.12); setTimeout(function () { blip(990, 110, 0.12); }, 90);
+            say('Shields ready.');
+        }
+    }
+}
+
+function shieldDrop(silent, why) {
+    if (!shield.up) { shield.raising = -1; return; }
+    shield.up = false;
+    shieldHum(false);
+    shield.recharge = Math.max(1, CFG.shieldRechargeS * shield.held / CFG.shieldHoldS);
+    if (silent) return;
+    if (why === 'collapse') {
+        sfxTone({ type: 'sawtooth', f1: 600, f2: 90, dur: 0.7, vol: 0.18 });
+        say('Shields collapsed! Recharging ' + Math.ceil(shield.recharge) + ' seconds.');
+    } else {
+        sfxTone({ type: 'triangle', f1: 600, f2: 200, dur: 0.3, vol: 0.12 });
+        say('Shields down. Weapons hot.');
+    }
+}
+
+// Full reset between missions: no hum, no recharge debt.
+function shieldReset() {
+    shield.up = false; shield.raising = -1; shield.held = 0; shield.recharge = 0; shield.warned = false;
+    shieldHum(false);
+}
+
+// ---- particulate debris -----------------------------------------------------
+// Dust knocked loose by mining. It has essentially no momentum, so a field
+// hangs in space right where the rock was cracked while the rock itself is
+// shoved away — the consolation prize a pilot can always come back for.
+// Each field carries a faint high shimmer through its own HRTF panner, so
+// drifting dust is findable by ear; louder shimmer means a richer field.
+var debris = [];   // { kind:'dust', name, pos, amount, alive, nodes }
+var dustSeq = 0;
+
+function addDebris(pos, amount) {
+    amount = Math.round(amount * CFG.debrisScale);
+    if (mode !== 'mining' || amount <= 0) return;
+    var f = null, best = CFG.debrisMergeDist;
+    debris.forEach(function (d) {
+        var dd = len(sub(d.pos, pos));
+        if (dd < best) { best = dd; f = d; }
+    });
+    if (f) { f.amount += amount; updateDustVolume(f); return; }
+    // A dust field is itself a target: it joins the T-cycle list so the
+    // pilot can select it, center it with the tick, and fly to it.
+    f = { kind: 'dust', name: 'Dust ' + (++dustSeq), alive: true,
+          pos: v3(pos.x, pos.y, pos.z), amount: amount, nodes: null };
+    buildDustVoice(f);
+    debris.push(f);
+    targets.push(f);
+}
+
+function buildDustVoice(f) {
+    if (!ctx) return;
+    var g = ctx.createGain(); g.gain.value = 0.0001;
+    // Not a steady hiss: the band center wanders slowly and the level
+    // sparkles, so a field sounds like drifting, glittering motes — and
+    // each field rolls its own base color so no two sound identical.
+    var base = 2100 + Math.random() * 900;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = base; bp.Q.value = 3;
+    var wander = ctx.createOscillator();
+    wander.frequency.value = 0.15 + Math.random() * 0.25;
+    var wg = ctx.createGain(); wg.gain.value = 650;
+    wander.connect(wg); wg.connect(bp.frequency);
+    var sparkle = ctx.createOscillator();
+    sparkle.frequency.value = 1.5 + Math.random() * 2;
+    var sg = ctx.createGain(); sg.gain.value = 0.012;
+    sparkle.connect(sg); sg.connect(g.gain);
+    var p = makePanner(f.pos);
+    var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    src.connect(bp); bp.connect(g); g.connect(p); p.connect(masterGain);
+    wander.start(); sparkle.start();
+    src.start(0, Math.random());
+    f.nodes = { gain: g, panner: p, src: src, lfos: [wander, sparkle] };
+    updateDustVolume(f);
+}
+
+function updateDustVolume(f) {
+    if (!f.nodes) return;
+    ramp(f.nodes.gain.gain, clamp(0.015 + f.amount / 8000, 0.015, 0.07), 0.3);
+}
+
+function removeDust(f) {
+    f.alive = false;
+    var i = debris.indexOf(f);
+    if (i >= 0) debris.splice(i, 1);
+    var j = targets.indexOf(f);
+    if (j >= 0) {
+        // Keep the selection pointing at the same object across the splice.
+        var prevSel = targets[selected];
+        targets.splice(j, 1);
+        if (prevSel === f || !prevSel) selectNearest();
+        else selected = targets.indexOf(prevSel);
+    }
+    if (f.nodes) {
+        var n = f.nodes; f.nodes = null;
+        ramp(n.gain.gain, 0.0001, 0.3);
+        setTimeout(function () {
+            try {
+                n.src.stop();
+                (n.lfos || []).forEach(function (o) { o.stop(); });
+                n.panner.disconnect();
+            } catch (e) {}
+        }, 500);
+    }
+}
+
+function clearDebris() { debris.slice().forEach(removeDust); debris = []; }
+
+function debrisTotal() {
+    return debris.reduce(function (s, d) { return s + d.amount; }, 0);
+}
+
+// ---- rock lifecycle ---------------------------------------------------------
+function rockPush(t) { return t.resource ? 2.2 : ROCK_SIZES[t.size].push; }
+function pushRock(t, dv) { t.vel = add(t.vel, dv); }
+
+// Random unit-ish vector for blast impulses.
+function randDir() {
+    var a = Math.random() * Math.PI * 2, e = Math.random() * 1.6 - 0.8;
+    return v3(Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e));
+}
+
+// A stage gave way. The player never knows which outcome is coming: the rock
+// splits in two (each child rolls its own hidden hp and may differ in stage),
+// chips down a size (same rock, higher pitch, fresh hidden hp), or — past
+// 'small' — collapses into a glowing resource core for the extractor.
+function rockEvent(t) {
+    stopBeam(true);
+    playRockExplosion(t.pos);
+    // The blast sheds a mist of particulates that hangs where it happened —
+    // bigger rocks throw bigger mists. (Computed before the size changes.)
+    var mist = Math.round((CFG.debrisEventBase + Math.random() * 200) *
+                          (1 + (ROCK_SIZES.length - 1 - t.size) * 0.5));
+    addDebris(t.pos, mist);
+    if (t.size >= ROCK_SIZES.length - 1) {
+        // Small rock collapses into the mineable core.
+        t.resource = true;
+        t.oreLeft = t.type.ore + Math.floor(Math.random() * 600) - 300;
+        pushRock(t, scale(randDir(), 6));
+        if (t.nodes && t.nodes.src) ramp(t.nodes.src.playbackRate, 1.6, 0.6);
+        say(t.name + ' collapses into a glowing core. Get close and press E to extract.');
+        return;
+    }
+    if (Math.random() < t.type.splitChance) {
+        // Break apart: two smaller children pushed gently opposite ways —
+        // just enough drift to separate them, not enough to flee the cloud.
+        t.alive = false;
+        stopVoice(t);
+        var d = randDir();
+        var childSize = t.size + 1;
+        // Drift scales with the children's flightiness: big children barely
+        // separate, small ones tumble noticeably — pilot's choice to chase
+        // the rock or stay and vacuum the dust it left behind.
+        var kick = (9 + Math.random() * 7) * ROCK_SIZES[childSize].push;
+        var a = spawnRock(t.type, childSize, add(t.pos, scale(d, 8)),  add(t.vel, scale(d, kick)));
+        var b = spawnRock(t.type, childSize, sub(t.pos, scale(d, 8)),  sub(t.vel, scale(d, kick)));
+        targets.push(a); targets.push(b);
+        // Auto-track the nearer child so the pilot keeps working the seam.
+        var child = len(sub(a.pos, ship.pos)) <= len(sub(b.pos, ship.pos)) ? a : b;
+        selected = targets.indexOf(child);
+        locked = false;
+        stopSolidTone();
+        say(t.name + ' breaks apart! Auto targeting child: ' +
+            ROCK_SIZES[childSize].label + ' ' + t.type.name + ' asteroid, ' +
+            child.name + ', distance ' + round10(len(sub(child.pos, ship.pos))) + '.');
+        return;
+    }
+    // Chip down: same rock, one size smaller, audibly higher voice.
+    t.size += 1;
+    t.hp = rollHp(t.size);
+    pushRock(t, scale(randDir(), (5 + Math.random() * 5) * ROCK_SIZES[t.size].push));
+    if (t.nodes && t.nodes.src) {
+        ramp(t.nodes.src.playbackRate, ROCK_SIZES[t.size].rate, 0.6);
+    }
+    say(t.name + ' is chipped down to ' + ROCK_SIZES[t.size].label + '.');
+    // Chip and core-collapse keep the same rock, so the selection stays put.
+}
+
+// Lasering a finished core destroys the payload — use the extractor instead.
+// A quarter of the ore survives as a dust mist, so it stings without ruining
+// the run entirely.
+function shatterCore(t) {
+    playRockExplosion(t.pos);
+    addDebris(t.pos, Math.round(t.oreLeft * 0.25));
+    t.alive = false;
+    stopVoice(t);
+    say(t.name + ' shatters under the laser. Most of the ore is lost, but a dust mist remains.');
+    if (targets[selected] === t) selectNearest();
+    checkMiningEnd();
+}
+
+// Drifted past the cloud edge: gone for good.
+function loseRock(t) {
+    t.alive = false;
+    if (t.nodes) ramp(t.nodes.gain.gain, 0.0001, 1.2);
+    setTimeout(function () { stopVoice(t); }, 1400);
+    blip(300, 400, 0.1, 0, 'sine');
+    say(t.name + ' drifts out of the cloud. Lost.');
+    if (targets[selected] === t) selectNearest();
+    checkMiningEnd();
+}
+
+function checkMiningEnd() {
+    if (mode !== 'mining' || won) return;
+    if (aliveRocks().length > 0) return;
+    if (debrisTotal() > 0) {
+        // The rocks are done but the harvest isn't: sweep the dust to finish.
+        setTimeout(function () {
+            say('All rocks worked. Dust still shimmers in the cloud — fly to it and vacuum it up with V.');
+        }, 600);
+        return;
+    }
+    won = true;
+    if (ore > 0) setTimeout(winArpeggio, 400);
+    setTimeout(function () {
+        say('Cloud cleared. Ore hold ' + ore +
+            '. Press Enter to mine a fresh cloud, or X ' +
+            (sectorHome ? 'to return to the sector.' : 'for the mission menu.'));
+    }, 700);
+}
+
+// E — the extractor. Only bites on a rock that has been mined to its core.
+function startExtract() {
+    if (mode !== 'mining') { say('The extractor is a mining tool.'); return; }
+    if (beam) { blip(200, 60, 0.08); return; }
+    var t = targets[selected];
+    if (!t || !t.alive || !t.resource) {
+        say('The extractor only works on a rock mined down to its glowing core.');
+        return;
+    }
+    var a = aim(t.pos);
+    if (a.dist > CFG.vacRange) {
+        say('Too far. Fly within ' + CFG.vacRange + ' of the core. Distance ' + round10(a.dist) + '.');
+        return;
+    }
+    if (a.err > CFG.vacArc) { say('Center the core first.'); return; }
+    startBeam('vac');
+}
+
+// V — the space vacuum. Filters loose particulates near the ship; no aim
+// needed. The consolation harvest when a rock got away.
+function startDustVac() {
+    if (mode !== 'mining') { say('The vacuum is a mining tool.'); return; }
+    if (beam) { blip(200, 60, 0.08); return; }
+    var any = debris.some(function (d) { return len(sub(d.pos, ship.pos)) < CFG.dustVacRange; });
+    if (!any) {
+        say(debrisTotal() > 0
+            ? 'No dust within range. Fly toward the shimmer and try again.'
+            : 'No dust in the cloud. Crack a rock loose first.');
+        return;
+    }
+    startBeam('dust');
+}
+
+// ============================== 8. RADAR ====================================
+// Plays each surviving target's own signature at its true 3D position,
+// nearest first, by briefly boosting its continuous voice +6 dB. Doubles as
+// an HRTF localization drill.
+function radarPing() {
+    if (radarBusy) return;
+    var alive = aliveTargets().slice().sort(function (x, y) {
+        return len(sub(x.pos, ship.pos)) - len(sub(y.pos, ship.pos));
+    });
+    if (!alive.length) { say('No targets remain.'); return; }
+    radarBusy = true;
+    alive.forEach(function (t, i) {
+        setTimeout(function () {
+            if (t.alive && t.nodes && ctx) {
+                // Each voice returns to ITS OWN resting level — a dust field's
+                // quiet shimmer must not stay stuck at rock volume.
+                var back = t.kind === 'dust'
+                    ? clamp(0.015 + t.amount / 8000, 0.015, 0.07)
+                    : t.kind === 'poi' ? CFG.targetGain * CFG.beaconGainScale
+                    : CFG.targetGain;
+                var peak = t.kind === 'dust' ? back * 4 : back * CFG.radarBoost;
+                var g = t.nodes.gain.gain, t0 = ctx.currentTime;
+                g.cancelScheduledValues(t0);
+                g.setValueAtTime(peak, t0);
+                g.setValueAtTime(peak, t0 + CFG.radarBurstMs / 1000);
+                g.linearRampToValueAtTime(back, t0 + CFG.radarBurstMs / 1000 + 0.1);
+            }
+        }, i * CFG.radarGapMs);
+    });
+    setTimeout(function () {
+        radarBusy = false;
+        if (mode === 'mining') {
+            var r = aliveRocks().length, d = debris.length;
+            say(r + (r === 1 ? ' rock' : ' rocks') +
+                (d ? ' and ' + d + (d === 1 ? ' dust field.' : ' dust fields.') : ' remain.'));
+        } else if (mode === 'sector') {
+            say(alive.length + ' points of interest.');
+        } else {
+            say(alive.length + (alive.length === 1 ? ' target remains.' : ' targets remain.'));
+        }
+    }, alive.length * CFG.radarGapMs + 200);
+}
+
+function statusReport() {
+    var speed = Math.round(len(ship.vel));
+    var line = 'Speed ' + speed + '. ';
+    var t = targets[selected];
+    if (t && t.alive) line += bearingText(t) + ' ';
+    if (mode === 'mining') {
+        line += 'Ore hold ' + ore + '. ';
+        if (debris.length) {
+            line += debris.length + (debris.length === 1 ? ' dust field' : ' dust fields') + ' adrift. ';
+        }
+    }
+    if (mode === 'sector') line += 'Ore hold ' + ore + '. ';
+    line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
+          : mode === 'sector' ? aliveTargets().length + ' points of interest. '
+          : aliveTargets().length + ' targets remain. ';
+    if (mode !== 'mining') {
+        line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ');
+    }
+    if (mode === 'combat') {
+        line += shield.up ? 'Shields up. '
+              : shield.raising >= 0 ? 'Shields coming up. '
+              : shield.recharge > 0 ? 'Shields recharging, ' + Math.ceil(shield.recharge) + ' seconds. '
+              : 'Shields down. ';
+        if (laserHot()) line += 'Laser overheated. ';
+    }
+    if (demo) line += 'Clock ' + fmtTime(demo.elapsed) + '. ' + demoObjective();
+    say(line);
+}
+
+// ---- delivery run --------------------------------------------------------------
+// The shareable, timed demo: clear the Contested Zone, mine the quota, deliver
+// it to Station Meridian. The clock counts only while the sim is live (pauses,
+// help, and the map stop it), and hyperwarp time counts.
+function startDemo() {
+    menuOpen = false;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+    sectorHome = null;
+    demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
+    newGame('sector');
+    say(demoIntro());
+}
+
+function demoIntro() {
+    return 'Delivery run. The clock is running. First clear the Contested Zone, then mine ' +
+           CFG.demoOreGoal + ' ore at Asteroid Field Kappa and deliver it to Station Meridian. ' +
+           'The station also repairs and rearms you. You carry ' + CFG.missileMax + ' missiles. ' +
+           'Q opens the map, H hyperwarps to your nav target, C calls a point within ' +
+           CFG.poiInteract + ', and I reads the clock. F1 for help.';
+}
+
+function fmtTime(s) {
+    var m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return (m ? m + (m === 1 ? ' minute ' : ' minutes ') : '') + sec + (sec === 1 ? ' second' : ' seconds');
+}
+
+function demoObjective() {
+    if (!demo) return '';
+    if (!demo.combatCleared) return 'Objective: clear the Contested Zone.';
+    if (demo.delivered) return 'Delivery complete.';
+    if (ore < CFG.demoOreGoal) return 'Objective: mine ore, ' + ore + ' of ' + CFG.demoOreGoal + '.';
+    return 'Objective: deliver ' + ore + ' ore to Station Meridian.';
+}
+
+// Called on every ore gain: once the quota is met, say so (once).
+function oreGained() {
+    if (!demo || demo.quotaSaid || ore < CFG.demoOreGoal) return;
+    demo.quotaSaid = true;
+    setTimeout(function () {
+        sfxArpeggio([659, 784, 1047], 0.12, 0.14, { type: 'triangle' });
+        say('Ore hold ' + ore + '. Delivery quota met! Take it to Station Meridian. Q for the map.');
+    }, 500);
+}
+
+// ============================== 8B. SECTOR ==================================
+// The quadrant map (Q): a browsable overlay in the help-screen style. The
+// sim freezes and the world ducks while it is open; Enter sets the nav
+// target and hands control back with the tick already tracking it.
+// Map access rules: always in open sector space; from a sector-entered
+// mining encounter any time (miners leave when they please); from a
+// sector-entered combat encounter only once the zone is cleared, so the map
+// is never an escape hatch mid-fight. Training drills have no sector to
+// return to, so the map is offline there.
+function openMap() {
+    if (mode !== 'sector') {
+        if (!sectorHome) {
+            say('The quadrant map is offline on training drills. X returns to the mission menu.');
+            return;
+        }
+        if (mode === 'combat' && !won) {   // (a lost ship is not a cleared zone either)
+            say('The quadrant map is jammed by hostile fire. Clear the zone first.');
+            return;
+        }
+    }
+    if (beam) stopBeam(true);
+    map.open = true;
+    map.idx = -1;
+    map.items = mode === 'sector' ? aliveTargets() : SECTOR_POIS;
+    keysDown = {};
+    thrusterSync(null);
+    updateStabilizers(0);
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    say('Quadrant map. ' + map.items.length + ' points of interest. Up and down browse, ' +
+        (mode === 'sector' ? 'Enter sets the nav target' : 'Enter departs for that point') +
+        ', Escape closes.');
+}
+
+function closeMap(spoken) {
+    map.open = false;
+    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (spoken) say(spoken);
+}
+
+// Inside an encounter the map can't give live bearings (the encounter is its
+// own little space), so lines read as chart entries: sector-frame distance
+// from the point you are at.
+function mapLineText(item) {
+    if (mode === 'sector') return bearingText(item);
+    if (sectorHome && item.name === sectorHome.poiName) {
+        return item.name + ', ' + item.desc + '. Your current location.';
+    }
+    var d = sectorHome ? round10(len(sub(item.pos, sectorHome.pos))) : 0;
+    return item.name + ', ' + item.desc + '. Distance ' + d + ' from here.';
+}
+
+function mapKey(lname) {
+    if (lname === 'escape' || lname === 'q') { closeMap('Map closed.'); return; }
+    if (lname === 'arrowdown') {
+        if (map.idx < map.items.length - 1) { map.idx++; say(mapLineText(map.items[map.idx])); }
+        else { blip(220, 80, 0.1); say('End of the list.'); }
+    } else if (lname === 'arrowup') {
+        if (map.idx > 0) { map.idx--; say(mapLineText(map.items[map.idx])); }
+        else { map.idx = 0; blip(220, 80, 0.1); say('Top of the list.'); }
+    } else if (lname === 'enter') {
+        if (map.idx < 0) { say('Browse to a point first, with the up and down arrows.'); return; }
+        var item = map.items[map.idx];
+        if (mode === 'sector') {
+            selected = targets.indexOf(item);
+            locked = false;
+            stopSolidTone();
+            closeMap('Nav target set: ' + item.name + '. H hyperwarps to it, or fly it by the tick.');
+        } else {
+            // Depart the encounter for the chosen point.
+            var home = sectorHome;
+            closeMap();
+            if (item.name === home.poiName) {
+                returnToSector();              // just step back outside
+            } else {
+                returnToSector(true);          // silent: the warp narrates
+                var idx = -1;
+                targets.forEach(function (t, i) { if (t.name === item.name) idx = i; });
+                if (idx >= 0) { selected = idx; locked = false; stopSolidTone(); }
+                startWarp();
+            }
+        }
+    } else {
+        say('Up and down browse the map, Enter ' +
+            (mode === 'sector' ? 'sets the nav target' : 'departs') + ', Escape closes.');
+    }
+}
+
+// H — hyperwarp to the nav target. Spool up, jump, and drop out just beyond
+// calling range so the last leg is always flown by ear.
+function startWarp() {
+    if (mode !== 'sector') { say('Hyperwarp needs open sector space.'); return; }
+    if (warping) return;
+    var t = targets[selected];
+    if (!t) { say('No nav target. Q opens the quadrant map.'); return; }
+    var d = len(sub(t.pos, ship.pos));
+    if (d < CFG.warpMinDist) {
+        say('Too close for hyperwarp. Just fly it. Distance ' + round10(d) + '.');
+        return;
+    }
+    warping = true;
+    keysDown = {};
+    thrusterSync(null);
+    updateStabilizers(0);
+    say('Hyperwarp charging.');
+    sfxTone({ type: 'sawtooth', f1: 120, f2: 1400, dur: CFG.warpChargeMs / 1000, vol: 0.15 });
+    setTimeout(function () {
+        if (!running || mode !== 'sector') { warping = false; return; }
+        sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
+        sfxTone({ type: 'sine', f1: 1400, f2: 90, dur: 0.9, vol: 0.2 });
+        var dir = norm(sub(t.pos, ship.pos));
+        ship.pos = sub(t.pos, scale(dir, CFG.warpDropout));
+        ship.vel = v3(0, 0, 0);
+        ship.yaw = Math.atan2(dir.x, -dir.z);
+        ship.pitch = Math.asin(clamp(dir.y, -1, 1));
+        warping = false;
+        setTimeout(function () {
+            say('Hyperwarp complete. ' + t.name + ' dead ahead, distance ' +
+                round10(len(sub(t.pos, ship.pos))) + '. C calls it once you are within ' +
+                CFG.poiInteract + '.');
+        }, 350);
+    }, CFG.warpChargeMs);
+}
+
+// C — call the selected point of interest (within range).
+function snapshotSector(atPoi) {
+    return { pos: v3(ship.pos.x, ship.pos.y, ship.pos.z),
+             yaw: ship.yaw, pitch: ship.pitch, poiName: atPoi.name };
+}
+
+function callPoi() {
+    var t = targets[selected];
+    if (!t) { say('No point of interest selected. T cycles them.'); return; }
+    var d = len(sub(t.pos, ship.pos));
+    if (d > CFG.poiInteract) {
+        say('Too far to call ' + t.name + '. Get within ' + CFG.poiInteract +
+            '. Distance ' + round10(d) + '.');
+        return;
+    }
+    blip(880, 90, 0.12); setTimeout(function () { blip(1100, 90, 0.12); }, 130);
+    if (t.poiType === 'combat') {
+        sectorHome = snapshotSector(t);
+        newGame('combat');
+        say('Contested Zone control: hostiles inbound, weapons free. ' + combatIntro());
+    } else if (t.poiType === 'mining') {
+        if (demo && !demo.combatCleared) {
+            say('Field Kappa control: mining rights are suspended while hostiles hold the Contested Zone. Clear it first, pilot.');
+            return;
+        }
+        sectorHome = snapshotSector(t);
+        newGame('mining');
+        say('Field Kappa control: mining rights confirmed. ' + miningIntro());
+    } else if (t.poiType === 'station') {
+        // Docking: always a repair and a rearm; in the delivery run, the
+        // handover once the quota is aboard.
+        var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax;
+        hull = CFG.shipHull; missiles = CFG.missileMax;
+        var service = (repaired ? 'Hull repaired. ' : '') +
+                      (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '');
+        if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
+            var delivered = ore;
+            demo.delivered = true;
+            ore = 0;
+            setTimeout(winArpeggio, 300);
+            say('Station Meridian control: cargo received, ' + delivered + ' ore. Delivery complete! ' +
+                'Run time ' + fmtTime(demo.elapsed) + '. ' + service +
+                'X for the mission menu, or keep flying the sector.');
+        } else {
+            say('Station Meridian control: docking clearance granted. ' + service +
+                (demo && !demo.delivered
+                    ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
+                    : 'Your cargo hold reads ' + ore + ' ore. Trading opens soon, pilot.'));
+        }
+    } else {
+        say('Planet Auren orbital relay: atmospheric operations are not yet available. ' +
+            'The view is spectacular, though.');
+    }
+}
+
+// X from an encounter entered via the sector: back to open space at the POI.
+function returnToSector(silent) {
+    var home = sectorHome;
+    sectorHome = null;
+    newGame('sector');
+    ship.pos = home.pos; ship.yaw = home.yaw; ship.pitch = home.pitch;
+    var idx = -1;
+    targets.forEach(function (t, i) { if (t.name === home.poiName) idx = i; });
+    if (idx >= 0) { selected = idx; locked = false; stopSolidTone(); }
+    if (!silent) {
+        say('Back in open space near ' + home.poiName + '. Ore hold ' + ore + '. Q for the map.');
+    }
+}
+
+// ============================== 9. INPUT ====================================
+// F5, F6, F11, and control R, F, W, T belong to the browser, so the pilot is
+// never trapped in the page. The keyboard explorer is the one exception: while
+// on, it promises every key is described and nothing happens.
+var BROWSER_KEYS = { F5: true, F6: true, F11: true };
+
+function isBrowserKey(e) {
+    if (BROWSER_KEYS[e.key]) return true;
+    if (e.ctrlKey) {
+        var k = String(e.key).toLowerCase();
+        if (k === 'r' || k === 'f' || k === 'w' || k === 't') return true;
+    }
+    return false;
+}
+
+var HELD = { arrowleft: 1, arrowright: 1, arrowup: 1, arrowdown: 1, w: 1, s: 1 };
+
+function onKeyDown(e) {
+    if (!running) return;
+    if (isBrowserKey(e) && !describeMode) return;
+    // Single characters lower-cased so Caps Lock, the NVDA laptop modifier,
+    // never silences the game.
+    var name = keyName(e);
+    if (typeof name === 'string' && name.length === 1) name = name.toLowerCase();
+    var lname = String(name).toLowerCase();
+    e.preventDefault();
+
+    if (describeMode) {
+        if (e.repeat) return;
+        if (lname === 'f12' || lname === 'escape') {
+            describeMode = false;
+            say('Explore mode off.');
+        } else {
+            say(prettyKey(name) + '. ' +
+                (KEY_DESCRIPTIONS[lname === ' ' ? ' ' : lname] || 'Does nothing here.'));
+        }
+        return;
+    }
+
+    // The help pop-up captures everything while open (arrows read, H jumps
+    // headings, Escape closes) so game keys can't fire underneath it.
+    if (help.open) { helpKey(lname, !!e.shiftKey); return; }
+
+    // The quadrant map captures everything the same way.
+    if (map.open) { if (lname === 'f1') { closeMap(); openHelp(); } else mapKey(lname); return; }
+
+    // Mid-jump, the ship answers to nobody.
+    if (warping) { if (!e.repeat) say('Hyperwarp in progress.'); return; }
+
+    // The mission menu: pick a mode, nothing else fires.
+    if (menuOpen) {
+        if (e.repeat) return;
+        if (lname === 'd') {
+            startDemo();
+        } else if (lname === 's') {
+            menuOpen = false;
+            ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+            newGame('sector');
+            say(sectorIntro());
+        } else if (lname === 'c') {
+            menuOpen = false;
+            ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+            newGame('combat');
+            say(combatIntro());
+        } else if (lname === 'm') {
+            if (!assetsReady()) {
+                say('The asteroid sounds are still loading. Try again in a moment.');
+            } else {
+                menuOpen = false;
+                ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+                newGame('mining');
+                say(miningIntro());
+            }
+        } else if (lname === 'f1') {
+            openHelp();
+        } else if (lname === 'f12') {
+            describeMode = true;
+            say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
+        } else {
+            say(MENU_LINE);
+        }
+        return;
+    }
+
+    if (HELD[lname]) { keysDown[lname] = true; return; }
+    if (e.repeat) return;
+
+    switch (lname) {
+        case ' ':
+            if (mode === 'sector') say('Weapons are cold in open space. C calls a point of interest.');
+            else if (!paused && !over()) startBeam();
+            break;
+        case 'f':
+            if (mode === 'sector') say('Weapons are cold in open space. C calls a point of interest.');
+            else if (!paused && !over()) fireMissile();
+            break;
+        case 'g':      if (!paused && !over()) shieldKey(); break;
+        case 't':      if (!paused && !over()) cycleTarget(); break;
+        case 'r':      if (!paused && !over()) radarPing(); break;
+        case 'e':      if (!paused && !over()) startExtract(); break;
+        case 'v':      if (!paused && !over()) startDustVac(); break;
+        case 'q':      if (!paused) openMap(); break;
+        case 'h':      if (!paused) startWarp(); break;
+        case 'c':
+            if (mode === 'sector') { if (!paused) callPoi(); }
+            else say('C calls points of interest in open sector space.');
+            break;
+        case 'x':
+            if (sectorHome && mode !== 'sector') returnToSector();
+            else exitToMenu();
+            break;
+        case 'i':      statusReport(); break;
+        case 'tab': {
+            var sel = targets[selected];
+            if (sel && sel.alive) say(bearingText(sel));
+            else say(mode === 'mining' ? 'No rock selected. T cycles targets.'
+                                       : 'No target selected. T cycles targets.');
+            break;
+        }
+        case 'z':
+            zoneIdx = (zoneIdx + 1) % ZONES.length;
+            blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
+            say('Target zone ' + ZONES[zoneIdx].name.toLowerCase() +
+                '. Laser hits inside ' + ZONES[zoneIdx].laser +
+                ' degrees, missile needs ' + ZONES[zoneIdx].missile + '.');
+            break;
+        case 'f1':     openHelp(); break;
+        case 'f12':
+            describeMode = true;
+            say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
+            break;
+        case 'escape':
+            paused = !paused;
+            if (ctx && masterGain) ramp(masterGain.gain, paused ? 0.0001 : CFG.masterGain, 0.2);
+            keysDown = {};
+            thrusterSync(null);
+            stopBeam(true);
+            say(paused ? 'Paused. Escape resumes.' : 'Resumed.');
+            break;
+        case 'enter':
+            if (lost && demo) {
+                // A lost ship fails the delivery run: the whole thing restarts.
+                startDemo();
+            } else if (over()) {
+                // A fresh drill run from the menu starts a fresh hold and a
+                // full magazine; a replay inside a sector run keeps the
+                // cargo and the missile count. A retry after a loss always
+                // comes with a repaired hull (there is no other way back).
+                if (mode === 'mining' && !sectorHome) ore = 0;
+                if (!sectorHome) missiles = CFG.missileMax;
+                if (lost || !sectorHome) hull = CFG.shipHull;
+                newGame();
+                say(mode === 'mining' ? miningIntro() : combatIntro());
+            }
+            else say('Enter does nothing here. F1 for help.');
+            break;
+        default:
+            // Silence is a bug: a key nothing wanted still gets an answer.
+            say(prettyKey(name) + ' does nothing here. F1 for help.');
+    }
+}
+
+// Some injected or virtual keyboards (and a few switch-access devices) send
+// an empty e.key and only fill e.code, so fall back to decoding the code.
+function keyName(e) {
+    var name = e.key;
+    if (name && name !== 'Unidentified') return name;
+    var c = e.code || '';
+    if (c === 'Space') return ' ';
+    if (/^Key[A-Z]$/.test(c)) return c.slice(3).toLowerCase();
+    return c;
+}
+
+function onKeyUp(e) {
+    var name = keyName(e);
+    if (typeof name === 'string' && name.length === 1) name = name.toLowerCase();
+    delete keysDown[String(name).toLowerCase()];
+}
+
+// ============================== 10. LOOP ====================================
+var lastFrame = 0;
+
+function frame(now) {
+    requestAnimationFrame(frame);
+    var dt = Math.min((now - lastFrame) / 1000, 0.1);
+    lastFrame = now;
+    // The delivery clock runs whenever the sim is live, hyperwarp included.
+    if (demo && !demo.delivered && running && !paused && !help.open && !map.open &&
+        !menuOpen && !over() && dt > 0) demo.elapsed += dt;
+    if (!running || paused || over() || help.open || map.open || menuOpen || warping || dt <= 0) {
+        thrusterSync(null); updateStabilizers(0); return;
+    }
+
+    // Attitude from held arrows.
+    if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate * dt;
+    if (keysDown.arrowright) ship.yaw   += CFG.turnRate * dt;
+    if (keysDown.arrowup)    ship.pitch += CFG.turnRate * dt;
+    if (keysDown.arrowdown)  ship.pitch -= CFG.turnRate * dt;
+    ship.pitch = clamp(ship.pitch, -CFG.pitchLimit, CFG.pitchLimit);
+
+    // Thrust, brake, damping, cap — with each maneuver's own thruster sound.
+    if (keysDown.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust * dt));
+    thrusterSync(keysDown);
+    if (keysDown.s) ship.vel = scale(ship.vel, Math.pow(CFG.brakeKeep, dt));
+    ship.vel = scale(ship.vel, Math.pow(CFG.dampKeep, dt));
+    var spd = len(ship.vel);
+    if (spd > CFG.maxSpeed) ship.vel = scale(ship.vel, CFG.maxSpeed / spd);
+    ship.pos = add(ship.pos, scale(ship.vel, dt));
+    // Stabilizers pulse only while coasting with real momentum to shed.
+    updateStabilizers(spd > 3 && !keysDown.w && !keysDown.s ? spd : 0);
+
+    if (mode === 'mining') {
+        // Rock physics: drift with momentum, bleed energy to friction so a
+        // blasted rock calms down and becomes laserable again, and vanish
+        // if pushed past the edge of the asteroid cloud.
+        targets.forEach(function (t) {
+            if (!t.alive || t.kind !== 'rock') return;   // dust hangs still
+            t.pos = add(t.pos, scale(t.vel, dt));
+            t.vel = scale(t.vel, Math.pow(CFG.rockFriction, dt));
+            if (t.nodes) movePanner(t.nodes.panner, t.pos);
+            if (len(t.pos) > CFG.cloudRadius) loseRock(t);
+        });
+    }
+    // (Combat ship motion — the orbiting Cruiser and evade bursts — lives in
+    // updateEnemies, along with enemy fire.)
+
+    updateListener();
+    updateTargeting();
+    stepMissile(dt);
+    updateShield(dt);
+    updateEnemies(dt);
+    updateStatusLine();
+}
+
+// Visual sanity line for a sighted co-tester. aria-hidden, never read.
+var lastStatusAt = 0;
+function updateStatusLine() {
+    var now = Date.now();
+    if (now - lastStatusAt < 250 || !statusEl) return;
+    lastStatusAt = now;
+    var t = targets[selected], lines = [];
+    lines.push('Speed ' + Math.round(len(ship.vel)) +
+               '   yaw ' + Math.round(deg(ship.yaw)) +
+               '   pitch ' + Math.round(deg(ship.pitch)));
+    if (t && t.alive) {
+        var a = aim(t.pos);
+        lines.push('Target: ' + t.name + '   err ' + deg(a.err).toFixed(1) +
+                   '°   dist ' + Math.round(a.dist) + (locked ? '   LOCKED' : ''));
+    }
+    lines.push((mode === 'mining'
+                    ? 'Rocks: ' + aliveRocks().length + '   dust fields: ' + debris.length + '   ore ' + ore
+                    : 'Targets alive: ' + aliveTargets().length) +
+               (missile ? '   missile in flight' + (missile.guided ? '' : ' (ballistic)') : ''));
+    lines.push('Hull ' + hull + '   missiles ' + missiles +
+               '   shields ' + (shield.up ? 'UP' : shield.raising >= 0 ? 'raising' : shield.recharge > 0 ? 'recharging' : 'down') +
+               (laserHot() ? '   LASER HOT' : '') +
+               (threat ? '   threat: ' + threat.type + ' from ' + threat.t.name : '') +
+               (demo ? '   clock ' + Math.floor(demo.elapsed) + 's' : ''));
+    statusEl.textContent = lines.join('\n');
+}
+
+// Automated-testing hook (harmless in play): lets a test harness inspect
+// state and point or place the ship without simulating held arrow keys.
+window.__sim = {
+    state: function () {
+        return {
+            mode: mode, menu: menuOpen, ore: ore, won: won, lost: lost,
+            hull: hull, missiles: missiles, laserHot: laserHot(),
+            shield: { up: shield.up, raising: shield.raising, recharge: shield.recharge },
+            threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
+            missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
+            demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
+            assets: assetsReady(),
+            dust: debris.map(function (d) {
+                return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
+            }),
+            targets: targets.map(function (t) {
+                return { name: t.name, alive: t.alive,
+                         size: t.kind === 'rock' ? ROCK_SIZES[t.size] && ROCK_SIZES[t.size].label : undefined,
+                         resource: !!t.resource,
+                         dist: Math.round(len(sub(t.pos, ship.pos))),
+                         speed: t.vel ? Math.round(len(t.vel)) : 0 };
+            })
+        };
+    },
+    faceSelected: function () {
+        var t = targets[selected];
+        if (!t) return false;
+        var dir = norm(sub(t.pos, ship.pos));
+        ship.yaw = Math.atan2(dir.x, -dir.z);
+        ship.pitch = Math.asin(clamp(dir.y, -1, 1));
+        return true;
+    },
+    warpToSelected: function (d) {
+        var t = targets[selected];
+        if (!t) return false;
+        var dir = norm(sub(t.pos, ship.pos));
+        ship.pos = sub(t.pos, scale(dir, d || 100));
+        return true;
+    },
+    // Test-only knobs: pull the next enemy attack forward, or set the hold.
+    poke: function (o) {
+        if (o && o.threatIn !== undefined) threatIn = o.threatIn;
+        if (o && o.ore !== undefined) ore = o.ore;
+        if (o && o.hull !== undefined) hull = o.hull;
+        if (o && o.combatCleared !== undefined && demo) demo.combatCleared = o.combatCleared;
+        if (o && o.enemyHp !== undefined) targets.forEach(function (t) { if (!t.kind && t.alive) t.hp = o.enemyHp; });
+    }
+};
+
+// ============================== 11. SHELL ===================================
+function clearMission() {
+    targets.forEach(stopVoice);
+    killMissile();
+    stopBeam(true);
+    thrusterSync(null);
+    stopSolidTone();
+    clearDebris();
+    dustSeq = 0;
+    targets = [];
+    ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
+    won = false; lost = false; paused = false; locked = false;
+    warping = false;
+    endThreat();
+    threatIn = CFG.enemyFirstAttackS;
+    shieldReset();
+    laser.misses = []; laser.hotUntil = 0;
+    // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
+    // a whole sector run. The mission menu zeroes it when starting fresh.
+}
+
+function newGame(m) {
+    if (m) mode = m;
+    clearMission();
+    if (mode === 'sector') {
+        targets = makeSectorRoster();
+    } else if (mode === 'mining') {
+        targets = makeMiningRoster();
+    } else {
+        targets = makeRoster();
+        targets.forEach(function (t) {
+            t.alive = true;
+            t.maxHp = t.hp;
+            if (t.orbit) {
+                t.pos = v3(Math.cos(t.orbit.angle) * t.orbit.radius, t.orbit.y,
+                           Math.sin(t.orbit.angle) * t.orbit.radius);
+            }
+            if (ctx) buildVoice(t);
+        });
+    }
+    selectNearest();
+    if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
+}
+
+var MENU_LINE = 'Mission menu. Press D for the timed delivery run, S to enter the sector, C for combat training, or M for space mining. F1 for help.';
+
+function exitToMenu() {
+    clearMission();
+    sectorHome = null;
+    demo = null;
+    menuOpen = true;
+    if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    say(MENU_LINE);
+}
+
+function combatIntro() {
+    return 'Combat training. Five targets detected. The Freighter is dead ahead. ' +
+           'T cycles targets, Space fires when the tone goes solid. They shoot back: ' +
+           'when you hear the lock-on chirps, G raises the shields. F1 for help.';
+}
+
+function sectorIntro() {
+    return 'Entering the sector. Four points of interest on the quadrant map: ' +
+           'a combat area, a mining area, a space station, and a planet, each with its own beacon sound. ' +
+           'Q opens the map, T cycles beacons, H hyperwarps to your nav target, ' +
+           'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.';
+}
+
+function miningIntro() {
+    return 'Space mining. ' + aliveRocks().length +
+           ' asteroids drifting in the cloud, each singing its own sound. ' +
+           'Laser them apart. Every cut sheds dust you can vacuum up with V, ' +
+           'and a rock mined to its glowing core is extracted with E. ' +
+           'Rocks pushed out of the cloud are lost. F1 for help.';
+}
+
+function init() {
+    var initBtn = document.getElementById('initBtn');
+    var container = document.getElementById('game');
+    liveEl = document.getElementById('announce');
+    statusEl = document.getElementById('status');
+
+    initBtn.addEventListener('click', function () {
+        audioStart();                    // must live inside the user gesture
+        initBtn.style.display = 'none';
+        container.hidden = false;
+        container.focus();
+        running = true;
+        menuOpen = true;
+        scheduleTick();
+        // The container's label is read when it takes focus; wait so the
+        // intro does not talk over it.
+        setTimeout(function () {
+            say((ctx ? '' : 'Audio is unavailable in this browser, speech only. ') +
+                MENU_LINE);
+        }, 800);
+    });
+
+    // Keep focus inside the container. If anything steals it, take it back.
+    document.addEventListener('focusin', function (e) {
+        if (container.hidden || !running) return;
+        if (!container.contains(e.target) && e.target !== container) {
+            container.focus();
+        }
+    });
+
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', function () { keysDown = {}; thrusterSync(null); });
+
+    requestAnimationFrame(function (t) { lastFrame = t; requestAnimationFrame(frame); });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
+
+})();
+</script>
+</body>
+</html>

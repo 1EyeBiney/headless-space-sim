@@ -1,0 +1,146 @@
+# CLAUDE.md — Headless Space Sim
+
+## What this is
+
+Brian's audio-only ("headless" = no visuals) space sim, played entirely through
+3D positional audio (Web Audio `PannerNode`, HRTF — the browser's OpenAL) and
+NVDA speech. Started 2026-09-01 as an HRTF tech demo; grew into a game with
+three connected states plus a timed delivery run. Brian is blind; every design
+decision serves ear-first play. Long-range vision: sectors with POI, combat +
+mining + economy (trade at stations), quadrant/system/universe maps as it
+expands.
+
+## Files
+
+- `index.html` — the entire game (one IIFE, section banners CONFIG→STATE→MATH→
+  SPEECH→AUDIO→TARGETING→WEAPONS (laser, missiles, enemy evasion, enemy fire,
+  shields, debris, rocks)→RADAR→SECTOR (map, warp, call, delivery run)→INPUT→
+  LOOP→SHELL). Runs by double-click from file://. Needs `audio_assets.js`.
+- `audio_assets.js` — base64 mono-96k-MP3 sound bank (12 assets), loaded by a
+  plain script tag (fetch is blocked on file://, script tags are not).
+- `space_sim_demo.html` — single-file shareable snapshot (bank inlined).
+  REGENERATE after changes: node one-liner that replaces the audio_assets.js
+  script tag with the file's contents inline (see git history / README).
+- `README.md` — player-facing intro for the GitHub share (keys, delivery run).
+- `audio/` — Brian's source recordings (never read at runtime): 3 asteroid
+  loops, 3 asteroid explosions, missile-firing mp3, `audio/ships/` = 18 ship
+  loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far).
+  `audio/Backups`, `audio/Media`, `audio/peaks` are REAPER scratch: gitignored.
+- Git repo, pushed to GitHub (see Where we left off).
+- Plan from the original build: `~\.claude\plans\you-said-do-not-functional-hammock.md`.
+
+## Game states
+
+Mission menu → `D` delivery run / `S` sector (the hub) / `C` combat drill /
+`M` mining drill.
+
+- **Delivery run (the demo)**: sector with a clock (`demo` state; counts while
+  the sim is live, warp included; pauses/help/map stop it). Order enforced:
+  Field Kappa refuses mining rights until the Contested Zone is cleared;
+  Station Meridian takes the delivery once ore ≥ `CFG.demoOreGoal` (15,000)
+  and speaks the run time. Station always repairs hull + rearms missiles.
+  Losing the ship fails the run; Enter restarts it from scratch.
+- **Sector**: real flyable space, 4 POI audio beacons (Contested Zone war-drum
+  throb / Asteroid Field Kappa rumble / Station Meridian blinking 660 tone /
+  Planet Auren 45 Hz drone). Long-range beacon panners (ref 800, rolloff 1.2,
+  gain ×2) + distance-haze lowpass in `updateTargeting`. `Q` map overlay,
+  `H` hyperwarp (2 s charge, drops 600 out; interact range 500), `C` call
+  within 500 → combat/mining encounters (`sectorHome` snapshot; `X` returns
+  to open space at the POI) or station (repair/rearm/delivery) / planet
+  placeholder hail. Weapons/tools cold in open space. Ore, hull, and missile
+  count persist across a sector run (menu starts reset them).
+- **Combat**: 5 ships with Brian's recorded engine loops (`shipAsset` on the
+  roster, oscillator fallback), hull values, orbiting Cruiser. **Enemies
+  shoot back** (one attack at a time, `threat`): within `enemyLaserRange` 600
+  they telegraph (3 rising chirps at THEIR position + "X locking on!") for
+  1.2 s then a 5 s beam, 6 dmg/s; farther out they launch a missile with its
+  own HRTF voice (25 dmg). Grace 8 s at start, gap 7–12 s. Player hull 100;
+  0 = `lost` (Enter retries with a repaired hull). A missile survivor is
+  "alerted": evade burst across the line of sight (burner whoosh, engine
+  pitch-up, direction spoken) and it attacks within 2.5 s.
+- **Shields (`G`)**: 1.5 s spool (rising sweep) → clunk + hum on the UI bus.
+  Weapons offline while up; own missile AND incoming missiles lose guidance
+  (go ballistic, coast 1.5 s, pop — an unguided incoming missile still
+  splashes on a raised shield or hurts if dropped early). Hold max 10 s then
+  collapse; recharge = 6 s × (held/10), min 1 s; double-blip warning 3 s
+  before collapse; chime + "Shields ready."
+- **Weapons**: laser range 600, damage ×1.6 at point-blank tapering to ×1 at
+  range (`laserRangeMult`); two zero-damage bursts inside 8 s = overheat 5 s
+  (hiss + slowing hot-metal pings + ready chime). Missiles: magazine 8
+  (`missiles`), count spoken on launch, speed 130 / life 11 s (~1400 reach);
+  SEMI-ACTIVE: target must stay inside the missile zone for the whole flight
+  (0.5 s grace) or it goes ballistic.
+- **Mining**: 3 rock types (Ice soft/splitty, Iron hard/chippy, Stone middle)
+  × 4 sizes, HIDDEN per-stage hp rolls. Core ore 3000/6750/4500 (×1.5 as of
+  Round 10); all dust ×0.75 via `CFG.debrisScale` in `addDebris`. Laser ticks
+  shed dust; stage events split/chip/collapse-to-core; `E` extracts cores
+  (range 300), `V` vacuums dust fields, cloud radius 800.
+- `Q` from encounters: mining any time; combat only when zone cleared
+  ("jammed by hostile fire"); drills never. Enter on the encounter map =
+  depart (silent return + auto-warp).
+
+## Key map (left-hand doctrine — right hand stays on arrows)
+
+Arrows yaw/pitch · W thrust / S brake · Space laser beam · F missile · G shields
+· T cycle targets · Tab repeat bearing · R radar · E extractor · V vacuum · Z
+zone size · Q map · H warp · C call · I status (adds hull, missiles, shields,
+laser heat, demo clock + objective) · X leave · F1 help · F12 explore · Escape
+pause. Menu: D delivery run, S sector, C combat, M mining.
+
+## Accessibility architecture (non-negotiable)
+
+- Shell ported from `C:\nbs\accessible_football`: role=application,
+  Press-Enter-to-Begin gesture (AudioContext), focusin recapture, ONE
+  capture-phase keydown, BROWSER_KEYS escape hatch (F5/F6/F11, Ctrl+R/F/W/T),
+  lowercase single chars (Caps Lock = NVDA modifier), `keyName()` e.code
+  fallback, "silence is a bug" (every key answers).
+- Speech = single aria-live assertive div (`say()`), hair-space trick for
+  repeats. NOT speechSynthesis. All visuals aria-hidden. Ship's own hull is
+  always "Your hull N" so it never collides with a target's "Hull N percent".
+- Help (F1) and map (Q) are virtual pop-ups: arrows read line by line,
+  H/Shift+H jump help headings, Escape closes, sim freezes + audio ducks.
+- World audio = HRTF panners (enemy lock chirps, enemy beam, enemy missile,
+  evade burner all positioned at the enemy); cockpit instruments (tick,
+  tools, thrusters, shield hum/splash, hull thud, overheat hiss) = stereo UI
+  bus, deliberately separate. Front/back cue = lowpass muffle. Elevation cue
+  = tick pitch + spoken bearings.
+- Thrusters sound from the jet doing the work (opposite the motion); W/S were
+  SWAPPED at Brian's request — he may revisit after listening. Stabilizers:
+  audible auto-braking puffs while coasting; silence = stopped.
+- SFX layer = Bunker Audio Laboratory primitives upgraded with an `out` param
+  for 3D routing; `playAsset()` for recorded one-shots.
+
+## Working agreements
+
+- Test silently: boot via JS `.click()` (suspended context = no sound) and
+  ALWAYS close every browser-pane tab + kill the local server when done —
+  leftover audio fights Brian's screen reader.
+- Hidden-tab gotchas: rAF doesn't run; timers throttle after minutes; the
+  pane injects Space/Enter with empty e.key (dispatch KeyboardEvents
+  instead). Enemy fire keeps running between tool calls, so run a whole
+  combat scenario inside ONE script (MutationObserver on #announce = speech
+  log). `window.__sim`: state / faceSelected / warpToSelected / poke
+  ({threatIn, ore, hull, combatCleared, enemyHp}).
+- All tuning numbers live in CFG and the data tables (ZONES, ROCK_TYPES,
+  ROCK_SIZES, SECTOR_POIS, THRUSTER_DEFS) — tune there, not inline.
+- Brian's ear is the tiebreaker on all sound decisions. Report every file
+  change explicitly; keep help text, KEY_DESCRIPTIONS, and README in sync
+  with mechanics; hidden mining thresholds must never leak into speech.
+- Regenerate `space_sim_demo.html` and commit/push after every round.
+
+## Where we left off (2026-09-03)
+
+Round 10 built and machine-tested, NOT yet heard by Brian: delivery run,
+missile magazine + rearm, semi-active missile cone, laser range/close bonus/
+overheat, enemy fire (laser + missile) with telegraphs, shields, evade +
+counterattack, ore ×1.5 / dust ×0.75, README, git + GitHub. Still awaiting
+his ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon
+balance, warp drama.
+
+Tuning questions for play-test: enemy damage pacing (30 per beam, 25 per
+missile vs hull 100 — four unshielded attacks kill), attack gap 7–12 s,
+shield spool 1.5 s / hold 10 s, overheat window 8 s, and whether the "Shields,
+G" coaching (first two warnings only) is enough for newcomers.
+
+Likely next: shield upgrades (faster spool, longer hold) bought with ore at
+the station (economy start), more ship assets, distress calls, POI variety.
