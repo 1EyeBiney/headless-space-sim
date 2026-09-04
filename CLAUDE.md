@@ -219,11 +219,23 @@ static once tiers exist.
   warpMinDist − warpDropout` (600), rising linearly to `warpJumpMaxS` at
   `CFG.warpJumpLongDist` (10606 — measured from `placeAtStationStart`'s
   actual entry point to the Contested Zone on a full tank, so the
-  delivery run's first leg is exactly 12 s) and clamped flat past that. A
-  dry jump (charge-capped `travel < need`) gets a proportionally shorter
-  `totalTime`, confirmed in testing (10.13 s for a 3125-unit travel). No
-  jump under `warpMinChargePct` 25 % ("Warp core below 25 percent. Let it
-  cool, or fly it."). Only engine 1's three clips are embedded
+  delivery run's first leg is exactly `warpJumpMaxS`) and clamped flat
+  past that. A dry jump (charge-capped `travel < need`) gets a
+  proportionally shorter `totalTime`, confirmed in testing (10.13 s for a
+  3125-unit travel, back when the max was 12; see below for the current
+  numbers). No jump under `warpMinChargePct` 25 % ("Warp core below 25 %.
+  Let it cool, or fly it."). **SPEC 2.10 (Round 14)**: the engaged loop —
+  and the ship's own departure — now starts `warpEngagedLeadS` 0.5 s
+  before the start clip's nominal end (`moveStart = warpEdgeClipS −
+  warpEngagedLeadS` = 3.5), crossfading with its tail; `warpJumpMinS`/
+  `warpJumpMaxS` dropped to 8.5/11 to compensate (`warpFinishLeadS` 0.5 s
+  is the same idea on the finish transition, entirely absorbed into that
+  shortened range rather than a second term in the finish-clip timing,
+  which stays `totalTime − warpEdgeClipS`); `playWarpFinish` now fades in
+  over 0.15 s instead of starting at full volume, crossfading against
+  `stopWarpEngagedLoop`'s existing 0.15 s fade-out. Confirmed by polling
+  `warpFlight.phase`/`elapsed`: engaged starts at 3.5, finish at 7.0
+  (11 − 4), the full-tank leg measures 11 s. Only engine 1's three clips are embedded
   (`CFG.warpEngine` default 1); an un-decoded engine falls back to the old
   synthesized `warp_charge` cue for the start phase and silence for
   engaged/finish, while the arrival stings (`warp_arrive`/`warp_dry`)

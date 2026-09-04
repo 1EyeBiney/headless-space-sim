@@ -935,6 +935,8 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
+2.10 is DONE (Sonnet). 2.11 next.
+
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
 
