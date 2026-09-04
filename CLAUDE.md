@@ -12,25 +12,120 @@ expands.
 
 ## Files
 
-- `index.html` — the entire game (one IIFE, section banners CONFIG→STATE→MATH→
+- `index.html` — the game itself (one IIFE, section banners CONFIG→STATE→MATH→
   SPEECH→AUDIO→TARGETING→WEAPONS (laser, missiles, enemy evasion, enemy fire,
   shields, debris, rocks)→RADAR→SECTOR (map, warp, call, delivery run)→INPUT→
-  LOOP→SHELL). Runs by double-click from file://. Needs `audio_assets.js`.
+  LOOP→SHELL). AUDIO now holds only simulation-driven sound (ship/rock/beacon
+  voices, the beam, the lock tick, thrusters) — the generic engine and the
+  discrete-cue registry moved out as of Round 12; see "Audio architecture"
+  below. Runs by double-click from file://. Needs `audio_assets.js`,
+  `audio_engine.js`, `audio_cues.js` loaded before it, in that order.
 - `audio_assets.js` — base64 mono-96k-MP3 sound bank (12 assets), loaded by a
   plain script tag (fetch is blocked on file://, script tags are not).
-- `space_sim_demo.html` — single-file shareable snapshot (bank inlined).
-  REGENERATE after changes: node one-liner that replaces the audio_assets.js
-  script tag with the file's contents inline (see git history / README).
+- `audio_engine.js` / `audio_cues.js` — see "Audio architecture" below.
+- `space_sim_demo.html` — single-file shareable snapshot, all four scripts
+  inlined in load order (audio_assets → audio_engine → audio_cues → main).
+  REGENERATE after changes: a node script replaces each `<script src=...>`
+  tag with that file's contents inline, in order (see git history for the
+  exact script; do not hand-edit the demo file).
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's source recordings (never read at runtime): 3 asteroid
   loops, 3 asteroid explosions, missile-firing mp3, `audio/ships/` = 18 ship
   loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 embedded so far).
   `audio/Backups`, `audio/Media`, `audio/peaks` are REAPER scratch: gitignored.
+  `audio/Explosions`, `audio/missiles`, `audio/warp`, `audio/weapons` are
+  new (Round 12) recordings Brian is auditioning — NOT yet decoded into
+  audio_assets.js or referenced anywhere. Leave them unconnected until told
+  otherwise; see "Audio architecture" for how they eventually get wired in.
+- `.claude/launch.json` — a static-file server config (`npx serve`, port
+  8934) for `preview_start`, same convention as `ag`'s and `kc`'s own
+  `.claude/launch.json`. Needed now that the game is split across four
+  script files: a `file://` page (and this session's browser-preview tool,
+  which renders local files as an opaque `data:` snapshot) can't resolve
+  relative `<script src>` tags or read `localStorage`, so multi-file
+  testing needs a real origin. Test at `http://localhost:8934` during
+  development; `index.html` and `space_sim_demo.html` still work by
+  double-click for a final check, and the Pages URL is the release
+  reference (see Working agreements).
 - Git repo, public on GitHub: https://github.com/1EyeBiney/headless-space-sim
   Served live via GitHub Pages at
   https://1eyebiney.github.io/headless-space-sim/ — this URL is the
   reference build; `?run=delivery` skips the menu into the timed run.
 - Plan from the original build: `~\.claude\plans\you-said-do-not-functional-hammock.md`.
+  Rounds 11+ instructions: `PHASE_PLAN.md`.
+
+## Audio architecture (Round 12)
+
+Brian's direction: pull the audio code out of the single file before it grows
+further, following the multi-file namespace convention from his other
+projects (`KC.audio`/`KC.bgm`, `BASE.audio`) — a shared `window.SIM` object,
+one namespace per concern. Researched `ag` (`golf_audio_bank.js`'s
+categorized `{id, name, source, recipe, args}` registry + `playGolfSound()`
+dispatcher — the direct model for this), `kc` (a cautionary tale: two
+parallel switch/case registries with numeric IDs assigned reactively per
+feature, no plan behind the numbers — avoided on purpose), `afish` (full
+event-bus decoupling — architecturally the purest, but too big a structural
+change for this project's current size), `baseball`/`abible` (function-per-
+cue over shared primitives, no registry). All three of Brian's testers
+(`.soundtester v2.0.html` here, `ag`'s `.golf_soundbank_tester`, `afish`'s
+`afish_synth_tester.html`) confirmed the same workflow: audition candidate
+sounds in a standalone page, port winners into the game by name later.
+
+**The load-bearing design call**: Brian said almost every cue now playing
+will be replaced by "engineered stuff" UNLESS it's coupled to gameplay
+mechanics still in flux. That's the actual split point:
+- `audio_engine.js` (`SIM.audio`) — the generic Web Audio layer: ctx/bus/
+  asset-bank state, `audioStart`/`decodeAssets`/`assetsReady`, `ramp`,
+  `makePanner`/`movePanner`/`worldOut`, and the primitives `sfxTone`/
+  `sfxNoise`/`sfxChord`/`sfxArpeggio`/`blip`/`playAsset`/`noiseBurst` — plus
+  two additions this round, `sfxEcho` and `sfxSweep`, ported faithfully from
+  `.soundtester v2.0.html`'s `playEcho`/`playSweep` since the cue registry
+  needed that vocabulary and this project didn't have it yet. Knows nothing
+  about gameplay.
+- `audio_cues.js` (`SIM.cues`) — the discrete, one-shot "moment" registry:
+  explosions, chimes, clicks, warnings. Categorized entries, each either
+  `{recipe, args}` (dispatched through a small `playRecipe()` switch —
+  `args` is an OBJECT matching the primitive's own param names, not a
+  positional array like `ag`'s, since this project's primitives are already
+  object-shaped) or `{fn}` for composite/multi-step sounds (explosions,
+  the victory fanfare, the disrepair ratchet). `SIM.cues.play(id, opts)` is
+  the one dispatcher gameplay calls; `opts` overrides `args` by name (e.g.
+  `{dur: secs}` for shield_raise/warp_charge/laser_overheat, whose duration
+  tracks a live, tier-varied CFG value rather than a fixed number). 22 cues
+  migrated this round — every discrete moment that existed in index.html
+  before Round 12 (see git log for the full list). A `source` field per
+  entry (`'v11-extraction'` for all of these) mirrors `ag`'s provenance
+  tracking; new entries ported from a future sound-lab tester should use a
+  `source` naming where they came from, same idea.
+- Deliberately NOT migrated: anything simulation-driven — engine/rock/
+  beacon voices (`buildVoice`/`buildRockVoice`/`buildPoiVoice`), the laser
+  beam's live pitch tracking, the lock tick, missile/enemy flight hum,
+  thrusters/stabilizers, the shield hum. These track a number that changes
+  every frame; no registry entry helps there, and they stay in index.html
+  next to the state they read. Swapping their underlying waveform for a
+  recorded loop later (the way ship engines already pitch a recorded MP3
+  via `shipAsset.rate`) is a different, smaller change than what the cue
+  registry solves.
+- New recorded assets Brian is auditioning do NOT get manifest entries yet
+  — they aren't decoded into `audio_assets.js`, so nothing here could even
+  reference them. A future sound-lab tester auditions them via plain
+  `<audio>`/`new Audio(path).play()`, completely outside this registry and
+  outside the game, which is what "not connected yet" means in practice.
+
+**The multi-file gotcha that bit this refactor once already**: `index.html`'s
+main script is one IIFE (`(function(){'use strict'; ...})();`), so
+everything it declares — `CFG`, `clamp`, all of `TARGETING`/`WEAPONS`/etc —
+is PRIVATE to that closure. The instant code moved into a separate top-level
+script file, `audio_engine.js`/`audio_cues.js` referencing bare `CFG` or
+`clamp` threw `ReferenceError` (only caught by testing at a real origin,
+since the closure itself still parses fine standalone). Fixed by exposing
+`window.CFG = CFG;` and `window.clamp = clamp;` right after their
+declarations in the main script — `CFG` is mutated in place by `applyTier()`,
+never reassigned, so the external reference stays live. Any FUTURE code
+pulled out of the main IIFE into its own file needs the same check: grep the
+new file for bare identifiers and confirm each one is either self-contained,
+a real JS/DOM global, or explicitly exposed via `window.X = X` from the
+closure that owns it.
 
 ## Game states
 
@@ -178,6 +273,15 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
   list`) before testing, and hard-reload if a test shows stale behavior.
   The double-click `index.html` / `space_sim_demo.html` files must still
   work standalone, but the URL is the reference.
+- Multi-file gotcha (Round 12): the game is now split across four `<script>`
+  tags. This session's browser-preview tool renders a local file as an
+  opaque `data:` URL snapshot — relative `<script src>` tags don't resolve
+  from it (`window.SIM` comes back `undefined`) and `localStorage` throws.
+  For any local iteration that touches audio_engine.js/audio_cues.js (or any
+  future split file), use `preview_start` with the `"static"` config in
+  `.claude/launch.json` (`http://localhost:8934`, a real origin) instead of
+  `navigate`-ing straight to the file path. `index.html` alone (single
+  inline script, no splits) still works fine via the plain file preview.
 - Test silently: boot via JS `.click()` (suspended context = no sound) and
   ALWAYS close every browser-pane tab + kill the local server when done —
   leftover audio fights Brian's screen reader.
@@ -205,21 +309,34 @@ the Difficulty line cycles Rookie/Veteran/Ace in place.
   with mechanics; hidden mining thresholds must never leak into speech.
 - Regenerate `space_sim_demo.html` and commit/push after every round.
 
-## Where we left off (2026-09-03)
+## Where we left off (2026-09-04)
 
-Round 10 built and machine-tested, NOT yet heard by Brian: KC-style arrow
-menu, passive-until-hit enemies (Brian: the always-on attacks were far too
-hard for a starting player; keep that pacing for a later-game tier), delivery run,
-missile magazine + rearm, semi-active missile cone, laser range/close bonus/
-overheat, enemy fire (laser + missile) with telegraphs, shields, evade +
-counterattack, ore ×1.5 / dust ×0.75, README, git + GitHub. Still awaiting
-his ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon
-balance, warp drama.
+Rounds 10–11 (PHASE_PLAN.md 1.0–1.5) shipped and live on Pages, machine-
+tested but largely NOT yet heard by Brian in play: KC-style arrow menu,
+passive-until-hit enemies at Rookie (always-on pacing kept for Veteran/Ace),
+delivery run with a saved run log, missile magazine + rearm, semi-active
+missile cone, laser range/close bonus/overheat, enemy fire with telegraphs,
+the shield damage-pool + disrepair rework, evade + counterattack, ore ×1.5 /
+dust ×0.75, difficulty tiers, no-warp zone, saved profile. Still awaiting his
+ears from Round 9 too: stabilizers, W/S swap, dust shimmer, beacon balance,
+warp drama. PHASE_PLAN.md 1.6 (docking corridor) and 1.7 (station economy)
+are the two large pieces deliberately deferred — good next round once Round
+10–11 has been heard.
 
-Tuning questions for play-test: provoked-retaliation fuse (4 s), enemy damage pacing (30 per beam, 25 per
-missile vs hull 100 — four unshielded attacks kill), attack gap 7–12 s,
-shield spool 1.5 s / hold 10 s, overheat window 8 s, and whether the "Shields,
-G" coaching (first two warnings only) is enough for newcomers.
+Round 12 (this one) is the audio pull-out: `audio_engine.js` + `audio_cues.js`
+split out of index.html as `SIM.audio`/`SIM.cues`, 22 discrete cues migrated
+into the registry, `sfxEcho`/`sfxSweep` added, `.claude/launch.json` added
+for local multi-file testing, Station Meridian's beacon halved in volume.
+Machine-tested thoroughly (every migrated cue exercised under real gameplay
+conditions at a local server), not yet heard by Brian. See "Audio
+architecture" above for the shape of it and what's deliberately NOT
+migrated. Next audio step, per Brian: a sound-lab tester (this project's own
+`.soundtester`-style page) for auditioning new synth ideas AND the new
+unintegrated recordings side by side — not built yet.
 
-Likely next: shield upgrades (faster spool, longer hold) bought with ore at
-the station (economy start), more ship assets, distress calls, POI variety.
+Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
+enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
+45 that's roughly 1.5 full beams absorbed before disrepair), attack gap
+7–12 s, shield spool 1.5 s (2.5 s Ace) / repair 12 s, laser overheat window
+8 s, and whether the "Shields, G" coaching (first two warnings only) is
+enough for newcomers.

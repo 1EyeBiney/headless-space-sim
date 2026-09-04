@@ -93,9 +93,11 @@ with the dramatic evade.
 
 ## Files
 
-- `index.html` is the whole game. It loads the sound bank from
-  `audio_assets.js` beside it.
-- `space_sim_demo.html` is the same game with the bank inlined, for sharing.
+- `index.html` is the game. It loads `audio_assets.js` (the sound bank),
+  `audio_engine.js` (the Web Audio primitives), and `audio_cues.js` (the
+  named sound-effect registry) beside it, in that order.
+- `space_sim_demo.html` is the same game with all three of those inlined,
+  for sharing as one file.
 - `audio/` holds the source recordings.
 - `CLAUDE.md` is the design and working notes.
 

@@ -69,6 +69,549 @@ window.AUDIO_ASSETS = {
 
 </script>
 <script>
+// audio_engine.js — Headless Space Sim
+//
+// The generic Web Audio layer: context/bus setup, the recorded-asset bank,
+// and the small set of generative primitives (tone, noise, chord, arpeggio,
+// echo, sweep) everything else builds sounds from. Same vocabulary as the
+// Bunker Audio Laboratory testers (.soundtester v2.0.html here, ag's
+// .golf_soundbank_tester, afish's afish_synth_tester.html) and as ag's and
+// kc's own audio engines — this file is that palette, pulled out into its
+// own module and namespaced as SIM.audio (the KC.audio / BASE.audio
+// convention from Brian's other projects) now that the game is outgrowing
+// one file.
+//
+// This module knows NOTHING about gameplay. It has no idea what a laser or
+// a shield is — it only knows how to make a tone, a noise burst, a chord,
+// an echo, a sweep, or play back a decoded recording, optionally through a
+// caller-supplied `out` node (an HRTF panner for a 3D world event, or the
+// stereo instrument bus for a cockpit sound). SECTION 5 of index.html still
+// owns everything that's actually shaped by live simulation state — ship/
+// rock/beacon voices, the laser beam, the lock tick, thrusters — because
+// those aren't "cues" in the play-once sense, they're continuous audio that
+// tracks a running number every frame. audio_cues.js is the layer above
+// this one that gives discrete one-shot sounds a stable name.
+//
+// Internal calls all go through the full SIM.audio.xxx path rather than
+// bare local names, on purpose: several of these functions get handed to
+// setTimeout as callbacks, and the explicit path sidesteps any question of
+// what `this` is bound to (same reason KC.audio / BASE.audio do it).
+
+window.SIM = window.SIM || {};
+
+SIM.audio = {
+    // ---- state ----------------------------------------------------------
+    ctx: null,
+    masterGain: null,
+    uiBus: null,     // stereo, not HRTF — cockpit instruments (tick, tools, thrusters)
+    noiseBuf: null,  // shared 1 s white-noise buffer for explosions/thuds/hiss
+    assetBufs: {},   // decoded AudioBuffers from audio_assets.js, keyed by name
+
+    // ---- boot -------------------------------------------------------------
+    audioStart: function () {
+        var A = SIM.audio;
+        try {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) A.ctx = new Ctx();
+        } catch (e) { A.ctx = null; }
+        if (!A.ctx) return;
+
+        A.masterGain = A.ctx.createGain();
+        A.masterGain.gain.value = CFG.masterGain;
+        A.masterGain.connect(A.ctx.destination);
+
+        A.uiBus = A.ctx.createGain();
+        A.uiBus.gain.value = 1;
+        A.uiBus.connect(A.masterGain);
+
+        // A short quiet tone so the first real sound does not stutter.
+        var g = A.ctx.createGain(); g.gain.value = 0.0001; g.connect(A.ctx.destination);
+        var o = A.ctx.createOscillator(); o.frequency.value = 440;
+        o.connect(g); o.start(); o.stop(A.ctx.currentTime + 0.03);
+
+        A.noiseBuf = A.ctx.createBuffer(1, A.ctx.sampleRate, A.ctx.sampleRate);
+        var d = A.noiseBuf.getChannelData(0);
+        for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+        A.decodeAssets();
+    },
+
+    // Decode the base64 MP3s from audio_assets.js into AudioBuffers. No
+    // fetch — fetch of anything is unreliable on a file:// page — just
+    // atob into bytes. Once the game is served over https (GitHub Pages),
+    // this can grow a fetch-based path alongside this one; see
+    // PHASE_PLAN.md 3.2.
+    decodeAssets: function () {
+        var A = SIM.audio;
+        if (!A.ctx || !window.AUDIO_ASSETS) return;
+        Object.keys(window.AUDIO_ASSETS).forEach(function (name) {
+            try {
+                var bin = atob(window.AUDIO_ASSETS[name].split(',')[1]);
+                var bytes = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                A.ctx.decodeAudioData(bytes.buffer,
+                    function (buf) { A.assetBufs[name] = buf; },
+                    function () { /* decode failed; assetsReady() stays false */ });
+            } catch (e) {}
+        });
+    },
+
+    // Readiness gate for the mining asteroid loops + explosions specifically
+    // (the only assets a mission start currently blocks on). As more named
+    // assets get wired in this may want a `names` param instead of a fixed
+    // list — left as-is for now to keep this move behavior-identical.
+    assetsReady: function () {
+        var b = SIM.audio.assetBufs;
+        return !!(b.asteroid1 && b.asteroid2 && b.asteroid3 &&
+                  b.asteroid_explosion1 && b.asteroid_explosion2 && b.asteroid_explosion3);
+    },
+
+    // ---- param + panner helpers -------------------------------------------
+    // Smoothly move an AudioParam. cancel + set + linear ramp is the
+    // standard idiom; assigning .value every frame produces zipper clicks.
+    ramp: function (param, value, seconds) {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t = A.ctx.currentTime;
+        param.cancelScheduledValues(t);
+        param.setValueAtTime(param.value, t);
+        param.linearRampToValueAtTime(value, t + (seconds || 0.06));
+    },
+
+    makePanner: function (pos) {
+        var A = SIM.audio;
+        var p = A.ctx.createPanner();
+        p.panningModel = 'HRTF';
+        p.distanceModel = 'inverse';
+        p.refDistance = CFG.refDistance;
+        p.maxDistance = CFG.maxDistance;
+        p.rolloffFactor = CFG.rolloff;
+        if (p.positionX) {
+            p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z;
+        } else if (p.setPosition) {
+            p.setPosition(pos.x, pos.y, pos.z);
+        }
+        return p;
+    },
+
+    movePanner: function (p, pos) {
+        var A = SIM.audio;
+        if (p.positionX) {
+            A.ramp(p.positionX, pos.x); A.ramp(p.positionY, pos.y); A.ramp(p.positionZ, pos.z);
+        } else if (p.setPosition) {
+            p.setPosition(pos.x, pos.y, pos.z);
+        }
+    },
+
+    // A throwaway HRTF panner at a world position that cleans itself up.
+    worldOut: function (pos, ms) {
+        var A = SIM.audio;
+        if (!A.ctx) return null;
+        var p = A.makePanner(pos);
+        p.connect(A.masterGain);
+        setTimeout(function () { try { p.disconnect(); } catch (e) {} }, ms + 400);
+        return p;
+    },
+
+    // ---- SFX primitives ---------------------------------------------------
+    // Same fire-and-forget generator palette as the Bunker Audio Laboratory
+    // and the ag / kc audio engines. Every primitive takes an optional
+    // `out` node, so the identical vocabulary plays either on the stereo
+    // instrument bus (cockpit sounds) or through an HRTF panner at a world
+    // position (3D events) — the one upgrade this project made on the
+    // shared palette.
+
+    // Resolve the destination: explicit node > stereo pan on the UI bus > UI bus.
+    sfxOut: function (o) {
+        var A = SIM.audio;
+        if (o && o.out) return o.out;
+        if (o && o.pan && A.ctx.createStereoPanner) {
+            var sp = A.ctx.createStereoPanner();
+            sp.pan.value = clamp(o.pan, -1, 1);
+            sp.connect(A.uiBus);
+            return sp;
+        }
+        return A.uiBus;
+    },
+
+    // Tone with optional frequency glide: sfxTone({type,f1,f2,dur,vol,at,pan,out})
+    sfxTone: function (o) {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t0 = A.ctx.currentTime + (o.at || 0);
+        var g = A.ctx.createGain();
+        g.gain.setValueAtTime(o.vol || 0.15, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
+        g.connect(A.sfxOut(o));
+        var osc = A.ctx.createOscillator();
+        osc.type = o.type || 'sine';
+        osc.frequency.setValueAtTime(o.f1, t0);
+        if (o.f2) {
+            try { osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur); }
+            catch (e) { osc.frequency.setValueAtTime(o.f2, t0 + o.dur); }
+        }
+        osc.connect(g);
+        osc.start(t0); osc.stop(t0 + o.dur + 0.02);
+    },
+
+    // Filtered noise burst: sfxNoise({dur,vol,filter,freq,q,at,pan,out})
+    sfxNoise: function (o) {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t0 = A.ctx.currentTime + (o.at || 0);
+        var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf;
+        var g = A.ctx.createGain();
+        g.gain.setValueAtTime(o.vol || 0.2, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
+        var tail = src;
+        if (o.freq) {
+            var f = A.ctx.createBiquadFilter();
+            f.type = o.filter || 'lowpass';
+            f.frequency.value = o.freq;
+            if (o.q) f.Q.value = o.q;
+            src.connect(f); tail = f;
+        }
+        tail.connect(g); g.connect(A.sfxOut(o));
+        src.start(t0); src.stop(t0 + o.dur + 0.05);
+    },
+
+    // Tone with a delayed, decaying echo tail (a real DelayNode + feedback
+    // loop, not just a second offset tone) — ported from
+    // .soundtester v2.0.html's playEcho, the same shape ag's golf_audio_bank
+    // 'echo' recipe expects: sfxEcho({type,f1,f2,dur,vol,delay,at,pan,out})
+    sfxEcho: function (o) {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t0 = A.ctx.currentTime + (o.at || 0);
+        var osc = A.ctx.createOscillator(), gain = A.ctx.createGain();
+        var delayNode = A.ctx.createDelay(), feedback = A.ctx.createGain();
+        osc.type = o.type || 'sine';
+        osc.frequency.setValueAtTime(o.f1, t0);
+        if (o.f2) {
+            try { osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur); }
+            catch (e) { osc.frequency.setValueAtTime(o.f2, t0 + o.dur); }
+        }
+        gain.gain.setValueAtTime(o.vol || 0.15, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
+        delayNode.delayTime.value = o.delay || 0.12;
+        feedback.gain.value = 0.4;
+        var out = A.sfxOut(o);
+        osc.connect(gain); gain.connect(out);
+        gain.connect(delayNode); delayNode.connect(feedback);
+        feedback.connect(delayNode); delayNode.connect(out);
+        osc.start(t0); osc.stop(t0 + o.dur + 0.02);
+    },
+
+    // Three-point frequency sweep, f1 -> f2 at the midpoint -> f3 at the
+    // end — ported from .soundtester v2.0.html's playSweep, extended (as
+    // ag's golf_audio_bank 'sweep' recipe already assumes) to take vol/type:
+    // sfxSweep({f1,f2,f3,dur,vol,type,at,pan,out})
+    sfxSweep: function (o) {
+        var A = SIM.audio;
+        if (!A.ctx) return;
+        var t0 = A.ctx.currentTime + (o.at || 0);
+        var osc = A.ctx.createOscillator(), gain = A.ctx.createGain();
+        osc.type = o.type || 'sawtooth';
+        osc.frequency.setValueAtTime(o.f1, t0);
+        osc.frequency.linearRampToValueAtTime(o.f2, t0 + o.dur / 2);
+        osc.frequency.linearRampToValueAtTime(o.f3, t0 + o.dur);
+        gain.gain.setValueAtTime(o.vol || 0.1, t0);
+        gain.gain.linearRampToValueAtTime(0.001, t0 + o.dur);
+        osc.connect(gain); gain.connect(A.sfxOut(o));
+        osc.start(t0); osc.stop(t0 + o.dur + 0.02);
+    },
+
+    // Chord and arpeggio, straight from the Bunker Lab vocabulary.
+    sfxChord: function (freqs, dur, vol, o) {
+        var A = SIM.audio;
+        freqs.forEach(function (f) {
+            A.sfxTone(Object.assign({ f1: f, dur: dur, vol: vol / freqs.length }, o || {}));
+        });
+    },
+    sfxArpeggio: function (freqs, noteDur, vol, o) {
+        var A = SIM.audio;
+        freqs.forEach(function (f, i) {
+            A.sfxTone(Object.assign({ f1: f, dur: noteDur * 1.5, vol: vol,
+                                       at: i * noteDur }, o || {}));
+        });
+    },
+
+    // Compatibility wrapper used by the tick scheduler and small cues.
+    blip: function (freq, ms, gainVal, pan, type) {
+        SIM.audio.sfxTone({ type: type || 'sine', f1: freq, dur: ms / 1000, vol: gainVal, pan: pan || 0 });
+    },
+
+    // One-shot playback of a decoded recording. Returns false if the asset
+    // isn't ready so callers can fall back to a generated cue.
+    playAsset: function (name, vol, out) {
+        var A = SIM.audio;
+        if (!A.ctx || !A.assetBufs[name]) return false;
+        var src = A.ctx.createBufferSource(); src.buffer = A.assetBufs[name];
+        var g = A.ctx.createGain(); g.gain.value = vol || 0.3;
+        src.connect(g); g.connect(out || A.uiBus);
+        src.start();
+        return true;
+    },
+
+    // Generic thud / pop at a world position (missile self-destruct, laser splash).
+    noiseBurst: function (pos, ms, gainVal, cutoff) {
+        var A = SIM.audio;
+        var out = A.worldOut(pos, ms);
+        if (!out) return;
+        A.sfxNoise({ dur: ms / 1000, vol: gainVal, filter: 'lowpass', freq: cutoff, out: out });
+    }
+};
+
+</script>
+<script>
+// audio_cues.js — Headless Space Sim
+//
+// The discrete, one-shot "moment" layer: explosions, chimes, clicks,
+// warnings — anything gameplay fires and forgets. This is the layer Brian
+// asked for specifically: "almost all of the audio cues now will be
+// replaced by engineered stuff." Gameplay code names a cue and calls
+// SIM.cues.play(id, opts); it never builds a Web Audio graph itself. That
+// means swapping a synthesized placeholder for a recorded/engineered sound
+// later is a one-line edit HERE — change a cue's recipe to reference a
+// decoded asset instead of a tone/noise recipe — with zero changes at any
+// call site.
+//
+// This deliberately does NOT cover continuous, simulation-driven audio:
+// engine loops, the laser beam's live pitch tracking, the lock tick, the
+// missile's flight hum, thrusters. Those track a number that changes every
+// frame, not a fixed envelope you fire once — no registry entry helps
+// there, and they stay in index.html next to the state they're reading.
+//
+// Modeled on golf_audio_bank.js (c:\nbs\ag): cues grouped into categories,
+// each entry carrying a `source` for provenance (here, 'v11-extraction' —
+// ported verbatim out of index.html during this refactor, not authored
+// fresh or pulled from a numbered tester button) and either a declarative
+// {recipe, args} pair or a composite `fn` for anything with more than one
+// moving part. One difference from golf's shape: golf's own primitives
+// take positional arguments, so its `args` are an array; this project's
+// SIM.audio primitives already take a single options OBJECT
+// ({type,f1,f2,dur,vol,at,pan,out}), so `args` here is that same object
+// shape — it merges directly with a call's `opts` with no positional
+// mapping table needed.
+//
+// New recorded assets Brian is auditioning (audio/Explosions, audio/
+// missiles, audio/warp, ...) do NOT appear here yet — on purpose. They
+// aren't part of the game's audio_assets.js bank, so nothing here can even
+// reference them. Auditioning those lives entirely in soundlab.html,
+// played back with plain <audio> elements, outside this registry and
+// outside the game — exactly "not connected yet."
+
+window.SIM = window.SIM || {};
+
+SIM.cues = (function () {
+    var CATEGORIES = [
+        {
+            id: 'combat',
+            label: 'Combat',
+            cues: [
+                { id: 'explosion_kill', name: 'Target Destroyed', source: 'v11-extraction',
+                  // Filtered noise body + a low sine thump, positioned at the
+                  // dying target so the blast itself is a 3D event.
+                  fn: function (opts) {
+                      var A = SIM.audio, pos = opts.pos;
+                      var out = A.worldOut(pos, 900);
+                      if (!out) return;
+                      A.sfxNoise({ dur: 0.6, vol: 0.8, filter: 'lowpass', freq: 2500, out: out });
+                      A.sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
+                      A.sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
+                  } },
+                { id: 'hull_hit', name: 'Hull Hit', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.25, vol: 0.5, filter: 'lowpass', freq: 600 });
+                      A.sfxTone({ type: 'sine', f1: 80, f2: 40, dur: 0.3, vol: 0.4 });
+                  } },
+                { id: 'ship_destroyed', name: 'Own Ship Destroyed', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 1.3, vol: 0.9, filter: 'lowpass', freq: 1500 });
+                      A.sfxTone({ type: 'sine', f1: 120, f2: 30, dur: 1.3, vol: 0.6 });
+                  } },
+                { id: 'lock_acquired', name: 'Target Lock Acquired', source: 'v11-extraction',
+                  fn: function () {
+                      SIM.audio.blip(660, 100, 0.15);
+                      setTimeout(function () { SIM.audio.blip(880, 120, 0.15); }, 110);
+                  } },
+                { id: 'lock_lost', name: 'Target Lock Lost', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'sine', f1: 330, dur: 0.12, vol: 0.12 } },
+                { id: 'laser_overheat', name: 'Laser Overheats', source: 'v11-extraction',
+                  // A venting hiss plus hot-metal pings that slow as the
+                  // laser cools — args.dur lets a tier that changes the
+                  // overheat window (none do yet) drive this without a
+                  // registry edit.
+                  fn: function (opts) {
+                      var A = SIM.audio, secs = (opts && opts.dur) || CFG.laserOverheatMs / 1000;
+                      A.sfxNoise({ dur: secs, vol: 0.14, filter: 'highpass', freq: 3200 });
+                      [0.25, 0.6, 1.05, 1.6, 2.25, 3.0, 3.85].forEach(function (at, i) {
+                          A.sfxTone({ type: 'triangle', f1: 2000 - i * 140, dur: 0.12, vol: 0.09, at: at });
+                      });
+                  } }
+            ]
+        },
+        {
+            id: 'shields',
+            label: 'Shields',
+            cues: [
+                { id: 'shield_raise', name: 'Shields Raising', source: 'v11-extraction',
+                  // dur depends on CFG.shieldRaiseMs (tier-varied by Ace) —
+                  // always pass {dur: secs} from the call site.
+                  fn: function (opts) {
+                      var A = SIM.audio, secs = (opts && opts.dur) || CFG.shieldRaiseMs / 1000;
+                      A.sfxTone({ type: 'triangle', f1: 180, f2: 720, dur: secs, vol: 0.14 });
+                      A.sfxNoise({ dur: secs, vol: 0.08, filter: 'bandpass', freq: 900, q: 2 });
+                  } },
+                { id: 'shield_clunk', name: 'Shields Online Clunk', source: 'v11-extraction',
+                  recipe: 'noise', args: { dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 400 } },
+                { id: 'shield_splash', name: 'Shield Absorbs a Hit', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.3, vol: 0.25, filter: 'highpass', freq: 2500 });
+                      A.sfxTone({ type: 'triangle', f1: 1400, f2: 900, dur: 0.25, vol: 0.15 });
+                  } },
+                { id: 'shield_failing_warn', name: 'Shields Failing Warning', source: 'v11-extraction',
+                  fn: function () {
+                      SIM.audio.blip(520, 70, 0.1);
+                      setTimeout(function () { SIM.audio.blip(520, 70, 0.1); }, 140);
+                  } },
+                { id: 'shield_drop_manual', name: 'Shields Dropped (manual)', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'triangle', f1: 600, f2: 200, dur: 0.3, vol: 0.12 } },
+                { id: 'shield_drop_depleted', name: 'Shields Dropped (depleted)', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'sawtooth', f1: 600, f2: 90, dur: 0.7, vol: 0.18 } },
+                { id: 'shield_repair_tick', name: 'Disrepair Crew Ratchet', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.06, vol: 0.1, filter: 'bandpass', freq: 500, q: 4 });
+                      A.sfxTone({ type: 'square', f1: 300, dur: 0.05, vol: 0.05 });
+                  } }
+            ]
+        },
+        {
+            id: 'sector',
+            label: 'Sector And Warp',
+            cues: [
+                { id: 'warp_charge', name: 'Hyperwarp Charging', source: 'v11-extraction',
+                  // dur depends on CFG.warpChargeMs — pass {dur: seconds}.
+                  recipe: 'tone', args: { type: 'sawtooth', f1: 120, f2: 1400, dur: 2, vol: 0.15 } },
+                { id: 'warp_arrive', name: 'Hyperwarp Arrival', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
+                      A.sfxTone({ type: 'sine', f1: 1400, f2: 90, dur: 0.9, vol: 0.2 });
+                  } }
+            ]
+        },
+        {
+            id: 'mining',
+            label: 'Mining',
+            cues: [
+                { id: 'explosion_rock', name: 'Asteroid Stage Blast', source: 'v11-extraction',
+                  // One of the three recorded rock explosions, positioned
+                  // at the rock; falls back to the synthesized explosion_kill
+                  // cue if the recordings haven't decoded yet.
+                  fn: function (opts) {
+                      var A = SIM.audio, pos = opts.pos;
+                      var names = ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
+                      var buf = A.assetBufs[names[Math.floor(Math.random() * names.length)]];
+                      if (!A.ctx || !buf) { SIM.cues.play('explosion_kill', opts); return; }
+                      var out = A.worldOut(pos, Math.ceil(buf.duration * 1000));
+                      var g = A.ctx.createGain(); g.gain.value = 0.9;
+                      var src = A.ctx.createBufferSource(); src.buffer = buf;
+                      src.connect(g); g.connect(out);
+                      src.start();
+                  } }
+            ]
+        },
+        {
+            id: 'ui',
+            label: 'UI And Menu',
+            cues: [
+                { id: 'menu_click', name: 'Menu Move', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'sine', f1: 800, f2: 1200, dur: 0.05, vol: 0.3 } },
+                { id: 'menu_select', name: 'Menu Select', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'square', f1: 200, dur: 0.1, vol: 0.05 });
+                      A.sfxTone({ type: 'square', f1: 300, dur: 0.1, vol: 0.05, at: 0.1 });
+                  } },
+                { id: 'ready_chime', name: 'Ready Chime', source: 'v11-extraction',
+                  // Shared by "laser ready" and "shields ready" — identical
+                  // sound, previously duplicated at both call sites.
+                  fn: function () {
+                      SIM.audio.blip(660, 80, 0.12);
+                      setTimeout(function () { SIM.audio.blip(990, 110, 0.12); }, 90);
+                  } },
+                { id: 'refusal_dud', name: 'Refusal (short)', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.06, vol: 0.08 } },
+                { id: 'refusal_wait', name: 'Refusal (recharging/blocked)', source: 'v11-extraction',
+                  recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.12, vol: 0.1 } },
+                { id: 'win_fanfare', name: 'Victory Fanfare', source: 'v11-extraction',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxArpeggio([523, 659, 784, 1047], 0.16, 0.18, { type: 'triangle' });
+                      A.sfxChord([523, 659, 784], 0.9, 0.45, { type: 'sine', at: 0.65 });
+                  } }
+            ]
+        }
+    ];
+
+    var byId = {};
+    CATEGORIES.forEach(function (cat) {
+        cat.cues.forEach(function (cue) {
+            cue.category = cat.id;
+            byId[cue.id] = cue;
+        });
+    });
+
+    // Turn a declarative {recipe, args} entry into a SIM.audio primitive
+    // call. opts override args by name — e.g. {dur: secs} for a cue whose
+    // length tracks a live CFG value rather than a fixed number.
+    function playRecipe(entry, opts) {
+        var A = SIM.audio;
+        var o = Object.assign({}, entry.args, opts);
+        switch (entry.recipe) {
+            case 'tone':  A.sfxTone(o); break;
+            case 'noise': A.sfxNoise(o); break;
+            case 'echo':  A.sfxEcho(o); break;
+            case 'sweep': A.sfxSweep(o); break;
+            default:
+                if (window.console) console.warn('SIM.cues: unknown recipe "' + entry.recipe + '" on ' + entry.id);
+        }
+    }
+
+    return {
+        // Play a cue by id. opts is forwarded to the recipe (as arg
+        // overrides) or to the composite fn (as its whole argument) —
+        // e.g. SIM.cues.play('explosion_kill', {pos: t.pos}),
+        // SIM.cues.play('shield_raise', {dur: CFG.shieldRaiseMs / 1000}).
+        play: function (id, opts) {
+            var entry = byId[id];
+            if (!entry) {
+                if (window.console) console.warn('SIM.cues.play: unknown cue "' + id + '"');
+                return;
+            }
+            if (entry.fn) entry.fn(opts || {});
+            else playRecipe(entry, opts || {});
+        },
+        // For a future sound-lab tool: every cue, or just one category.
+        list: function (categoryId) {
+            var out = [];
+            CATEGORIES.forEach(function (cat) {
+                if (categoryId && cat.id !== categoryId) return;
+                cat.cues.forEach(function (cue) { out.push(cue); });
+            });
+            return out;
+        },
+        categories: function () { return CATEGORIES.map(function (c) { return { id: c.id, label: c.label }; }); }
+    };
+})();
+
+</script>
+<script>
 (function () {
 'use strict';
 
@@ -176,6 +719,11 @@ var CFG_DEFAULTS = {
 // sees this object, so applyTier() re-tuning it in place is all a tier
 // change needs — nothing else in the code has to know tiers exist.
 var CFG = Object.assign({}, CFG_DEFAULTS);
+window.CFG = CFG;   // audio_engine.js and audio_cues.js are separate top-level
+                    // scripts (outside this closure) and read CFG directly;
+                    // applyTier() below mutates this same object in place, so
+                    // the external reference always sees the live, tier-
+                    // adjusted values without needing to be reassigned.
 
 // Difficulty tiers. Rookie is the numeric baseline (its cfg overlay is
 // empty) with enemies passive until hit; Veteran and Ace make every ship
@@ -336,7 +884,6 @@ var mode = null;         // 'combat' | 'mining' | 'sector' | null (menu decides)
 var menuOpen = false;
 var ore = 0;             // extracted this mining run
 var rockSeq = 0;         // numbers rocks: "Iron 3"
-var assetBufs = {};      // decoded AudioBuffers from audio_assets.js
 var ship = { pos: v3(0, 0, 0), vel: v3(0, 0, 0), yaw: 0, pitch: 0 };
 var targets = [];        // built in newGame()
 var selected = -1;       // index into targets
@@ -384,6 +931,8 @@ function dot(a, b)   { return a.x * b.x + a.y * b.y + a.z * b.z; }
 function len(a)      { return Math.sqrt(dot(a, a)); }
 function norm(a)     { var l = len(a); return l > 1e-9 ? scale(a, 1 / l) : v3(0, 0, -1); }
 function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+window.clamp = clamp;   // audio_engine.js (a separate top-level script, outside
+                        // this closure) needs it for panning math.
 
 // Ship basis. yaw 0 / pitch 0 faces -Z (Web Audio native forward).
 // Positive yaw = nose right, positive pitch = nose up.
@@ -555,14 +1104,14 @@ function openHelp() {
     keysDown = {};
     thrusterSync(null);
     stopBeam(true);
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Help. ' + HELP_SECTIONS.length + ' sections, ' + help.lines.length +
         ' lines. Down arrow reads line by line, H jumps to the next heading, Escape closes.');
 }
 
 function closeHelp() {
     help.open = false;
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     say('Help closed.' + (paused ? ' Still paused.' : ''));
 }
 
@@ -575,18 +1124,18 @@ function helpKey(lname, shift) {
     if (lname === 'escape' || lname === 'f1') { closeHelp(); return; }
     if (lname === 'arrowdown') {
         if (help.idx < help.lines.length - 1) { help.idx++; helpSpeakLine(); }
-        else { blip(220, 80, 0.1); say('End of help. Escape closes.'); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of help. Escape closes.'); }
     } else if (lname === 'arrowup') {
         if (help.idx > 0) { help.idx--; helpSpeakLine(); }
-        else { help.idx = 0; blip(220, 80, 0.1); say('Top of help.'); }
+        else { help.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of help.'); }
     } else if (lname === 'h') {
         var i = help.idx;
         if (shift) {
             for (i = help.idx - 1; i >= 0; i--) if (help.lines[i].heading) break;
-            if (i < 0) { blip(220, 80, 0.1); say('No previous heading.'); return; }
+            if (i < 0) { SIM.audio.blip(220, 80, 0.1); say('No previous heading.'); return; }
         } else {
             for (i = help.idx + 1; i < help.lines.length; i++) if (help.lines[i].heading) break;
-            if (i >= help.lines.length) { blip(220, 80, 0.1); say('No next heading.'); return; }
+            if (i >= help.lines.length) { SIM.audio.blip(220, 80, 0.1); say('No next heading.'); return; }
         }
         help.idx = i; helpSpeakLine();
     } else if (lname === 'home') {
@@ -631,101 +1180,24 @@ var KEY_DESCRIPTIONS = {
 };
 
 // ============================== 5. AUDIO ====================================
-var ctx = null, masterGain = null, uiBus = null, noiseBuf = null;
-
-function audioStart() {
-    try {
-        var Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) ctx = new Ctx();
-    } catch (e) { ctx = null; }
-    if (!ctx) return;
-
-    masterGain = ctx.createGain();
-    masterGain.gain.value = CFG.masterGain;
-    masterGain.connect(ctx.destination);
-
-    // Instrumentation bus (lock tick, laser, thrust hum) - stereo, not HRTF,
-    // so the "cockpit instruments" stay separate from the world outside.
-    uiBus = ctx.createGain();
-    uiBus.gain.value = 1;
-    uiBus.connect(masterGain);
-
-    // A short quiet tone so the first real sound does not stutter.
-    var g = ctx.createGain(); g.gain.value = 0.0001; g.connect(ctx.destination);
-    var o = ctx.createOscillator(); o.frequency.value = 440;
-    o.connect(g); o.start(); o.stop(ctx.currentTime + 0.03);
-
-    // Shared 1-second white-noise buffer for explosions and thuds.
-    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-    var d = noiseBuf.getChannelData(0);
-    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-
-    decodeAssets();
-}
-
-// Decode the base64 MP3s from audio_assets.js into AudioBuffers. No fetch —
-// fetch of anything is unreliable on a file:// page — just atob into bytes.
-function decodeAssets() {
-    if (!ctx || !window.AUDIO_ASSETS) return;
-    Object.keys(window.AUDIO_ASSETS).forEach(function (name) {
-        try {
-            var bin = atob(window.AUDIO_ASSETS[name].split(',')[1]);
-            var bytes = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            ctx.decodeAudioData(bytes.buffer,
-                function (buf) { assetBufs[name] = buf; },
-                function () { /* decode failed; assetsReady() stays false */ });
-        } catch (e) {}
-    });
-}
-
-function assetsReady() {
-    return !!(assetBufs.asteroid1 && assetBufs.asteroid2 && assetBufs.asteroid3 &&
-              assetBufs.asteroid_explosion1 && assetBufs.asteroid_explosion2 &&
-              assetBufs.asteroid_explosion3);
-}
-
-// Smoothly move an AudioParam. cancel + set + linear ramp is the standard
-// idiom; assigning .value every frame produces zipper clicks.
-function ramp(param, value, seconds) {
-    if (!ctx) return;
-    var t = ctx.currentTime;
-    param.cancelScheduledValues(t);
-    param.setValueAtTime(param.value, t);
-    param.linearRampToValueAtTime(value, t + (seconds || 0.06));
-}
-
-function makePanner(pos) {
-    var p = ctx.createPanner();
-    p.panningModel = 'HRTF';
-    p.distanceModel = 'inverse';
-    p.refDistance = CFG.refDistance;
-    p.maxDistance = CFG.maxDistance;
-    p.rolloffFactor = CFG.rolloff;
-    if (p.positionX) {
-        p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z;
-    } else if (p.setPosition) {
-        p.setPosition(pos.x, pos.y, pos.z);
-    }
-    return p;
-}
-
-function movePanner(p, pos) {
-    if (p.positionX) {
-        ramp(p.positionX, pos.x); ramp(p.positionY, pos.y); ramp(p.positionZ, pos.z);
-    } else if (p.setPosition) {
-        p.setPosition(pos.x, pos.y, pos.z);
-    }
-}
+// The generic Web Audio layer (context, buses, the recorded-asset bank, the
+// tone/noise/chord/echo/sweep primitives) now lives in audio_engine.js as
+// SIM.audio — everything below here is audio that's actually SHAPED BY
+// LIVE SIMULATION STATE every frame (ship/rock/beacon voices, the laser
+// beam, the lock tick, thrusters), which is why it stays here rather than
+// moving with the generic layer. Discrete one-shot "moments" (explosions,
+// chimes, launches, warnings) live in audio_cues.js as SIM.cues, dispatched
+// by name so they can be swapped for recorded/engineered sound later
+// without touching this file.
 
 // The listener is the ship. Position and orientation ramped every frame.
 function updateListener() {
-    if (!ctx) return;
-    var L = ctx.listener, f = shipForward(), u = shipUp();
+    if (!SIM.audio.ctx) return;
+    var L = SIM.audio.ctx.listener, f = shipForward(), u = shipUp();
     if (L.positionX) {
-        ramp(L.positionX, ship.pos.x); ramp(L.positionY, ship.pos.y); ramp(L.positionZ, ship.pos.z);
-        ramp(L.forwardX, f.x); ramp(L.forwardY, f.y); ramp(L.forwardZ, f.z);
-        ramp(L.upX, u.x); ramp(L.upY, u.y); ramp(L.upZ, u.z);
+        SIM.audio.ramp(L.positionX, ship.pos.x); SIM.audio.ramp(L.positionY, ship.pos.y); SIM.audio.ramp(L.positionZ, ship.pos.z);
+        SIM.audio.ramp(L.forwardX, f.x); SIM.audio.ramp(L.forwardY, f.y); SIM.audio.ramp(L.forwardZ, f.z);
+        SIM.audio.ramp(L.upX, u.x); SIM.audio.ramp(L.upY, u.y); SIM.audio.ramp(L.upZ, u.z);
     } else {
         if (L.setPosition) L.setPosition(ship.pos.x, ship.pos.y, ship.pos.z);
         if (L.setOrientation) L.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z);
@@ -738,20 +1210,20 @@ function updateListener() {
 // runs 6-8 at once, and ~30 would still be comfortable on a modern machine,
 // so a full sim has plenty of headroom.
 function buildVoice(t) {
-    if (!ctx) return;
+    if (!SIM.audio.ctx) return;
     var voice = t.voice;
-    var gain = ctx.createGain();
+    var gain = SIM.audio.ctx.createGain();
     gain.gain.value = CFG.targetGain;
-    var lp = ctx.createBiquadFilter();
+    var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
-    var panner = makePanner(t.pos);
-    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
+    var panner = SIM.audio.makePanner(t.pos);
+    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
 
     // Recorded engine loop when available (same loop hygiene as the rocks:
     // skip the MP3 padding, random start offset so ships don't phase-lock).
-    if (t.shipAsset && assetBufs[t.shipAsset.name]) {
-        var buf = assetBufs[t.shipAsset.name];
-        var src = ctx.createBufferSource();
+    if (t.shipAsset && SIM.audio.assetBufs[t.shipAsset.name]) {
+        var buf = SIM.audio.assetBufs[t.shipAsset.name];
+        var src = SIM.audio.ctx.createBufferSource();
         src.buffer = buf; src.loop = true;
         src.loopStart = 0.15; src.loopEnd = buf.duration - 0.15;
         src.playbackRate.value = t.shipAsset.rate * (0.97 + Math.random() * 0.06);
@@ -764,7 +1236,7 @@ function buildVoice(t) {
 
     var oscs = [], lfos = [];
     function osc(type, freq) {
-        var o = ctx.createOscillator();
+        var o = SIM.audio.ctx.createOscillator();
         o.type = type; o.frequency.value = freq;
         oscs.push(o); return o;
     }
@@ -779,13 +1251,13 @@ function buildVoice(t) {
         osc(voice.type, voice.freq).connect(gain);
     }
     if (voice.trem) {              // amplitude LFO
-        var lg = ctx.createGain(); lg.gain.value = CFG.targetGain * 0.5;
-        var lo = ctx.createOscillator(); lo.frequency.value = voice.trem;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = CFG.targetGain * 0.5;
+        var lo = SIM.audio.ctx.createOscillator(); lo.frequency.value = voice.trem;
         lo.connect(lg); lg.connect(gain.gain); lfos.push(lo);
     }
     if (voice.vib) {               // frequency LFO on the first oscillator
-        var vg = ctx.createGain(); vg.gain.value = voice.vibDepth || 10;
-        var vo = ctx.createOscillator(); vo.frequency.value = voice.vib;
+        var vg = SIM.audio.ctx.createGain(); vg.gain.value = voice.vibDepth || 10;
+        var vo = SIM.audio.ctx.createOscillator(); vo.frequency.value = voice.vib;
         vo.connect(vg); vg.connect(oscs[0].frequency); lfos.push(vo);
     }
     oscs.concat(lfos).forEach(function (o) { o.start(); });
@@ -809,15 +1281,15 @@ function stopVoice(t) {
 // encoder padding so the loop never clicks, and a random start offset keeps
 // two rocks of the same type from playing in lockstep.
 function buildRockVoice(t) {
-    if (!ctx || !assetBufs[t.type.asset]) return;
-    var buf = assetBufs[t.type.asset];
-    var gain = ctx.createGain();
+    if (!SIM.audio.ctx || !SIM.audio.assetBufs[t.type.asset]) return;
+    var buf = SIM.audio.assetBufs[t.type.asset];
+    var gain = SIM.audio.ctx.createGain();
     gain.gain.value = CFG.targetGain * 1.15;
-    var lp = ctx.createBiquadFilter();
+    var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
-    var panner = makePanner(t.pos);
-    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
-    var src = ctx.createBufferSource();
+    var panner = SIM.audio.makePanner(t.pos);
+    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
+    var src = SIM.audio.ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
     src.loopStart = 0.15; src.loopEnd = buf.duration - 0.15;
     src.playbackRate.value = rockRate(t) * (0.95 + Math.random() * 0.1);
@@ -878,25 +1350,25 @@ function poiGain(t) {
 }
 
 function buildPoiVoice(t) {
-    if (!ctx) return;
+    if (!SIM.audio.ctx) return;
     var G = poiGain(t);
-    var gain = ctx.createGain();
+    var gain = SIM.audio.ctx.createGain();
     gain.gain.value = G;
-    var lp = ctx.createBiquadFilter();
+    var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
-    var panner = makePanner(t.pos);
+    var panner = SIM.audio.makePanner(t.pos);
     panner.refDistance = CFG.beaconRef;
     panner.maxDistance = CFG.beaconMax;
     panner.rolloffFactor = CFG.beaconRolloff;
-    gain.connect(lp); lp.connect(panner); panner.connect(masterGain);
+    gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.masterGain);
     var oscs = [];
     function osc(type, freq) {
-        var o = ctx.createOscillator();
+        var o = SIM.audio.ctx.createOscillator();
         o.type = type; o.frequency.value = freq;
         oscs.push(o); return o;
     }
     function tremolo(rate, depth, lfoType) {
-        var lg = ctx.createGain(); lg.gain.value = depth;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = depth;
         var lo = osc(lfoType || 'sine', rate);
         lo.connect(lg); lg.connect(gain.gain);
     }
@@ -906,8 +1378,8 @@ function buildPoiVoice(t) {
         tremolo(1.2, G * 0.6);
     } else if (t.poiType === 'mining') {
         // Distant rockfall rumble: deep noise through a tight lowpass.
-        var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-        var rlp = ctx.createBiquadFilter();
+        var src = SIM.audio.ctx.createBufferSource(); src.buffer = SIM.audio.noiseBuf; src.loop = true;
+        var rlp = SIM.audio.ctx.createBiquadFilter();
         rlp.type = 'lowpass'; rlp.frequency.value = 220;
         src.connect(rlp); rlp.connect(gain);
         oscs.push(src);
@@ -935,142 +1407,6 @@ function makeSectorRoster() {
     });
 }
 
-// Stage-event blast: one of the three recorded explosions, positioned at the
-// rock through a throwaway HRTF panner (falls back to the synth explosion).
-function playRockExplosion(pos) {
-    var names = ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
-    var buf = assetBufs[names[Math.floor(Math.random() * names.length)]];
-    if (!ctx || !buf) { explosionAt(pos); return; }
-    var out = worldOut(pos, Math.ceil(buf.duration * 1000));
-    var g = ctx.createGain(); g.gain.value = 0.9;
-    var src = ctx.createBufferSource(); src.buffer = buf;
-    src.connect(g); g.connect(out);
-    src.start();
-}
-
-// ---- SFX primitives ---------------------------------------------------------
-// Same fire-and-forget generator palette as the Bunker Audio Laboratory
-// (.soundtester v2.0.html) and the ag / kc audio engines: tone with a
-// frequency ramp and exponential decay, filtered noise, chords, arpeggios.
-// One upgrade for this project: every primitive takes an optional `out` node,
-// so the identical vocabulary plays either on the stereo instrument bus
-// (cockpit sounds) or through an HRTF panner at a world position (3D events).
-
-function sfxOut(o) {
-    // Resolve the destination: explicit node > stereo pan on the UI bus > UI bus.
-    if (o && o.out) return o.out;
-    if (o && o.pan && ctx.createStereoPanner) {
-        var sp = ctx.createStereoPanner();
-        sp.pan.value = clamp(o.pan, -1, 1);
-        sp.connect(uiBus);
-        return sp;
-    }
-    return uiBus;
-}
-
-// Tone with optional frequency glide: sfxTone({type,f1,f2,dur,vol,at,pan,out})
-function sfxTone(o) {
-    if (!ctx) return;
-    var t0 = ctx.currentTime + (o.at || 0);
-    var g = ctx.createGain();
-    g.gain.setValueAtTime(o.vol || 0.15, t0);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
-    g.connect(sfxOut(o));
-    var osc = ctx.createOscillator();
-    osc.type = o.type || 'sine';
-    osc.frequency.setValueAtTime(o.f1, t0);
-    if (o.f2) {
-        try { osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur); }
-        catch (e) { osc.frequency.setValueAtTime(o.f2, t0 + o.dur); }
-    }
-    osc.connect(g);
-    osc.start(t0); osc.stop(t0 + o.dur + 0.02);
-}
-
-// Filtered noise burst: sfxNoise({dur,vol,filter,freq,q,at,pan,out})
-function sfxNoise(o) {
-    if (!ctx) return;
-    var t0 = ctx.currentTime + (o.at || 0);
-    var src = ctx.createBufferSource(); src.buffer = noiseBuf;
-    var g = ctx.createGain();
-    g.gain.setValueAtTime(o.vol || 0.2, t0);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + o.dur);
-    var tail = src;
-    if (o.freq) {
-        var f = ctx.createBiquadFilter();
-        f.type = o.filter || 'lowpass';
-        f.frequency.value = o.freq;
-        if (o.q) f.Q.value = o.q;
-        src.connect(f); tail = f;
-    }
-    tail.connect(g); g.connect(sfxOut(o));
-    src.start(t0); src.stop(t0 + o.dur + 0.05);
-}
-
-// Chord and arpeggio, straight from the Bunker Lab vocabulary.
-function sfxChord(freqs, dur, vol, o) {
-    freqs.forEach(function (f) {
-        sfxTone(Object.assign({ f1: f, dur: dur, vol: vol / freqs.length }, o || {}));
-    });
-}
-function sfxArpeggio(freqs, noteDur, vol, o) {
-    freqs.forEach(function (f, i) {
-        sfxTone(Object.assign({ f1: f, dur: noteDur * 1.5, vol: vol,
-                                at: i * noteDur }, o || {}));
-    });
-}
-
-// Compatibility wrapper used by the tick scheduler and small cues.
-function blip(freq, ms, gainVal, pan, type) {
-    sfxTone({ type: type || 'sine', f1: freq, dur: ms / 1000, vol: gainVal, pan: pan || 0 });
-}
-
-// One-shot playback of a decoded recording. Returns false if the asset
-// isn't ready so callers can fall back to a generated cue.
-function playAsset(name, vol, out) {
-    if (!ctx || !assetBufs[name]) return false;
-    var src = ctx.createBufferSource(); src.buffer = assetBufs[name];
-    var g = ctx.createGain(); g.gain.value = vol || 0.3;
-    src.connect(g); g.connect(out || uiBus);
-    src.start();
-    return true;
-}
-
-// (The old snap-shot laser sound was replaced by the sustained beam in
-// SECTION 7 — the beam builds its own wobbling carrier + shimmer graph.)
-
-// A throwaway HRTF panner at a world position that cleans itself up.
-function worldOut(pos, ms) {
-    if (!ctx) return null;
-    var p = makePanner(pos);
-    p.connect(masterGain);
-    setTimeout(function () { try { p.disconnect(); } catch (e) {} }, ms + 400);
-    return p;
-}
-
-// Generic thud / pop at a world position (missile self-destruct, laser splash).
-function noiseBurst(pos, ms, gainVal, cutoff) {
-    var out = worldOut(pos, ms);
-    if (!out) return;
-    sfxNoise({ dur: ms / 1000, vol: gainVal, filter: 'lowpass', freq: cutoff, out: out });
-}
-
-// Kill explosion: filtered noise body plus a low sine thump underneath,
-// all positioned at the dying target so the blast itself is a 3D event.
-function explosionAt(pos) {
-    var out = worldOut(pos, 900);
-    if (!out) return;
-    sfxNoise({ dur: 0.6, vol: 0.8, filter: 'lowpass', freq: 2500, out: out });
-    sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
-    sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
-}
-
-// Victory: ascending arpeggio resolving into a held major chord.
-function winArpeggio() {
-    sfxArpeggio([523, 659, 784, 1047], 0.16, 0.18, { type: 'triangle' });
-    sfxChord([523, 659, 784], 0.9, 0.45, { type: 'sine', at: 0.65 });
-}
-
 // ---- maneuvering thrusters --------------------------------------------------
 // One little looped-noise puffer per control, running while its key is held.
 // The pairs are deliberately mismatched — left vs right and up vs down sit at
@@ -1092,32 +1428,32 @@ var THRUSTER_DEFS = {
 var thrusters = {};   // live nodes per channel
 
 function thrusterStart(name) {
-    if (!ctx || thrusters[name]) return;
+    if (!SIM.audio.ctx || thrusters[name]) return;
     var def = THRUSTER_DEFS[name];
-    var g = ctx.createGain(); g.gain.value = 0.0001;
-    var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-    var f = ctx.createBiquadFilter();
+    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+    var src = SIM.audio.ctx.createBufferSource(); src.buffer = SIM.audio.noiseBuf; src.loop = true;
+    var f = SIM.audio.ctx.createBiquadFilter();
     f.type = 'bandpass'; f.frequency.value = def.freq; f.Q.value = 1.2;
     src.connect(f); f.connect(g);
-    if (ctx.createStereoPanner) {
-        var sp = ctx.createStereoPanner(); sp.pan.value = def.pan;
-        g.connect(sp); sp.connect(uiBus);
-    } else g.connect(uiBus);
+    if (SIM.audio.ctx.createStereoPanner) {
+        var sp = SIM.audio.ctx.createStereoPanner(); sp.pan.value = def.pan;
+        g.connect(sp); sp.connect(SIM.audio.uiBus);
+    } else g.connect(SIM.audio.uiBus);
     var hum = null;
     if (def.hum) {
-        hum = ctx.createOscillator(); hum.type = 'triangle'; hum.frequency.value = def.hum;
+        hum = SIM.audio.ctx.createOscillator(); hum.type = 'triangle'; hum.frequency.value = def.hum;
         hum.connect(g); hum.start();
     }
     src.start();
     thrusters[name] = { src: src, hum: hum, g: g };
-    ramp(g.gain, def.vol, 0.08);
+    SIM.audio.ramp(g.gain, def.vol, 0.08);
 }
 
 function thrusterStop(name) {
     var n = thrusters[name];
     if (!n) return;
     delete thrusters[name];
-    ramp(n.g.gain, 0.0001, 0.12);
+    SIM.audio.ramp(n.g.gain, 0.0001, 0.12);
     setTimeout(function () {
         try { n.src.stop(); if (n.hum) n.hum.stop(); n.g.disconnect(); } catch (e) {}
     }, 220);
@@ -1141,27 +1477,27 @@ function thrusterSync(held) {
 var stabNodes = null;
 
 function updateStabilizers(speedToShed) {
-    if (!ctx) return;
+    if (!SIM.audio.ctx) return;
     if (speedToShed > 0 && !stabNodes) {
-        var g = ctx.createGain(); g.gain.value = 0.0001;
-        var f = ctx.createBiquadFilter();
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+        var f = SIM.audio.ctx.createBiquadFilter();
         f.type = 'bandpass'; f.frequency.value = 1150; f.Q.value = 1.5;
-        var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-        var lfo = ctx.createOscillator(); lfo.frequency.value = 5;   // puff-puff
-        var lg = ctx.createGain(); lg.gain.value = 0.0;
+        var src = SIM.audio.ctx.createBufferSource(); src.buffer = SIM.audio.noiseBuf; src.loop = true;
+        var lfo = SIM.audio.ctx.createOscillator(); lfo.frequency.value = 5;   // puff-puff
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.0;
         lfo.connect(lg); lg.connect(g.gain);
-        src.connect(f); f.connect(g); g.connect(uiBus);
+        src.connect(f); f.connect(g); g.connect(SIM.audio.uiBus);
         src.start(); lfo.start();
         stabNodes = { src: src, lfo: lfo, lg: lg, g: g };
     }
     if (stabNodes) {
         if (speedToShed > 0) {
             var vol = 0.006 + clamp(speedToShed / CFG.maxSpeed, 0, 1) * 0.04;
-            ramp(stabNodes.g.gain, vol, 0.2);
-            ramp(stabNodes.lg.gain, vol * 0.6, 0.2);
+            SIM.audio.ramp(stabNodes.g.gain, vol, 0.2);
+            SIM.audio.ramp(stabNodes.lg.gain, vol * 0.6, 0.2);
         } else {
             var n = stabNodes; stabNodes = null;
-            ramp(n.g.gain, 0.0001, 0.25);
+            SIM.audio.ramp(n.g.gain, 0.0001, 0.25);
             setTimeout(function () {
                 try { n.src.stop(); n.lfo.stop(); n.g.disconnect(); } catch (e) {}
             }, 400);
@@ -1182,19 +1518,19 @@ function tickFreqFor(elevRad) {
 function stopSolidTone() {
     if (!tick.solid) return;
     var n = tick.solid; tick.solid = null;
-    try { ramp(n.g.gain, 0.0001, 0.05); } catch (e) {}
+    try { SIM.audio.ramp(n.g.gain, 0.0001, 0.05); } catch (e) {}
     setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 120);
 }
 
 function startSolidTone() {
-    if (!ctx || tick.solid) return;
-    var g = ctx.createGain(); g.gain.value = 0.0;
-    var sp = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    if (sp) { g.connect(sp); sp.connect(uiBus); } else g.connect(uiBus);
-    var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+    if (!SIM.audio.ctx || tick.solid) return;
+    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0;
+    var sp = SIM.audio.ctx.createStereoPanner ? SIM.audio.ctx.createStereoPanner() : null;
+    if (sp) { g.connect(sp); sp.connect(SIM.audio.uiBus); } else g.connect(SIM.audio.uiBus);
+    var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
     o.connect(g); o.start();
     tick.solid = { o: o, g: g, sp: sp };
-    ramp(g.gain, 0.12, 0.05);
+    SIM.audio.ramp(g.gain, 0.12, 0.05);
 }
 
 function scheduleTick() {
@@ -1213,7 +1549,7 @@ function tickBeat() {
         interval = 200;
     } else if (a.err > CFG.tickArc) {
         // Searching: soft slow tock, out of the tracking arc.
-        blip(260, 60, 0.06, 0, 'sine');
+        SIM.audio.blip(260, 60, 0.06, 0, 'sine');
         interval = 1000;
     } else {
         var z = zoneRad();
@@ -1221,7 +1557,7 @@ function tickBeat() {
         var frac = clamp((a.err - z.lockOff) / span, 0, 1);
         interval = CFG.tickFast + (CFG.tickSlow - CFG.tickFast) * frac;
         var pan = clamp(Math.sin(a.azimuth) * 1.5, -1, 1);
-        blip(tickFreqFor(a.elev), 45, 0.11, pan, 'square');
+        SIM.audio.blip(tickFreqFor(a.elev), 45, 0.11, pan, 'square');
     }
     tick.timer = setTimeout(tickBeat, interval);
 }
@@ -1295,7 +1631,7 @@ function updateTargeting() {
             var haze = 20000 * Math.pow(1000 / Math.max(a.dist, 1000), 1.4);
             cutoff = Math.min(cutoff, clamp(haze, 500, CFG.lpMax));
         }
-        t.nodes.lp.frequency.setTargetAtTime(cutoff, ctx ? ctx.currentTime : 0, 0.1);
+        t.nodes.lp.frequency.setTargetAtTime(cutoff, SIM.audio.ctx ? SIM.audio.ctx.currentTime : 0, 0.1);
     });
     var t = targets[selected];
     if (!t || !t.alive) return;
@@ -1303,7 +1639,7 @@ function updateTargeting() {
     var z = zoneRad();
     if (!locked && a.err < z.lockOn) {
         locked = true;
-        blip(660, 100, 0.15); setTimeout(function () { blip(880, 120, 0.15); }, 110);
+        SIM.cues.play('lock_acquired');
         startSolidTone();
         // The tick has walked the pilot onto the target; the one number that
         // matters now is how far away it is (laser reach, missile flight).
@@ -1311,14 +1647,14 @@ function updateTargeting() {
     } else if (locked && a.err > z.lockOff) {
         locked = false;
         stopSolidTone();
-        blip(330, 120, 0.12);
+        SIM.cues.play('lock_lost');
     }
 }
 
 // ============================== 7. WEAPONS ==================================
 function destroyTarget(t) {
     t.alive = false;
-    explosionAt(t.pos);
+    SIM.cues.play('explosion_kill', { pos: t.pos });
     stopVoice(t);
     if (targets[selected] === t) selectNearest();
     if (threat && threat.t === t) endThreat();
@@ -1326,7 +1662,7 @@ function destroyTarget(t) {
     if (left === 0) {
         won = true;
         shieldReset();
-        setTimeout(winArpeggio, 400);
+        setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
             var tail;
             if (demo && !demo.combatCleared) {
@@ -1408,14 +1744,10 @@ function laserMiss() {
     laser.misses = [];
     laser.hotUntil = now + CFG.laserOverheatMs;
     var secs = CFG.laserOverheatMs / 1000;
-    sfxNoise({ dur: secs, vol: 0.14, filter: 'highpass', freq: 3200 });
-    var pings = [0.25, 0.6, 1.05, 1.6, 2.25, 3.0, 3.85];
-    pings.forEach(function (at, i) {
-        sfxTone({ type: 'triangle', f1: 2000 - i * 140, dur: 0.12, vol: 0.09, at: at });
-    });
+    SIM.cues.play('laser_overheat', { dur: secs });
     setTimeout(function () {
         if (!running || mode === 'sector' || menuOpen) return;
-        blip(660, 80, 0.12); setTimeout(function () { blip(990, 110, 0.12); }, 90);
+        SIM.cues.play('ready_chime');
         say('Laser ready.');
     }, CFG.laserOverheatMs);
     say('Laser overheated. ' + secs + ' seconds to cool.');
@@ -1428,15 +1760,15 @@ function startBeam(tool) {
     tool = tool || 'laser';
     if (beam) return;                              // already firing (audible)
     if (tool === 'laser') {
-        if (shieldsBusy()) { blip(200, 60, 0.08); say('Shields up. Weapons offline. G drops them.'); return; }
+        if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
         if (laserHot()) {
-            sfxNoise({ dur: 0.3, vol: 0.15, filter: 'highpass', freq: 2500 });
+            SIM.audio.sfxNoise({ dur: 0.3, vol: 0.15, filter: 'highpass', freq: 2500 });
             say('Laser overheated. ' + Math.ceil((laser.hotUntil - Date.now()) / 1000) + ' seconds.');
             return;
         }
     }
     if (Date.now() - lastLaserAt < CFG.beamCooldownMs) {
-        blip(200, 60, 0.08);                       // recharging: a dud click,
+        SIM.cues.play('refusal_dud');                       // recharging: a dud click,
         return;                                    // never a silent nothing
     }
     var nodes = null;
@@ -1446,23 +1778,23 @@ function startBeam(tool) {
     var P = tool === 'vac'  ? { type: 'sine', f: 140, lp: 900,  vibF: 9,   vibD: 25, shT: 'lowpass',  shF: 400,  shG: 0.05, vol: 0.14 }
           : tool === 'dust' ? { type: 'sine', f: 90,  lp: 600,  vibF: 4,   vibD: 15, shT: 'lowpass',  shF: 1200, shG: 0.07, vol: 0.13 }
           :                   { type: 'sawtooth', f: 900, lp: 2600, vibF: 6.5, vibD: 45, shT: 'highpass', shF: 3800, shG: 0.03, vol: 0.16 };
-    if (ctx) {
-        var g = ctx.createGain(); g.gain.value = 0.0001;
-        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    if (SIM.audio.ctx) {
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+        var lp = SIM.audio.ctx.createBiquadFilter(); lp.type = 'lowpass';
         lp.frequency.value = P.lp;
-        var o = ctx.createOscillator();
+        var o = SIM.audio.ctx.createOscillator();
         o.type = P.type; o.frequency.value = P.f;
-        var vib = ctx.createOscillator(); vib.frequency.value = P.vibF;
-        var vg = ctx.createGain(); vg.gain.value = P.vibD;
+        var vib = SIM.audio.ctx.createOscillator(); vib.frequency.value = P.vibF;
+        var vg = SIM.audio.ctx.createGain(); vg.gain.value = P.vibD;
         vib.connect(vg); vg.connect(o.frequency);
-        var sh = ctx.createBufferSource(); sh.buffer = noiseBuf; sh.loop = true;
-        var shf = ctx.createBiquadFilter();
+        var sh = SIM.audio.ctx.createBufferSource(); sh.buffer = SIM.audio.noiseBuf; sh.loop = true;
+        var shf = SIM.audio.ctx.createBiquadFilter();
         shf.type = P.shT; shf.frequency.value = P.shF;
-        var shg = ctx.createGain(); shg.gain.value = P.shG;
-        sh.connect(shf); shf.connect(shg); shg.connect(uiBus);
-        o.connect(lp); lp.connect(g); g.connect(uiBus);
+        var shg = SIM.audio.ctx.createGain(); shg.gain.value = P.shG;
+        sh.connect(shf); shf.connect(shg); shg.connect(SIM.audio.uiBus);
+        o.connect(lp); lp.connect(g); g.connect(SIM.audio.uiBus);
         o.start(); vib.start(); sh.start();
-        ramp(g.gain, P.vol, 0.06);
+        SIM.audio.ramp(g.gain, P.vol, 0.06);
         nodes = { g: g, o: o, vib: vib, sh: sh, shg: shg };
     }
     beam = { tool: tool, nodes: nodes,
@@ -1478,15 +1810,15 @@ function stopBeam(silent) {
     clearTimeout(b.timer);
     lastLaserAt = Date.now();
     if (b.nodes) {
-        ramp(b.nodes.g.gain, 0.0001, 0.1);
-        ramp(b.nodes.shg.gain, 0.0001, 0.1);
+        SIM.audio.ramp(b.nodes.g.gain, 0.0001, 0.1);
+        SIM.audio.ramp(b.nodes.shg.gain, 0.0001, 0.1);
         setTimeout(function () {
             try { b.nodes.o.stop(); b.nodes.vib.stop(); b.nodes.sh.stop();
                   b.nodes.g.disconnect(); b.nodes.shg.disconnect(); } catch (e) {}
         }, 220);
     }
     if (!silent && b.tool === 'laser' && b.totalDamage === 0 && !b.saidDust) {
-        if (!b.saidRange) { blip(120, 150, 0.1, 0, 'sine'); say('Miss.'); }
+        if (!b.saidRange) { SIM.audio.blip(120, 150, 0.1, 0, 'sine'); say('Miss.'); }
         laserMiss();                               // out-of-range bursts heat it too
     }
 }
@@ -1502,14 +1834,14 @@ function beamTick() {
                         (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1));
     if (beam.nodes) {
         // The carrier pitch narrates the same quality the number reports.
-        ramp(beam.nodes.o.frequency, 700 + 700 * q, 0.15);
+        SIM.audio.ramp(beam.nodes.o.frequency, 700 + 700 * q, 0.15);
     }
     // Aimed true but out of reach: say so once, instead of a mystery miss.
     if (t && t.alive) {
         var reach = aim(t.pos);
         if (reach.err < zoneRad().laser && reach.dist > CFG.laserRange && !beam.saidRange) {
             beam.saidRange = true;
-            blip(180, 220, 0.12, 0, 'square');
+            SIM.audio.blip(180, 220, 0.12, 0, 'square');
             say('Out of range. Distance ' + round10(reach.dist) + ', the laser reaches ' +
                 CFG.laserRange + '. Thrust closer.');
         }
@@ -1521,7 +1853,7 @@ function beamTick() {
                 beam.saidDust = true;
                 say('The laser passes through the dust. Get close and vacuum it with V.');
             } else {
-                blip(140, 90, 0.06, 0, 'sine');
+                SIM.audio.blip(140, 90, 0.06, 0, 'sine');
             }
         } else if (t.kind === 'rock') {
             // Hidden hardness roll obscures the stage threshold, and every
@@ -1541,7 +1873,7 @@ function beamTick() {
             say(String(dmg));
         }
     } else {
-        blip(140, 90, 0.06, 0, 'sine');       // scorching empty space
+        SIM.audio.blip(140, 90, 0.06, 0, 'sine');       // scorching empty space
     }
     beam.ticksLeft--;
     if (beam.ticksLeft <= 0) stopBeam(false);
@@ -1565,12 +1897,12 @@ function vacTick() {
     oreGained();
     // Gentle tractor pull so the core drifts toward the ship, not away.
     pushRock(t, scale(norm(sub(ship.pos, t.pos)), 2));
-    if (beam.nodes) ramp(beam.nodes.o.frequency, 100 + 120 * (t.oreLeft / t.type.ore), 0.2);
+    if (beam.nodes) SIM.audio.ramp(beam.nodes.o.frequency, 100 + 120 * (t.oreLeft / t.type.ore), 0.2);
     if (t.oreLeft <= 0) {
         stopBeam(true);
         t.alive = false;
         stopVoice(t);
-        blip(900, 200, 0.15, 0, 'sine');
+        SIM.audio.blip(900, 200, 0.15, 0, 'sine');
         say('Core depleted. Ore hold ' + ore + '.');
         if (targets[selected] === t) selectNearest();
         checkMiningEnd();
@@ -1609,9 +1941,9 @@ function dustTick() {
 
 function fireMissile() {
     if (missile) { say('Missile already away.'); return; }
-    if (shieldsBusy()) { blip(200, 60, 0.08); say('Shields up. Weapons offline. G drops them.'); return; }
+    if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
     if (missiles <= 0) {
-        blip(200, 120, 0.1);
+        SIM.cues.play('refusal_wait');
         say('No missiles left.' + (sectorHome ? ' Station Meridian rearms.' : ''));
         return;
     }
@@ -1634,19 +1966,19 @@ function fireMissile() {
         guided: true, outCone: 0, coast: 0
     };
     missiles--;
-    if (ctx) {
-        var g = ctx.createGain(); g.gain.value = 0.22;
-        var p = makePanner(m.pos);
-        g.connect(p); p.connect(masterGain);
-        var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 300;
-        var lg = ctx.createGain(); lg.gain.value = 0.11;
-        var lo = ctx.createOscillator(); lo.frequency.value = 12;
+    if (SIM.audio.ctx) {
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.22;
+        var p = SIM.audio.makePanner(m.pos);
+        g.connect(p); p.connect(SIM.audio.masterGain);
+        var o = SIM.audio.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 300;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.11;
+        var lo = SIM.audio.ctx.createOscillator(); lo.frequency.value = 12;
         lo.connect(lg); lg.connect(g.gain);
         o.connect(g); o.start(); lo.start();
         m.nodes = { g: g, p: p, oscs: [o, lo] };
     }
     missile = m;
-    if (!playAsset('missile_fire', 0.4)) blip(500, 120, 0.2, 0, 'sawtooth');
+    if (!SIM.audio.playAsset('missile_fire', 0.4)) SIM.audio.blip(500, 120, 0.2, 0, 'sawtooth');
     say('Missile away. ' + missiles + ' left.');
 }
 
@@ -1655,7 +1987,7 @@ function loseGuidance(why) {
     var m = missile;
     if (!m || !m.guided) return;
     m.guided = false; m.coast = 0;
-    blip(300, 220, 0.12, 0, 'sawtooth');
+    SIM.audio.blip(300, 220, 0.12, 0, 'sawtooth');
     say(why);
 }
 
@@ -1686,7 +2018,7 @@ function stepMissile(dt) {
     var m = missile;
     m.age += dt;
     if (!m.target.alive) {           // target died to the laser mid-flight
-        noiseBurst(m.pos, 250, 0.3, 1500);
+        SIM.audio.noiseBurst(m.pos, 250, 0.3, 1500);
         killMissile();
         return;
     }
@@ -1710,13 +2042,13 @@ function stepMissile(dt) {
     } else {
         m.coast += dt;
         if (m.coast > CFG.missileCoastS) {
-            noiseBurst(m.pos, 300, 0.35, 1200);
+            SIM.audio.noiseBurst(m.pos, 300, 0.35, 1200);
             killMissile();
             return;
         }
     }
     m.pos = add(m.pos, scale(m.vel, dt));
-    if (m.nodes) movePanner(m.nodes.p, m.pos);
+    if (m.nodes) SIM.audio.movePanner(m.nodes.p, m.pos);
 
     if (len(sub(m.target.pos, m.pos)) < CFG.missileHit) {
         var t = m.target;
@@ -1732,13 +2064,13 @@ function stepMissile(dt) {
                 t.hp -= Math.ceil(CFG.missileDamage * t.type.hardness);
                 if (t.hp <= 0) { rockEvent(t); }
                 else {
-                    noiseBurst(t.pos, 350, 0.5, 1800);
+                    SIM.audio.noiseBurst(t.pos, 350, 0.5, 1800);
                     say(t.name + ' cracks deep under the missile.');
                 }
             } else {
                 // A smaller rock can't absorb it: the blast hurls it away,
                 // and it will usually leave the cloud entirely. Wasteful.
-                playRockExplosion(t.pos);
+                SIM.cues.play('explosion_rock', { pos: t.pos });
                 pushRock(t, scale(impactDir, 150));
                 say(t.name + ' is blasted out of control and hurtles toward the edge of the cloud!');
             }
@@ -1746,7 +2078,7 @@ function stepMissile(dt) {
             // Survived: impact thump at the target plus a hull report. A
             // Rookie Cruiser just takes the hit and answers by missile; every
             // other ship KNOWS now and breaks away hard.
-            noiseBurst(t.pos, 350, 0.5, 1800);
+            SIM.audio.noiseBurst(t.pos, 350, 0.5, 1800);
             if (t.noEvadeBurst) {
                 threatIn = Math.min(threatIn, CFG.enemyAlertAttackS);
                 say(t.name + ' hit. Hull ' + hullPercent(t) + ' percent.');
@@ -1757,7 +2089,7 @@ function stepMissile(dt) {
             }
         }
     } else if (m.age > CFG.missileLifeS) {
-        noiseBurst(m.pos, 300, 0.35, 1200);
+        SIM.audio.noiseBurst(m.pos, 300, 0.35, 1200);
         killMissile();
         say('Missile lost.');
     }
@@ -1778,15 +2110,15 @@ function alertTarget(t) {
     t.vel = add(t.vel || v3(0, 0, 0), scale(dir, CFG.evadeSpeed));
     if (t.orbit) t.orbit.spin = (t.orbit.spin || 0) + s * 40;
     // Burner: a rising noise whoosh at the ship, and its engine pitches up.
-    var out = worldOut(t.pos, 1200);
+    var out = SIM.audio.worldOut(t.pos, 1200);
     if (out) {
-        sfxNoise({ dur: 1.1, vol: 0.6, filter: 'bandpass', freq: 500, q: 1.5, out: out });
-        sfxTone({ type: 'sawtooth', f1: 90, f2: 260, dur: 1.0, vol: 0.25, out: out });
+        SIM.audio.sfxNoise({ dur: 1.1, vol: 0.6, filter: 'bandpass', freq: 500, q: 1.5, out: out });
+        SIM.audio.sfxTone({ type: 'sawtooth', f1: 90, f2: 260, dur: 1.0, vol: 0.25, out: out });
     }
     if (t.nodes && t.nodes.src && t.baseRate) {
-        ramp(t.nodes.src.playbackRate, t.baseRate * 1.35, 0.3);
+        SIM.audio.ramp(t.nodes.src.playbackRate, t.baseRate * 1.35, 0.3);
         setTimeout(function () {
-            if (t.nodes && t.nodes.src) ramp(t.nodes.src.playbackRate, t.baseRate, 1.5);
+            if (t.nodes && t.nodes.src) SIM.audio.ramp(t.nodes.src.playbackRate, t.baseRate, 1.5);
         }, 2500);
     }
     threatIn = Math.min(threatIn, CFG.enemyAlertAttackS);
@@ -1818,7 +2150,7 @@ function stepCombatShips(dt) {
                         t.off || v3(0, 0, 0));
             moved = true;
         }
-        if (moved && t.nodes) movePanner(t.nodes.panner, t.pos);
+        if (moved && t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
     });
 }
 
@@ -1858,10 +2190,10 @@ function shieldCoach() {
 
 function startEnemyLaser(t) {
     threat = { type: 'laser', t: t, phase: 'lock', clock: 0, ticks: 0, absorbed: 0, nodes: null };
-    var out = worldOut(t.pos, CFG.enemyLaserTelegraphS * 1000);
+    var out = SIM.audio.worldOut(t.pos, CFG.enemyLaserTelegraphS * 1000);
     if (out) {
         for (var i = 0; i < 3; i++) {
-            sfxTone({ type: 'square', f1: 1100 + i * 250, f2: 1500 + i * 250, dur: 0.18,
+            SIM.audio.sfxTone({ type: 'square', f1: 1100 + i * 250, f2: 1500 + i * 250, dur: 0.18,
                       vol: 0.3, at: i * 0.35, out: out });
         }
     }
@@ -1869,17 +2201,17 @@ function startEnemyLaser(t) {
 }
 
 function enemyBeamVoice(t) {
-    if (!ctx) return null;
-    var g = ctx.createGain(); g.gain.value = 0.0001;
-    var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
-    var p = makePanner(t.pos);
-    var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 380;
-    var vib = ctx.createOscillator(); vib.frequency.value = 7;
-    var vg = ctx.createGain(); vg.gain.value = 30;
+    if (!SIM.audio.ctx) return null;
+    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+    var lp = SIM.audio.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    var p = SIM.audio.makePanner(t.pos);
+    var o = SIM.audio.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 380;
+    var vib = SIM.audio.ctx.createOscillator(); vib.frequency.value = 7;
+    var vg = SIM.audio.ctx.createGain(); vg.gain.value = 30;
     vib.connect(vg); vg.connect(o.frequency);
-    o.connect(lp); lp.connect(g); g.connect(p); p.connect(masterGain);
+    o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
     o.start(); vib.start();
-    ramp(g.gain, 0.22, 0.08);
+    SIM.audio.ramp(g.gain, 0.22, 0.08);
     return { g: g, p: p, oscs: [o, vib] };
 }
 
@@ -1888,21 +2220,21 @@ function startEnemyMissile(t) {
     var th = { type: 'missile', t: t, pos: pos,
                vel: scale(norm(sub(ship.pos, pos)), CFG.enemyMissileSpeed),
                age: 0, guided: true, coast: 0, nodes: null };
-    if (ctx) {
-        var g = ctx.createGain(); g.gain.value = 0.26;
-        var p = makePanner(pos);
-        var o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 190;
-        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
-        var lg = ctx.createGain(); lg.gain.value = 0.13;
-        var lo = ctx.createOscillator(); lo.frequency.value = 20;
+    if (SIM.audio.ctx) {
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.26;
+        var p = SIM.audio.makePanner(pos);
+        var o = SIM.audio.ctx.createOscillator(); o.type = 'square'; o.frequency.value = 190;
+        var lp = SIM.audio.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.13;
+        var lo = SIM.audio.ctx.createOscillator(); lo.frequency.value = 20;
         lo.connect(lg); lg.connect(g.gain);
-        o.connect(lp); lp.connect(g); g.connect(p); p.connect(masterGain);
+        o.connect(lp); lp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
         o.start(); lo.start();
         th.nodes = { g: g, p: p, oscs: [o, lo] };
     }
     threat = th;
-    var out = worldOut(pos, 1500);
-    if (!playAsset('missile_fire', 0.5, out)) sfxTone({ type: 'sawtooth', f1: 500, f2: 200, dur: 0.4, vol: 0.3, out: out });
+    var out = SIM.audio.worldOut(pos, 1500);
+    if (!SIM.audio.playAsset('missile_fire', 0.5, out)) SIM.audio.sfxTone({ type: 'sawtooth', f1: 500, f2: 200, dur: 0.4, vol: 0.3, out: out });
     say(t.name + ' missile launch! Incoming.' + shieldCoach());
 }
 
@@ -1911,7 +2243,7 @@ function endThreat() {
     var th = threat; threat = null;
     if (th.nodes) {
         try {
-            ramp(th.nodes.g.gain, 0.0001, 0.1);
+            SIM.audio.ramp(th.nodes.g.gain, 0.0001, 0.1);
             setTimeout(function () {
                 try { th.nodes.oscs.forEach(function (o) { o.stop(); }); th.nodes.p.disconnect(); } catch (e) {}
             }, 200);
@@ -1932,7 +2264,7 @@ function stepThreat(dt) {
             }
             return;
         }
-        if (th.nodes) movePanner(th.nodes.p, t.pos);
+        if (th.nodes) SIM.audio.movePanner(th.nodes.p, t.pos);
         if (th.clock < CFG.enemyLaserTickS) return;
         th.clock -= CFG.enemyLaserTickS; th.ticks++;
         if (len(sub(t.pos, ship.pos)) > CFG.enemyLaserRange * 1.5) {
@@ -1954,7 +2286,7 @@ function stepThreat(dt) {
     th.age += dt;
     if (th.guided && shield.up) {
         th.guided = false; th.coast = 0;
-        blip(300, 220, 0.12, 0, 'sawtooth');
+        SIM.audio.blip(300, 220, 0.12, 0, 'sawtooth');
         say('Incoming missile lost guidance.');
     }
     if (th.guided) {
@@ -1962,19 +2294,19 @@ function stepThreat(dt) {
     } else {
         th.coast += dt;
         if (th.coast > CFG.missileCoastS) {
-            noiseBurst(th.pos, 300, 0.35, 1200);
+            SIM.audio.noiseBurst(th.pos, 300, 0.35, 1200);
             endThreat();
             return;
         }
     }
     th.pos = add(th.pos, scale(th.vel, dt));
-    if (th.nodes) movePanner(th.nodes.p, th.pos);
+    if (th.nodes) SIM.audio.movePanner(th.nodes.p, th.pos);
     if (len(sub(th.pos, ship.pos)) < CFG.missileHit * 1.5) {
         endThreat();
         if (shield.up) { absorbShield(CFG.enemyMissileDamage); say('Shields absorb the missile.'); }
         else hullHit(CFG.enemyMissileDamage, t.name + ' missile');
     } else if (th.age > CFG.enemyMissileLifeS) {
-        noiseBurst(th.pos, 300, 0.35, 1200);
+        SIM.audio.noiseBurst(th.pos, 300, 0.35, 1200);
         endThreat();
         say('Incoming missile burned out.');
     }
@@ -1984,8 +2316,7 @@ function stepThreat(dt) {
 // so the raw value IS the percent.
 function hullHit(dmg, source) {
     hull = Math.max(0, hull - dmg);
-    sfxNoise({ dur: 0.25, vol: 0.5, filter: 'lowpass', freq: 600 });
-    sfxTone({ type: 'sine', f1: 80, f2: 40, dur: 0.3, vol: 0.4 });
+    SIM.cues.play('hull_hit');
     if (hull <= 0) { shipDestroyed(source); return; }
     say('Your hull ' + hull + '.');
 }
@@ -1998,8 +2329,7 @@ function shipDestroyed(source) {
     shieldReset();
     keysDown = {};
     thrusterSync(null);
-    sfxNoise({ dur: 1.3, vol: 0.9, filter: 'lowpass', freq: 1500 });
-    sfxTone({ type: 'sine', f1: 120, f2: 30, dur: 1.3, vol: 0.6 });
+    SIM.cues.play('ship_destroyed');
     setTimeout(function () {
         var tail = demo
             ? 'Delivery run failed at ' + fmtTime(demo.elapsed) + '. Enter restarts the run from the beginning, X for the mission menu.'
@@ -2022,7 +2352,7 @@ function shieldKey() {
     if (shield.up) { shieldDrop(false, 'manual'); return; }
     if (shield.raising >= 0) { say('Shields already coming up.'); return; }
     if (shield.repairing > 0) {
-        blip(200, 120, 0.1);
+        SIM.cues.play('refusal_wait');
         say('Shields in disrepair. Damage control needs ' + Math.ceil(shield.repairing) + ' seconds.');
         return;
     }
@@ -2030,8 +2360,7 @@ function shieldKey() {
     shield.warnedLow = false;
     stopBeam(true);
     var secs = CFG.shieldRaiseMs / 1000;
-    sfxTone({ type: 'triangle', f1: 180, f2: 720, dur: secs, vol: 0.14 });
-    sfxNoise({ dur: secs, vol: 0.08, filter: 'bandpass', freq: 900, q: 2 });
+    SIM.cues.play('shield_raise', { dur: secs });
     say('Raising shields.');
 }
 
@@ -2039,11 +2368,11 @@ function shieldKey() {
 // warning under 25%, and a drop into disrepair if it empties the pool.
 // Returns true if that hit was the one that dropped the shield.
 function absorbShield(dmg) {
-    shieldSplash();
+    SIM.cues.play('shield_splash');
     shield.pool = Math.max(0, shield.pool - dmg);
     if (!shield.warnedLow && shield.pool > 0 && shield.pool <= CFG.shieldPool * 0.25) {
         shield.warnedLow = true;
-        blip(520, 70, 0.1); setTimeout(function () { blip(520, 70, 0.1); }, 140);
+        SIM.cues.play('shield_failing_warn');
         say('Shields failing.');
     }
     if (shield.pool <= 0) { shieldDrop(false, 'depleted'); return true; }
@@ -2054,8 +2383,7 @@ function absorbShield(dmg) {
 // quickens as the repair nears done, entirely separate from the HRTF world.
 function scheduleRepairTick() {
     if (shield.repairing <= 0) { shieldRepairTimer = null; return; }
-    sfxNoise({ dur: 0.06, vol: 0.1, filter: 'bandpass', freq: 500, q: 4 });
-    sfxTone({ type: 'square', f1: 300, dur: 0.05, vol: 0.05 });
+    SIM.cues.play('shield_repair_tick');
     var frac = clamp(shield.repairing / CFG.shieldRepairS, 0, 1);
     shieldRepairTimer = setTimeout(scheduleRepairTick, 250 + frac * 650);
 }
@@ -2064,29 +2392,24 @@ function stopRepairSound() {
 }
 
 function shieldHum(on) {
-    if (!ctx) return;
+    if (!SIM.audio.ctx) return;
     if (on && !shield.nodes) {
-        var g = ctx.createGain(); g.gain.value = 0.0001;
-        var a = ctx.createOscillator(); a.type = 'sine'; a.frequency.value = 110;
-        var b = ctx.createOscillator(); b.type = 'triangle'; b.frequency.value = 220;
-        var bg = ctx.createGain(); bg.gain.value = 0.35;
-        var lfo = ctx.createOscillator(); lfo.frequency.value = 1.5;
-        var lg = ctx.createGain(); lg.gain.value = 0.02;
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+        var a = SIM.audio.ctx.createOscillator(); a.type = 'sine'; a.frequency.value = 110;
+        var b = SIM.audio.ctx.createOscillator(); b.type = 'triangle'; b.frequency.value = 220;
+        var bg = SIM.audio.ctx.createGain(); bg.gain.value = 0.35;
+        var lfo = SIM.audio.ctx.createOscillator(); lfo.frequency.value = 1.5;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = 0.02;
         lfo.connect(lg); lg.connect(g.gain);
-        a.connect(g); b.connect(bg); bg.connect(g); g.connect(uiBus);
+        a.connect(g); b.connect(bg); bg.connect(g); g.connect(SIM.audio.uiBus);
         a.start(); b.start(); lfo.start();
         shield.nodes = { g: g, oscs: [a, b, lfo] };
-        ramp(g.gain, 0.06, 0.15);
+        SIM.audio.ramp(g.gain, 0.06, 0.15);
     } else if (!on && shield.nodes) {
         var n = shield.nodes; shield.nodes = null;
-        ramp(n.g.gain, 0.0001, 0.2);
+        SIM.audio.ramp(n.g.gain, 0.0001, 0.2);
         setTimeout(function () { try { n.oscs.forEach(function (o) { o.stop(); }); n.g.disconnect(); } catch (e) {} }, 300);
     }
-}
-
-function shieldSplash() {
-    sfxNoise({ dur: 0.3, vol: 0.25, filter: 'highpass', freq: 2500 });
-    sfxTone({ type: 'triangle', f1: 1400, f2: 900, dur: 0.25, vol: 0.15 });
 }
 
 function updateShield(dt) {
@@ -2094,7 +2417,7 @@ function updateShield(dt) {
         shield.raising += dt;
         if (shield.raising * 1000 >= CFG.shieldRaiseMs) {
             shield.raising = -1; shield.up = true;
-            sfxNoise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 400 });   // clunk
+            SIM.cues.play('shield_clunk');
             shieldHum(true);
             say('Shields up.');
         }
@@ -2107,7 +2430,7 @@ function updateShield(dt) {
             shield.repairing = 0;
             stopRepairSound();
             shield.pool = CFG.shieldPool * CFG.shieldRepairReturn;
-            blip(660, 80, 0.12); setTimeout(function () { blip(990, 110, 0.12); }, 90);
+            SIM.cues.play('ready_chime');
             say('Shields back online, ' + Math.round(CFG.shieldRepairReturn * 100) + ' percent.');
         }
     } else if (shield.pool < CFG.shieldPool) {
@@ -2124,12 +2447,12 @@ function shieldDrop(silent, why) {
         stopRepairSound();
         scheduleRepairTick();
         if (silent) return;
-        sfxTone({ type: 'sawtooth', f1: 600, f2: 90, dur: 0.7, vol: 0.18 });
+        SIM.cues.play('shield_drop_depleted');
         say('Shields down. Damage control on it.');
     } else {
         // Manual drop: whatever charge is left in the pool keeps regenerating.
         if (silent) return;
-        sfxTone({ type: 'triangle', f1: 600, f2: 200, dur: 0.3, vol: 0.12 });
+        SIM.cues.play('shield_drop_manual');
         say('Shields down. Weapons hot.');
     }
 }
@@ -2170,25 +2493,25 @@ function addDebris(pos, amount) {
 }
 
 function buildDustVoice(f) {
-    if (!ctx) return;
-    var g = ctx.createGain(); g.gain.value = 0.0001;
+    if (!SIM.audio.ctx) return;
+    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
     // Not a steady hiss: the band center wanders slowly and the level
     // sparkles, so a field sounds like drifting, glittering motes — and
     // each field rolls its own base color so no two sound identical.
     var base = 2100 + Math.random() * 900;
-    var bp = ctx.createBiquadFilter();
+    var bp = SIM.audio.ctx.createBiquadFilter();
     bp.type = 'bandpass'; bp.frequency.value = base; bp.Q.value = 3;
-    var wander = ctx.createOscillator();
+    var wander = SIM.audio.ctx.createOscillator();
     wander.frequency.value = 0.15 + Math.random() * 0.25;
-    var wg = ctx.createGain(); wg.gain.value = 650;
+    var wg = SIM.audio.ctx.createGain(); wg.gain.value = 650;
     wander.connect(wg); wg.connect(bp.frequency);
-    var sparkle = ctx.createOscillator();
+    var sparkle = SIM.audio.ctx.createOscillator();
     sparkle.frequency.value = 1.5 + Math.random() * 2;
-    var sg = ctx.createGain(); sg.gain.value = 0.012;
+    var sg = SIM.audio.ctx.createGain(); sg.gain.value = 0.012;
     sparkle.connect(sg); sg.connect(g.gain);
-    var p = makePanner(f.pos);
-    var src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-    src.connect(bp); bp.connect(g); g.connect(p); p.connect(masterGain);
+    var p = SIM.audio.makePanner(f.pos);
+    var src = SIM.audio.ctx.createBufferSource(); src.buffer = SIM.audio.noiseBuf; src.loop = true;
+    src.connect(bp); bp.connect(g); g.connect(p); p.connect(SIM.audio.masterGain);
     wander.start(); sparkle.start();
     src.start(0, Math.random());
     f.nodes = { gain: g, panner: p, src: src, lfos: [wander, sparkle] };
@@ -2197,7 +2520,7 @@ function buildDustVoice(f) {
 
 function updateDustVolume(f) {
     if (!f.nodes) return;
-    ramp(f.nodes.gain.gain, clamp(0.015 + f.amount / 8000, 0.015, 0.07), 0.3);
+    SIM.audio.ramp(f.nodes.gain.gain, clamp(0.015 + f.amount / 8000, 0.015, 0.07), 0.3);
 }
 
 function removeDust(f) {
@@ -2214,7 +2537,7 @@ function removeDust(f) {
     }
     if (f.nodes) {
         var n = f.nodes; f.nodes = null;
-        ramp(n.gain.gain, 0.0001, 0.3);
+        SIM.audio.ramp(n.gain.gain, 0.0001, 0.3);
         setTimeout(function () {
             try {
                 n.src.stop();
@@ -2247,7 +2570,7 @@ function randDir() {
 // 'small' — collapses into a glowing resource core for the extractor.
 function rockEvent(t) {
     stopBeam(true);
-    playRockExplosion(t.pos);
+    SIM.cues.play('explosion_rock', { pos: t.pos });
     // The blast sheds a mist of particulates that hangs where it happened —
     // bigger rocks throw bigger mists. (Computed before the size changes.)
     var mist = Math.round((CFG.debrisEventBase + Math.random() * 200) *
@@ -2258,7 +2581,7 @@ function rockEvent(t) {
         t.resource = true;
         t.oreLeft = t.type.ore + Math.floor(Math.random() * 600) - 300;
         pushRock(t, scale(randDir(), 6));
-        if (t.nodes && t.nodes.src) ramp(t.nodes.src.playbackRate, 1.6, 0.6);
+        if (t.nodes && t.nodes.src) SIM.audio.ramp(t.nodes.src.playbackRate, 1.6, 0.6);
         say(t.name + ' collapses into a glowing core. Get close and press E to extract.');
         return;
     }
@@ -2291,7 +2614,7 @@ function rockEvent(t) {
     t.hp = rollHp(t.size);
     pushRock(t, scale(randDir(), (5 + Math.random() * 5) * ROCK_SIZES[t.size].push));
     if (t.nodes && t.nodes.src) {
-        ramp(t.nodes.src.playbackRate, ROCK_SIZES[t.size].rate, 0.6);
+        SIM.audio.ramp(t.nodes.src.playbackRate, ROCK_SIZES[t.size].rate, 0.6);
     }
     say(t.name + ' is chipped down to ' + ROCK_SIZES[t.size].label + '.');
     // Chip and core-collapse keep the same rock, so the selection stays put.
@@ -2301,7 +2624,7 @@ function rockEvent(t) {
 // A quarter of the ore survives as a dust mist, so it stings without ruining
 // the run entirely.
 function shatterCore(t) {
-    playRockExplosion(t.pos);
+    SIM.cues.play('explosion_rock', { pos: t.pos });
     addDebris(t.pos, Math.round(t.oreLeft * 0.25));
     t.alive = false;
     stopVoice(t);
@@ -2313,9 +2636,9 @@ function shatterCore(t) {
 // Drifted past the cloud edge: gone for good.
 function loseRock(t) {
     t.alive = false;
-    if (t.nodes) ramp(t.nodes.gain.gain, 0.0001, 1.2);
+    if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, 0.0001, 1.2);
     setTimeout(function () { stopVoice(t); }, 1400);
-    blip(300, 400, 0.1, 0, 'sine');
+    SIM.audio.blip(300, 400, 0.1, 0, 'sine');
     say(t.name + ' drifts out of the cloud. Lost.');
     if (targets[selected] === t) selectNearest();
     checkMiningEnd();
@@ -2332,7 +2655,7 @@ function checkMiningEnd() {
         return;
     }
     won = true;
-    if (ore > 0) setTimeout(winArpeggio, 400);
+    if (ore > 0) setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
     setTimeout(function () {
         say('Cloud cleared. Ore hold ' + ore +
             '. Press Enter to mine a fresh cloud, or X ' +
@@ -2343,7 +2666,7 @@ function checkMiningEnd() {
 // E — the extractor. Only bites on a rock that has been mined to its core.
 function startExtract() {
     if (mode !== 'mining') { say('The extractor is a mining tool.'); return; }
-    if (beam) { blip(200, 60, 0.08); return; }
+    if (beam) { SIM.cues.play('refusal_dud'); return; }
     var t = targets[selected];
     if (!t || !t.alive || !t.resource) {
         say('The extractor only works on a rock mined down to its glowing core.');
@@ -2362,7 +2685,7 @@ function startExtract() {
 // needed. The consolation harvest when a rock got away.
 function startDustVac() {
     if (mode !== 'mining') { say('The vacuum is a mining tool.'); return; }
-    if (beam) { blip(200, 60, 0.08); return; }
+    if (beam) { SIM.cues.play('refusal_dud'); return; }
     var any = debris.some(function (d) { return len(sub(d.pos, ship.pos)) < CFG.dustVacRange; });
     if (!any) {
         say(debrisTotal() > 0
@@ -2386,7 +2709,7 @@ function radarPing() {
     radarBusy = true;
     alive.forEach(function (t, i) {
         setTimeout(function () {
-            if (t.alive && t.nodes && ctx) {
+            if (t.alive && t.nodes && SIM.audio.ctx) {
                 // Each voice returns to ITS OWN resting level — a dust field's
                 // quiet shimmer must not stay stuck at rock volume.
                 var back = t.kind === 'dust'
@@ -2394,7 +2717,7 @@ function radarPing() {
                     : t.kind === 'poi' ? poiGain(t)
                     : CFG.targetGain;
                 var peak = t.kind === 'dust' ? back * 4 : back * CFG.radarBoost;
-                var g = t.nodes.gain.gain, t0 = ctx.currentTime;
+                var g = t.nodes.gain.gain, t0 = SIM.audio.ctx.currentTime;
                 g.cancelScheduledValues(t0);
                 g.setValueAtTime(peak, t0);
                 g.setValueAtTime(peak, t0 + CFG.radarBurstMs / 1000);
@@ -2455,13 +2778,13 @@ function openRunLog() {
     runlog.idx = -1;
     keysDown = {};
     thrusterSync(null);
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Run log. Best ' + profile.runs.length + ' of up to 10. Up and down arrows browse, Escape closes.');
 }
 
 function closeRunLog() {
     runlog.open = false;
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     say('Run log closed.');
 }
 
@@ -2476,10 +2799,10 @@ function runLogKey(lname) {
     var n = profile.runs.length;
     if (lname === 'arrowdown') {
         if (runlog.idx < n - 1) { runlog.idx++; say(runLogLineText(runlog.idx)); }
-        else { blip(220, 80, 0.1); say('End of the list.'); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
     } else if (lname === 'arrowup') {
         if (runlog.idx > 0) { runlog.idx--; say(runLogLineText(runlog.idx)); }
-        else { runlog.idx = 0; blip(220, 80, 0.1); say('Top of the list.'); }
+        else { runlog.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
     } else {
         say('Up and down arrows read the run log, Escape closes.');
     }
@@ -2524,7 +2847,7 @@ function oreGained() {
     if (!demo || demo.quotaSaid || ore < CFG.demoOreGoal) return;
     demo.quotaSaid = true;
     setTimeout(function () {
-        sfxArpeggio([659, 784, 1047], 0.12, 0.14, { type: 'triangle' });
+        SIM.audio.sfxArpeggio([659, 784, 1047], 0.12, 0.14, { type: 'triangle' });
         say('Ore hold ' + ore + '. Delivery quota met! Take it to Station Meridian. Q for the map.');
     }, 500);
 }
@@ -2556,7 +2879,7 @@ function openMap() {
     keysDown = {};
     thrusterSync(null);
     updateStabilizers(0);
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, 0.0001, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     say('Quadrant map. ' + map.items.length + ' points of interest. Up and down browse, ' +
         (mode === 'sector' ? 'Enter sets the nav target' : 'Enter departs for that point') +
         ', Escape closes.');
@@ -2564,7 +2887,7 @@ function openMap() {
 
 function closeMap(spoken) {
     map.open = false;
-    if (ctx && masterGain && !paused) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !paused) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     if (spoken) say(spoken);
 }
 
@@ -2584,10 +2907,10 @@ function mapKey(lname) {
     if (lname === 'escape' || lname === 'q') { closeMap('Map closed.'); return; }
     if (lname === 'arrowdown') {
         if (map.idx < map.items.length - 1) { map.idx++; say(mapLineText(map.items[map.idx])); }
-        else { blip(220, 80, 0.1); say('End of the list.'); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
     } else if (lname === 'arrowup') {
         if (map.idx > 0) { map.idx--; say(mapLineText(map.items[map.idx])); }
-        else { map.idx = 0; blip(220, 80, 0.1); say('Top of the list.'); }
+        else { map.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
     } else if (lname === 'enter') {
         if (map.idx < 0) { say('Browse to a point first, with the up and down arrows.'); return; }
         var item = map.items[map.idx];
@@ -2652,11 +2975,10 @@ function startWarp() {
     thrusterSync(null);
     updateStabilizers(0);
     say('Hyperwarp charging.');
-    sfxTone({ type: 'sawtooth', f1: 120, f2: 1400, dur: CFG.warpChargeMs / 1000, vol: 0.15 });
+    SIM.cues.play('warp_charge', { dur: CFG.warpChargeMs / 1000 });
     setTimeout(function () {
         if (!running || mode !== 'sector') { warping = false; return; }
-        sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
-        sfxTone({ type: 'sine', f1: 1400, f2: 90, dur: 0.9, vol: 0.2 });
+        SIM.cues.play('warp_arrive');
         var dir = norm(sub(t.pos, ship.pos));
         ship.pos = sub(t.pos, scale(dir, CFG.warpDropout));
         ship.vel = v3(0, 0, 0);
@@ -2686,7 +3008,7 @@ function callPoi() {
             '. Distance ' + round10(d) + '.');
         return;
     }
-    blip(880, 90, 0.12); setTimeout(function () { blip(1100, 90, 0.12); }, 130);
+    SIM.audio.blip(880, 90, 0.12); setTimeout(function () { SIM.audio.blip(1100, 90, 0.12); }, 130);
     if (t.poiType === 'combat') {
         sectorHome = snapshotSector(t);
         newGame('combat');
@@ -2714,7 +3036,7 @@ function callPoi() {
             var bestLine = isBest === true ? 'New personal best!'
                           : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
                           : '';
-            setTimeout(winArpeggio, 300);
+            setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
             say('Station Meridian control: cargo received, ' + delivered + ' ore. Delivery complete! ' +
                 'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service +
                 'X for the mission menu, or keep flying the sector.');
@@ -2843,7 +3165,7 @@ function onKeyDown(e) {
         }
         case 'z':
             zoneIdx = (zoneIdx + 1) % ZONES.length;
-            blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
+            SIM.audio.blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
             say('Target zone ' + ZONES[zoneIdx].name.toLowerCase() +
                 '. Laser hits inside ' + ZONES[zoneIdx].laser +
                 ' degrees, missile needs ' + ZONES[zoneIdx].missile + '.');
@@ -2855,7 +3177,7 @@ function onKeyDown(e) {
             break;
         case 'escape':
             paused = !paused;
-            if (ctx && masterGain) ramp(masterGain.gain, paused ? 0.0001 : CFG.masterGain, 0.2);
+            if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, paused ? 0.0001 : CFG.masterGain, 0.2);
             keysDown = {};
             thrusterSync(null);
             stopBeam(true);
@@ -2945,7 +3267,7 @@ function simTick(dt) {
             if (!t.alive || t.kind !== 'rock') return;   // dust hangs still
             t.pos = add(t.pos, scale(t.vel, dt));
             t.vel = scale(t.vel, Math.pow(CFG.rockFriction, dt));
-            if (t.nodes) movePanner(t.nodes.panner, t.pos);
+            if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
             if (len(t.pos) > CFG.cloudRadius) loseRock(t);
         });
     }
@@ -3014,7 +3336,7 @@ window.__sim = {
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
-            assets: assetsReady(),
+            assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
             }),
@@ -3097,11 +3419,11 @@ function newGame(m) {
                 t.pos = v3(Math.cos(t.orbit.angle) * t.orbit.radius, t.orbit.y,
                            Math.sin(t.orbit.angle) * t.orbit.radius);
             }
-            if (ctx) buildVoice(t);
+            if (SIM.audio.ctx) buildVoice(t);
         });
     }
     selectNearest();
-    if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
 }
 
 // ---- mission menu -----------------------------------------------------------
@@ -3129,7 +3451,7 @@ var MENU_ITEMS = [
     { label: 'Mining',
       desc: 'An asteroid cloud to laser apart, vacuum, and extract.',
       ready: function () {
-          if (assetsReady()) return true;
+          if (SIM.audio.assetsReady()) return true;
           say('The asteroid sounds are still loading. Try again in a moment.');
           return false;
       },
@@ -3154,11 +3476,8 @@ var MENU_ITEMS = [
 var menuIdx = 0;
 var menuBusy = false;   // the beat between "selected" and the action
 
-function menuClick()  { sfxTone({ type: 'sine', f1: 800, f2: 1200, dur: 0.05, vol: 0.3 }); }
-function menuSelectSound() {
-    sfxTone({ type: 'square', f1: 200, dur: 0.1, vol: 0.05 });
-    sfxTone({ type: 'square', f1: 300, dur: 0.1, vol: 0.05, at: 0.1 });
-}
+function menuClick()  { SIM.cues.play('menu_click'); }
+function menuSelectSound() { SIM.cues.play('menu_select'); }
 
 function itemLabel(item) { return typeof item.label === 'function' ? item.label() : item.label; }
 function itemDesc(item)  { return typeof item.desc  === 'function' ? item.desc()  : item.desc; }
@@ -3217,9 +3536,9 @@ function menuKey(lname, name) {
             if (itemLabel(MENU_ITEMS[k]).toLowerCase().charAt(0) === lname) { next = k; break; }
         }
         if (next >= 0) { menuClick(); menuIdx = next; say(menuItemText(menuIdx)); }
-        else { blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
+        else { SIM.audio.blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
     } else {
-        blip(220, 80, 0.1);
+        SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse the mission menu, Enter selects. ' + itemLabel(MENU_ITEMS[menuIdx]) + '.');
     }
 }
@@ -3229,7 +3548,7 @@ function exitToMenu() {
     sectorHome = null;
     demo = null;
     menuOpen = true;
-    if (ctx && masterGain) ramp(masterGain.gain, CFG.masterGain, 0.2);
+    if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     menuAnnounce();
 }
 
@@ -3272,7 +3591,7 @@ function init() {
     var autoRun = params.get('run');
 
     initBtn.addEventListener('click', function () {
-        audioStart();                    // must live inside the user gesture
+        SIM.audio.audioStart();                    // must live inside the user gesture
         initBtn.style.display = 'none';
         container.hidden = false;
         container.focus();
@@ -3282,13 +3601,13 @@ function init() {
         // intro does not talk over it.
         if (autoRun === 'delivery') {
             setTimeout(function () {
-                if (!ctx) say('Audio is unavailable in this browser, speech only. ');
+                if (!SIM.audio.ctx) say('Audio is unavailable in this browser, speech only. ');
                 startDemo();
             }, 800);
         } else {
             menuOpen = true;
             setTimeout(function () {
-                menuAnnounce(ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
+                menuAnnounce(SIM.audio.ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
             }, 800);
         }
     });
