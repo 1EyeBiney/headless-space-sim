@@ -111,6 +111,7 @@ var CFG_DEFAULTS = {
     // is what makes a beacon 11,000 out actually SOUND far away.
     beaconRef: 800, beaconMax: 40000, beaconRolloff: 1.2,
     beaconGainScale: 2,
+    stationBeaconScale: 0.5,  // Station Meridian's blinking tone, half volume (Brian: too loud)
 
     missileMax: 8,                    // magazine; Station Meridian rearms
     missileDamage: 75,
@@ -848,9 +849,18 @@ function makeMiningRoster() {
 // HRTF panner) so the tick, radar, and behind-the-hull muffle all work, but
 // the panner uses long-range sensor params so a beacon 15,000 out is still
 // faintly audible. Each POI type has an unmistakable signature.
+// Per-type beacon volume: every POI shares the base beacon gain except the
+// station, which runs at a fraction of it — used both when the voice is
+// built and when the radar ping restores each beacon to its own resting
+// level, so the two never drift apart.
+function poiGain(t) {
+    var g = CFG.targetGain * CFG.beaconGainScale;
+    return t.poiType === 'station' ? g * CFG.stationBeaconScale : g;
+}
+
 function buildPoiVoice(t) {
     if (!ctx) return;
-    var G = CFG.targetGain * CFG.beaconGainScale;
+    var G = poiGain(t);
     var gain = ctx.createGain();
     gain.gain.value = G;
     var lp = ctx.createBiquadFilter();
@@ -2362,7 +2372,7 @@ function radarPing() {
                 // quiet shimmer must not stay stuck at rock volume.
                 var back = t.kind === 'dust'
                     ? clamp(0.015 + t.amount / 8000, 0.015, 0.07)
-                    : t.kind === 'poi' ? CFG.targetGain * CFG.beaconGainScale
+                    : t.kind === 'poi' ? poiGain(t)
                     : CFG.targetGain;
                 var peak = t.kind === 'dust' ? back * 4 : back * CFG.radarBoost;
                 var g = t.nodes.gain.gain, t0 = ctx.currentTime;
