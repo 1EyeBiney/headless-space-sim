@@ -935,7 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10, 2.11, 2.12, and 2.13 are DONE (Sonnet). 2.14 next.
+2.10 through 2.14 are DONE (Sonnet). 2.15 next.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1104,7 +1104,33 @@ this screen on unbuilt systems. Not yet heard.
 - The matchup sentence is the point of the screen: it's where a pilot
   learns which laser to bring to which rock and which ship.
 
-#### 2.14 Reaction mass, the approach, collisions, hail versus land (ideas5)
+#### 2.14 Reaction mass, the approach, collisions, hail versus land (ideas5) — DONE, needs Brian's ear
+
+Built and machine-tested at a local server: 2 seconds of W drains reaction
+mass (100 → 97, the extra point from the stabilizer's own passive-damping
+shed, which runs unconditionally alongside thrust exactly as before);
+forcing the tank to 3 and holding W drains it to exactly 0 and speaks
+"Reaction mass empty. Battery power." — thrust still moves the ship
+afterward, at the reduced battery fraction, never stalling; docking (even
+forced into battery mid-flight) always fully refills and clears battery
+mode, spoken as "Reaction mass filled."
+
+The hail menu (replacing 1.19's plain status line) was exercised in full:
+Sell ore computed correctly (3400 ore → 340 credits), Buy reaction mass
+filled a partially-drained tank for the exact remaining-units price (40
+credits for 40 units, balance debited correctly), Rearm correctly
+reported "already full" against an untouched magazine, Escape closes it
+("Hail closed."). Collision: a ship placed 40 units from Station Meridian
+(inside `stationHullRadius` 60) at speed 60 (35 over `collisionSafeSpeed`
+25) took the expected ~70 damage, was stopped and pushed back to exactly
+60 units out, and spoke "Your hull N."; docking afterward billed the
+collision damage first — with only 300 credits on hand against a 345
+cost, it correctly repaired 60 of 69 billable points for 300 credits and
+left "the rest waits on credits," reducing `collisionDamage` to 9 rather
+than zeroing it. `I` and F2 both read the reaction-mass percentage
+correctly. No console errors. Not yet heard or flown by Brian — the
+stopping distance, burn rates, and collision thresholds are all
+placeholders for his ear and hands.
 
 - **Not Newtonian** (Brian: too hard to fly). The stabilizers keep
   countering momentum automatically exactly as they sound today; the

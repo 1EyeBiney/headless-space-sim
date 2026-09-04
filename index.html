@@ -60,9 +60,31 @@ var CFG_DEFAULTS = {
     turnRate:   Math.PI / 3,     // 60 deg/s yaw and pitch while arrow held
     pitchLimit: 85 * Math.PI / 180,
     thrust:     70,              // u/s^2 along the nose while W held
-    brakeKeep:  0.05,            // vel *= brakeKeep^dt while S held
-    dampKeep:   0.7,             // passive damping, vel *= dampKeep^dt
+    brakeThrust: 35,             // u/s^2 reverse thrust while S held (SPEC 2.14, half of thrust)
+    dampKeep:   0.7,             // passive stabilizer damping, vel *= dampKeep^dt while not on battery
     maxSpeed:   100,             // u/s cap
+
+    // Reaction mass (SPEC 2.14, ideas5): thrust, braking, and the automatic
+    // stabilizers all spend this. Not Newtonian — the stabilizers still
+    // counter momentum on their own, same as always; they just cost fuel
+    // to do it now. Empty means battery mode (a flat weaker fraction of
+    // every one of those, never zero, never stranded), not a hard stop.
+    rcsMax: 100,
+    rcsThrustPerS: 1,             // W burn rate
+    rcsBrakePerS: 1.5,            // S burn rate (a harder push than forward thrust)
+    rcsPerSpeedShed: 0.02,        // stabilizer cost per unit of speed they bleed off
+    rcsBatteryFactor: 0.4,        // thrust/brake/stabilizer strength once rcs hits 0
+    rcsAlertPcts: [50, 25],       // spoken as it drains, like the warp core (1.13) in reverse
+    rcsPerIceCore: 10,            // refill from mining an ice core
+    rcsPerKill: 5,                // refill from a combat kill
+    rcsCreditPerUnit: 1,          // hail-range purchase price
+    // Collisions (SPEC 2.14): hit a station or planet too fast and it costs
+    // hull, billed at the next landing rather than repaired free like combat
+    // damage — the "bad drivers pay" rule.
+    stationHullRadius: 60,
+    collisionSafeSpeed: 25,
+    collisionDmgPerSpeed: 2,
+    repairCreditPerPoint: 5,
 
     refDistance: 50, maxDistance: 2000, rolloff: 1,
     masterGain: 0.7, targetGain: 0.25,
@@ -456,6 +478,38 @@ function moduleCfgOverlay() {
 // No friction in space, so mass is the tradeoff for every module: 1.0 at
 // an empty loadout, a little higher per module fitted. Feeds thrust/turn
 // in simTick.
+// Reaction mass (SPEC 2.14): spent by thrust, braking, and the automatic
+// stabilizers; empty means battery mode (rcsBatteryFactor of everything,
+// never zero). Alerts descend the same way the warp core's ascend (1.13):
+// spoken once on the exact crossing, re-armed by any refill above it.
+function rcsPct() { return CFG.rcsMax > 0 ? clamp(rcs / CFG.rcsMax * 100, 0, 100) : 0; }
+
+function spendRcs(amount) {
+    if (rcsBattery || amount <= 0) return;
+    var before = rcsPct();
+    rcs = Math.max(0, rcs - amount);
+    var after = rcsPct();
+    for (var i = 0; i < CFG.rcsAlertPcts.length; i++) {
+        var p = CFG.rcsAlertPcts[i];
+        if (before > p && after <= p) { say('Reaction mass ' + p + ' percent.'); break; }
+    }
+    if (rcs <= 0) {
+        rcsBattery = true;
+        SIM.cues.play('refusal_wait');
+        say('Reaction mass empty. Battery power.');
+    }
+}
+
+// Free refill (station landing) or a purchased amount (hail range) — either
+// way, coming back above zero clears battery mode.
+function addRcs(amount) {
+    rcs = clamp(rcs + amount, 0, CFG.rcsMax);
+    if (rcs > 0) rcsBattery = false;
+}
+function refillRcs() { rcs = CFG.rcsMax; rcsBattery = false; }
+
+function rcsFactor() { return rcsBattery ? CFG.rcsBatteryFactor : 1; }
+
 function shipMass() {
     var extra = ownedModules().reduce(function (s, id) {
         var m = moduleById(id); return s + (m ? m.mass : 0);
@@ -595,6 +649,10 @@ var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var docked = null;       // { poi, approachDir } once docked; ship held, station menu active
+var hailMenu = { open: false, idx: 0, poi: null };   // the hail-range menu, SPEC 2.14
+var rcs = 0;              // reaction mass, set from CFG.rcsMax
+var rcsBattery = false;   // true once rcs has hit 0 this sortie, until refilled
+var collisionDamage = 0;  // hull lost to collisions since the last dock — billable, not free
 var stationIdx = 0;      // cursor in the top-level station menu
 var stationSubmenu = null;  // null | 'modules' — which list stationMenuKey is browsing
 var moduleIdx = 0;       // cursor in the Modules submenu
@@ -700,6 +758,7 @@ var HELP_SECTIONS = [
         'Left and Right arrows yaw the ship.',
         'Up and Down arrows pitch the nose up and down.',
         'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it.',
+        'S is a reverse thruster: hold it to actively slow down, roughly half the push of W. Thrust, braking, and the automatic stabilizers all draw on your reaction mass tank — running out drops you to a weaker battery-power fraction of all three, never a full stop, and the ship warns you at 50 and 25 percent as it drains. Landing at a station fills the tank free; mining ice cores and combat kills refill it a little; a hail can buy more.',
         'S brakes to a stop.',
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
         'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
@@ -868,7 +927,7 @@ var KEY_DESCRIPTIONS = {
     arrowup: 'Pitch the nose up. Hold to keep turning.',
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
-    s: 'Brake. Hold to slow to a stop. At the mission menu, jumps to the sector, then to the sound settings.',
+    s: 'Reverse thruster: hold to actively slow down, about half the push of W. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
     '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles to the next of its eight versions; shift 1 cycles back. Switching or cycling takes a moment, longer for the heavier slots.'; },
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles the version backward.',
@@ -2754,7 +2813,8 @@ function statusReport() {
             line += debris.length + (debris.length === 1 ? ' dust field' : ' dust fields') + ' adrift. ';
         }
     }
-    if (mode === 'sector') line += 'Ore hold ' + ore + '. Warp charge ' + warpPct() + ' percent. ';
+    if (mode === 'sector') line += 'Ore hold ' + ore + '. Warp charge ' + warpPct() + ' percent. ' +
+        'Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery' : '') + '. ';
     line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
           : aliveTargets().length + ' targets remain. ';
@@ -2821,6 +2881,7 @@ function runLogKey(lname) {
 function startDemo() {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    refillRcs(); collisionDamage = 0;
     sectorHome = null;
     demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
     newGame('sector');
@@ -2893,6 +2954,7 @@ function buildShipLines() {
                 Math.round(shield.pool) + ' of ' + Math.round(CFG.shieldPool) +
                 (shield.repairing ? ', repairing' : '') + '.');
     lines.push('Warp charge ' + warpPct() + ' percent.');
+    lines.push('Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
     lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.'));
     lines.push(chaff + (chaff === 1 ? ' chaff.' : ' chaff remaining.'));
@@ -3079,12 +3141,35 @@ function dockAtStation(poi) {
     docked = { poi: poi, approachDir: approachDir };
     stationIdx = 0;
     var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
-        restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax;
-    hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp();
-    var service = (repaired ? 'Hull repaired. ' : '') +
+        restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax,
+        massRefueled = rcs < CFG.rcsMax;
+    // Collision damage is the only hull loss that costs anything (SPEC
+    // 2.14, "bad drivers pay") — bill it here, repair whatever's afforded,
+    // and only the REST of the hull (ordinary combat/mining damage) is
+    // free like it always was.
+    var billable = Math.min(collisionDamage, CFG.shipHull - hull);
+    var repairCost = Math.ceil(billable * CFG.repairCreditPerPoint);
+    var billLine = '';
+    if (repairCost > 0) {
+        var afford = Math.min(repairCost, profile.credits);
+        var pointsPaid = Math.floor(afford / CFG.repairCreditPerPoint);
+        profile.credits -= afford;
+        hull = Math.min(CFG.shipHull, hull + pointsPaid + (CFG.shipHull - hull - billable));
+        collisionDamage = Math.max(0, billable - pointsPaid);
+        billLine = afford >= repairCost
+            ? 'Collision damage repaired for ' + repairCost + ' credits. '
+            : (pointsPaid > 0 ? pointsPaid + ' points of collision damage repaired for ' + afford + ' credits — the rest waits on credits. '
+                               : 'Collision damage still owed — ' + repairCost + ' credits needed. ');
+        saveProfile();
+    } else {
+        hull = CFG.shipHull;
+    }
+    missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp(); refillRcs();
+    var service = billLine +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
                   (restocked ? 'Chaff restocked to ' + CFG.chaffMax + '. ' : '') +
-                  (refueled ? 'Warp tank filled. ' : '');
+                  (refueled ? 'Warp tank filled. ' : '') +
+                  (massRefueled ? 'Reaction mass filled. ' : '');
     var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
     autoThrust = false;
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
@@ -3132,13 +3217,15 @@ var STATION_ITEMS = [
       run: function () { undock(); } }
 ];
 
-function sellOre() {
+function sellOreAt(poi) {
     var earned = Math.floor(ore / CFG.oreCreditRate);
     ore = 0;
     profile.credits += earned;
-    bumpInfluence(docked.poi, 1);
+    bumpInfluence(poi, 1);
+    saveProfile();
     say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
 }
+function sellOre() { sellOreAt(docked.poi); }
 
 // ---- Modules submenu --------------------------------------------------------
 function moduleText(i) {
@@ -3184,15 +3271,105 @@ function moduleKey(lname) {
     }
 }
 
-// A hail: within comm range but not close enough to dock. influenceGreeting
-// already reads as "Station Meridian control: good to see you again, pilot. "
-// when earned, so this only adds the station-name prefix when there is no
+// A hail (SPEC 2.14): within comm range but not close enough to dock. A
+// real browsable menu now, not just a status line — rearm, sell ore, and
+// buy reaction mass all work from here (ideas5: "hailing range can reload
+// ships and sell ore but not refit or equip modules"). Repair, modules,
+// and lasers still need an actual landing. influenceGreeting already reads
+// as "Station Meridian control: good to see you again, pilot. " when
+// earned, so this only adds the station-name prefix when there is no
 // greeting to supply it.
-function hailText(poi) {
+function hailGreeting(poi) {
     var greeting = influenceGreeting(poi);
-    return (greeting || (poi.name + ' control: ')) +
-           'services ready — repair, rearm, chaff, and fuel once you dock. Come within ' +
-           CFG.stationDockRange + ' to dock.';
+    return greeting || (poi.name + ' control: ');
+}
+
+var HAIL_ITEMS = [
+    { label: 'Rearm',
+      desc: function () {
+          return (missiles < CFG.missileMax || chaff < CFG.chaffMax)
+              ? 'Restock missiles and chaff.' : 'Missiles and chaff already full.';
+      },
+      run: function () {
+          var did = missiles < CFG.missileMax || chaff < CFG.chaffMax;
+          missiles = CFG.missileMax; chaff = CFG.chaffMax;
+          say(did ? 'Missiles and chaff restocked.' : 'Already full.');
+      } },
+    { label: 'Sell ore',
+      desc: function () {
+          return ore > 0 ? 'Sell ' + ore + ' ore for ' + Math.floor(ore / CFG.oreCreditRate) + ' credits.'
+                          : 'No ore in the hold.';
+      },
+      ready: function () {
+          if (ore <= 0) { say('No ore to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellOreAt(hailMenu.poi); } },
+    { label: 'Buy reaction mass',
+      desc: function () {
+          if (rcs >= CFG.rcsMax) return 'Reaction mass tank already full.';
+          var need = Math.ceil(CFG.rcsMax - rcs);
+          var cost = need * CFG.rcsCreditPerUnit;
+          return 'Fill the tank for ' + cost + ' credits, or as much as you can afford.';
+      },
+      ready: function () {
+          if (rcs >= CFG.rcsMax) { say('Reaction mass tank already full.'); return false; }
+          if (profile.credits <= 0) { say('No credits to spend.'); return false; }
+          return true;
+      },
+      run: function () {
+          var need = Math.ceil(CFG.rcsMax - rcs);
+          var afford = Math.floor(profile.credits / CFG.rcsCreditPerUnit);
+          var units = Math.min(need, afford);
+          profile.credits -= units * CFG.rcsCreditPerUnit;
+          addRcs(units);
+          saveProfile();
+          say(units >= need ? 'Reaction mass tank filled. ' + profile.credits + ' credits left.'
+                             : units > 0 ? units + ' units bought. Tank at ' + Math.round(rcsPct()) + ' percent. ' + profile.credits + ' credits left.'
+                                         : 'Not enough credits for any.');
+      } },
+    { label: 'Close', desc: 'Break off the hail.',
+      run: function () { closeHailMenu(); } }
+];
+
+function hailItemText() {
+    var it = HAIL_ITEMS[hailMenu.idx];
+    return itemLabel(it) + '. ' + itemDesc(it);
+}
+
+function openHailMenu(poi) {
+    hailMenu.open = true;
+    hailMenu.idx = 0;
+    hailMenu.poi = poi;
+    keysDown = {};
+    thrusterSync(null);
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
+    say(hailGreeting(poi) + 'Come within ' + CFG.stationDockRange + ' to dock for repairs and modules. ' +
+        'Use up and down arrows to navigate and Enter to select. ' + hailItemText());
+}
+
+function closeHailMenu() {
+    hailMenu.open = false;
+    if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    say('Hail closed.');
+}
+
+function hailMenuKey(lname) {
+    var n = HAIL_ITEMS.length;
+    if (lname === 'escape' || lname === 'x') { closeHailMenu(); return; }
+    if (lname === 'arrowdown') { menuClick(); hailMenu.idx = (hailMenu.idx + 1) % n; say(hailItemText()); }
+    else if (lname === 'arrowup') { menuClick(); hailMenu.idx = (hailMenu.idx - 1 + n) % n; say(hailItemText()); }
+    else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
+        var item = HAIL_ITEMS[hailMenu.idx];
+        if (item.ready && !item.ready()) return;
+        menuSelectSound();
+        item.run();
+    } else if (lname === 'tab') {
+        say(hailItemText());
+    } else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse, Enter selects, Escape closes. ' + itemLabel(HAIL_ITEMS[hailMenu.idx]) + '.');
+    }
 }
 
 function stationMenuIntro() {
@@ -3259,6 +3436,27 @@ function stationMenuKey(lname) {
 // against every POI, not just the nav target — the drive won't spool this
 // close to ANYTHING, so a pilot must fly clear of a station before jumping
 // anywhere else, not just before jumping back to that same station.
+// Hit a station or planet too fast and it costs hull, billed at the next
+// landing rather than repaired free — SPEC 2.14, "bad drivers pay."
+function updateCollisions(spd) {
+    if (spd <= CFG.collisionSafeSpeed) return;
+    for (var i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        if (!t.alive || t.kind !== 'poi' || (t.poiType !== 'station' && t.poiType !== 'planet')) continue;
+        var rel = sub(ship.pos, t.pos);
+        if (len(rel) > CFG.stationHullRadius) continue;
+        var over = spd - CFG.collisionSafeSpeed;
+        var dmg = Math.ceil(over * CFG.collisionDmgPerSpeed);
+        var dir = len(rel) > 1e-6 ? norm(rel) : v3(0, 0, 1);
+        ship.pos = add(t.pos, scale(dir, CFG.stationHullRadius));
+        ship.vel = v3(0, 0, 0);
+        collisionDamage += Math.min(dmg, hull);
+        SIM.audio.sfxNoise({ dur: 0.35, vol: 0.45, filter: 'lowpass', freq: 400 });
+        hullHit(dmg, t.name);
+        return;
+    }
+}
+
 function nearbyPoi() {
     var best = null, bestD = CFG.warpInhibitDist;
     targets.forEach(function (p) {
@@ -3437,7 +3635,7 @@ function callPoi() {
     } else if (t.poiType === 'station') {
         if (docked) { say('Already docked. Escape or X undocks.'); return; }
         if (d <= CFG.stationDockRange) dockAtStation(t);
-        else say(hailText(t));
+        else openHailMenu(t);
     } else {
         say('Planet Auren orbital relay: atmospheric operations are not yet available. ' +
             'The view is spectacular, though.');
@@ -3519,6 +3717,9 @@ function onKeyDown(e) {
 
     // Docked at a station: the station menu captures everything.
     if (docked) { stationMenuKey(lname); return; }
+
+    // Hailing a station at range: its own small menu, same shell.
+    if (hailMenu.open) { hailMenuKey(lname); return; }
 
     // The mission menu: a Keyboard Commander style list. Nothing else fires
     // — checked BEFORE the warping guard below, since Escape (SPEC 1.18) can
@@ -3673,7 +3874,7 @@ function simTick(dt) {
     // The delivery clock runs whenever the sim is live, hyperwarp included.
     if (demo && !demo.delivered && running && !help.open && !map.open &&
         !menuOpen && !over() && dt > 0) demo.elapsed += dt;
-    if (!running || over() || help.open || map.open || docked || dt <= 0) {
+    if (!running || over() || help.open || map.open || docked || hailMenu.open || dt <= 0) {
         thrusterSync(null); updateStabilizers(0); return;
     }
 
@@ -3707,15 +3908,31 @@ function simTick(dt) {
     ship.pitch = clamp(ship.pitch, -CFG.pitchLimit, CFG.pitchLimit);
 
     // Thrust, brake, damping, cap — with each maneuver's own thruster sound.
-    if (k.w) ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * dt));
+    // Reaction mass (SPEC 2.14): W, S, and the passive stabilizer damping
+    // all draw on it, scaled down to rcsBatteryFactor once it runs out
+    // rather than stopping outright. Braking is a real reverse thruster
+    // now (half of forward thrust), not an instant multiplicative stop.
+    var rf = rcsFactor();
+    if (k.w) {
+        ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * rf * dt));
+        spendRcs(CFG.rcsThrustPerS * dt);
+    }
     thrusterSync(k);
-    if (k.s) ship.vel = scale(ship.vel, Math.pow(CFG.brakeKeep, dt));
-    ship.vel = scale(ship.vel, Math.pow(CFG.dampKeep, dt));
+    if (k.s) {
+        ship.vel = add(ship.vel, scale(shipForward(), -CFG.brakeThrust / mass * rf * dt));
+        spendRcs(CFG.rcsBrakePerS * dt);
+    }
+    var beforeDampSpd = len(ship.vel);
+    var effectiveDampKeep = 1 - (1 - CFG.dampKeep) * rf;   // weaker stabilizer on battery
+    ship.vel = scale(ship.vel, Math.pow(effectiveDampKeep, dt));
+    var dampShed = beforeDampSpd - len(ship.vel);
+    if (dampShed > 0.01) spendRcs(dampShed * CFG.rcsPerSpeedShed);
     var spd = len(ship.vel);
     if (spd > CFG.maxSpeed) ship.vel = scale(ship.vel, CFG.maxSpeed / spd);
     ship.pos = add(ship.pos, scale(ship.vel, dt));
     // Stabilizers pulse only while coasting with real momentum to shed.
     updateStabilizers(spd > 3 && !k.w && !k.s ? spd : 0);
+    if (mode === 'sector') updateCollisions(spd);
 
     if (mode === 'mining') {
         // Rock physics: drift with momentum, bleed energy to friction so a
@@ -3801,6 +4018,9 @@ window.__sim = {
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
+            rcs: { charge: Math.round(rcs), max: CFG.rcsMax, pct: Math.round(rcsPct()), battery: rcsBattery },
+            collisionDamage: collisionDamage,
+            hailMenu: hailMenu.open ? { poiName: hailMenu.poi.name, idx: hailMenu.idx } : null,
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
             docked: docked ? { poiName: docked.poi.name } : null,
             warping: warping, menuResumable: menuResumable,
@@ -3860,6 +4080,11 @@ window.__sim = {
         if (o && o.laserReady) laserReadyAt = [];
         if (o && o.warpCharge !== undefined) warpCharge = o.warpCharge;
         if (o && o.chaff !== undefined) chaff = o.chaff;
+        if (o && o.rcs !== undefined) rcs = o.rcs;
+        if (o && o.rcsBattery !== undefined) rcsBattery = o.rcsBattery;
+        if (o && o.pos !== undefined) ship.pos = v3(o.pos.x, o.pos.y, o.pos.z);
+        if (o && o.vel !== undefined) ship.vel = v3(o.vel.x, o.vel.y, o.vel.z);
+        if (o && o.collisionDamage !== undefined) collisionDamage = o.collisionDamage;
         // Live, never saved: a test sets beacons off without touching the profile.
         if (o && o.beacons !== undefined) beaconMode = o.beacons;
         if (o && o.sound && profile) { Object.assign(profile.sound, o.sound); applySoundLevels(); }
@@ -4024,6 +4249,7 @@ function resumeFromMenu() {
 function startMission(m) {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    refillRcs(); collisionDamage = 0;
     newGame(m);
     if (m === 'sector') placeAtStationStart();
     say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());

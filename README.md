@@ -61,11 +61,11 @@ The shareable challenge. The clock starts at once.
    delivery.
 
 Calling the station works by range: within 500 it hails you back with a
-status; within 150 it docks at once. Fly it in by ear — the lock tick
-and R (range, closing or opening) are your instruments — and there's no
-speed check, just get close enough. Docking repairs your hull, rearms
-your eight missiles, restocks chaff, and refills the warp tank. Losing
-your ship fails the run.
+small menu — rearm, sell ore, buy reaction mass — and within 150 it docks
+you outright. Fly it in by ear — the lock tick and R (range, closing or
+opening) are your instruments. Docking repairs your hull, rearms your
+eight missiles, restocks chaff, refills the warp tank, and tops off your
+reaction mass. Losing your ship fails the run.
 
 Once docked, a station menu opens: **Sell ore** trades your cargo for
 credits (10 ore per credit), and **Modules** spends them on permanent
@@ -73,6 +73,14 @@ upgrades — a faster shield, a bigger shield pool, a larger missile
 magazine, a bigger warp tank, faster core cooling. Every module adds a
 little mass, and mass is the tradeoff: no friction in space, so a heavier
 ship just turns and thrusts a little slower. Escape undocks.
+
+Thrust and braking both draw on a reaction mass tank, and so do the
+automatic stabilizers that quietly cancel your drift whenever you coast —
+run it dry and everything gets weaker, never dead. Landing fills it
+free; a hail can buy more. Braking is a real reverse thruster now, about
+half the push of forward thrust, so slowing down for a landing takes
+real distance — and hitting a station or a planet too fast costs hull
+that isn't free to fix; the bill comes due at your next landing.
 
 The warp drive has a tank, measured in distance, and a jump spends it —
 you need at least a quarter tank to jump at all. A jump longer than the

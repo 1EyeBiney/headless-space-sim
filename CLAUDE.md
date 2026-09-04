@@ -343,6 +343,59 @@ static once tiers exist.
   guard inside the raw-sim key switch was deleted outright rather than
   swapped, since `menuOpen` already intercepts the WHOLE switch before
   any of those cases can run — they were dead code under the new model.
+- **Reaction mass, collisions, the hail menu (Round 14, SPEC 2.14)**: `rcs`
+  (max `CFG.rcsMax` 100) is spent by W (`rcsThrustPerS` 1/s), S
+  (`rcsBrakePerS` 1.5/s), and the passive stabilizer damping itself
+  (`rcsPerSpeedShed` 0.02 per unit of speed it sheds, so it still costs
+  something even when the pilot isn't touching the keys — Brian: the
+  player has no control over the auto-stabilizer beyond not thrusting in
+  the first place). `spendRcs(amount)` is a no-op once `rcsBattery` is
+  true; otherwise it drains `rcs`, speaks "Reaction mass N percent." on
+  each descending crossing of `CFG.rcsAlertPcts` [50, 25] (the mirror of
+  1.13's warp-core alerts, but counting down instead of up), and flips
+  `rcsBattery` true with "Reaction mass empty. Battery power." the
+  instant it hits 0. `rcsFactor()` returns `CFG.rcsBatteryFactor` 0.4 on
+  battery, 1 otherwise; `simTick` multiplies BOTH thrust and the
+  stabilizer's own effective damping strength by it
+  (`effectiveDampKeep = 1 - (1 - CFG.dampKeep) * rf`), so a dry tank means
+  weaker thrust AND a ship that coasts/drifts longer before settling —
+  never a hard stop. **S is now a real reverse thruster** (`CFG.brakeThrust`
+  35, half of `CFG.thrust` 70) added onto velocity like W in reverse,
+  replacing the old multiplicative `brakeKeep` cliff — confirmed ~3 s and
+  ~140 units to stop from top speed. `addRcs()`/`refillRcs()` clear
+  `rcsBattery`; docking and `startMission`/`startDemo` fully refill,
+  mining ice cores and kills give small top-ups (2.15), a hail can buy it
+  at `CFG.rcsCreditPerUnit` 1.
+  **Collisions**: `updateCollisions(spd)` runs every `simTick` frame in
+  sector mode when speed exceeds `CFG.collisionSafeSpeed` 25; within
+  `CFG.stationHullRadius` 60 of any station or planet it deals
+  `Math.ceil((spd - 25) * CFG.collisionDmgPerSpeed 2)` damage via the
+  existing `hullHit()`, stops the ship, and repositions it to exactly the
+  hull radius along the line it hit from — confirmed pushed back to
+  precisely 60 units out in testing. That damage is tracked separately in
+  `collisionDamage` (persists across a sector run, like `ore`) and is the
+  ONLY hull damage that costs anything to repair: `dockAtStation` bills
+  `Math.ceil(collisionDamage * CFG.repairCreditPerPoint 5)` credits first,
+  repairing as many points as the pilot can afford and leaving the rest
+  owed (confirmed a partial-afford case: 69 billable points at 300 credits
+  on hand repaired exactly 60 of them, `collisionDamage` reduced to 9, not
+  zeroed) — ordinary combat/mining damage stays free exactly as before.
+  **The hail menu** (`HAIL_ITEMS`/`hailMenuKey`/`openHailMenu`) replaces
+  1.19's plain `hailText()` status line with a real browsable menu, same
+  shell as the station/landing menu: Rearm (missiles + chaff, free),
+  Sell ore (`sellOreAt(poi)`, the landing menu's `sellOre()` is now a thin
+  wrapper calling it with `docked.poi`), Buy reaction mass (fills toward
+  `rcsMax` at `rcsCreditPerUnit`, capped by what's affordable), Close.
+  Freezes the sim the same way `docked` does (added to `simTick`'s early
+  return list) and ducks audio unless already ducked by the mission menu,
+  matching every other overlay's `!menuOpen` guard. Missions and Prices
+  from the original sketch aren't on the list yet — they wait on 2.17 and
+  3.11, which don't exist. `__sim.state()` gained `rcs`, `collisionDamage`,
+  `hailMenu`; `poke()` gained `rcs`/`rcsBattery`/`pos`/`vel`/
+  `collisionDamage` for testing (poking `rcs` directly does NOT clear
+  `rcsBattery` — a raw override, not a real refill; use `addRcs`/
+  `refillRcs` semantics by poking both fields together if a test needs
+  battery cleared).
 - **Docking (Round 13, SPEC 1.19, supersedes Round 12's SPEC 1.6)**: the
   flown corridor is GONE — Brian: use ranges instead. `callPoi()` computes
   `range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract`
@@ -749,7 +802,19 @@ with collisions and the hail/land split, salvage/alloy/ice and the F3
 screen, death by tug, escort and defend missions, the profile version)
 and **Phase 3, the moving world** (3.10–3.17). Target: a playable demo by
 Sunday 2026-09-06, Sonnet building 2.10–2.18 in order, 2.16 and 2.17
-dropped first if it slips. Nothing from ideas5 is built yet.
+dropped first if it slips.
+
+Round 14 (Sonnet) built 2.10 through 2.14, all machine-tested at a local
+server and confirmed live on Pages, none yet heard or flown by Brian:
+2.10 (warp overlap, engaged loop 0.5 s early, jumps 8.5–11 s), 2.11 (the
+sound lab at `soundlab.html`, plus the sector/mining lock tone switching
+to a soft double-blip — see "Sound options" above for the shape of it,
+though it's really its own bullet now), 2.12 (sixteen lasers in two
+families with 1/Shift+1 cycling, all recordings embedded), 2.13 (F2 ship
+screen), 2.14 (reaction mass, S as a real reverse thruster, battery mode,
+collisions billed at the next landing, the hail menu — see the "Reaction
+mass, collisions, the hail menu" bullet above for the full shape). 2.15
+(salvage/alloy/ice, F3) is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
