@@ -350,7 +350,20 @@ static once tiers exist.
   own HRTF voice (25 dmg). Grace 8 s at start, gap 7–12 s. Player hull 100;
   0 = `lost` (Enter retries with a repaired hull). A missile survivor is
   "alerted": evade burst across the line of sight (burner whoosh, engine
-  pitch-up, direction spoken) and it attacks within 2.5 s.
+  pitch-up, direction spoken) and it attacks within 2.5 s. **Chaff (`D`,
+  SPEC 1.8)**: `chaff` magazine (`CFG.chaffMax` 4, refilled wherever
+  `missiles` is — mission start, retry, `finishDocking`); `fireChaff()`
+  spends one every press (Brian: a reflex, not a menu), and if `threat` is
+  a guided missile flips it ballistic exactly the way a raised shield does
+  (`guided = false; coast = 0`) — no shield needed, weapons stay live. A
+  beam or nothing inbound still costs the round, with the line saying so.
+  Veteran/Ace: the spoofed threat gets `followUp`, and `endThreat` then
+  sets `threatIn = CFG.enemyChaffFollowUpS` (2 s) instead of the 7–12 s
+  gap — the "second missile while the first coasts" from SPEC, built as a
+  fast follow-up because `threat` is a singleton everywhere. `D` in open
+  sector space refuses; at the mission menu D still jumps to Delivery run.
+  Cue `chaff_burst` (UI bus). The `profile.chaff` field from the 1.4
+  schema is still unused — chaff is per-sortie state like missiles.
 - **Shields (`G`)** (damage pool as of Round 11): 1.5 s spool (2.5 s at Ace,
   rising sweep) → clunk + hum on the UI bus. Weapons offline while up; own
   missile AND incoming missiles lose guidance (go ballistic, coast 1.5 s,
@@ -417,7 +430,7 @@ effective-keys object `k`; any W or S press, Shift+W, a warp jump,
 docking, or `clearMission` ends it; the Shift chords are checked in
 `onKeyDown` BEFORE the `HELD` branch, since Shift+W arrives as `lname`
 'w') · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
-selected laser (fire-and-forget, cannot be stopped) · F missile · G shields
+selected laser (fire-and-forget, cannot be stopped) · F missile · D chaff (spoofs the incoming missile, SPEC 1.8) · G shields
 · Tab cycle targets (Shift+T / Shift+Tab cycle back) · T report selected
 target (lock onset also speaks distance) · R range to target with
 closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
@@ -546,7 +559,10 @@ time-stretch to fit, Shift+R for the sweep, build order 1.12 → 1.13 →
 warp-core alerts, in the Sector bullet), and 1.14 (the slot switch, in
 the lasers bullet), and 1.15 (R range / Shift+R sweep / Shift+T back /
 Shift+W auto-thrust, in the key map) are all built and machine-tested —
-ideas3 is fully in. Per Brian's order, 1.8 (chaff) is next.
+ideas3 is fully in — and 1.8 chaff after it (in the Combat bullet). Phase
+1 is complete except 1.11, which Brian deferred past the demo. Nothing
+from Rounds 10–12 has been heard yet; that's the next step, then Phase 2
+on his go.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

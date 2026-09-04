@@ -129,9 +129,10 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
 Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
 (sound options, the `B` beacon key), 1.13 (warp-core alerts), 1.14
-(laser switching), and 1.15 (R / Shift+R / Shift+T / Shift+W) are all
-DONE. Order for the rest (Brian: decided) — 1.8 chaff, then 1.11 ship
-window if Brian wants it before Phase 2.
+(laser switching), 1.15 (R / Shift+R / Shift+T / Shift+W), and 1.8
+(chaff) are all DONE — every Phase 1 item except 1.11 (the ship window,
+deferred past the demo by Brian). Next is Brian's ear on Rounds 10–12,
+then Phase 2 on his go.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -341,7 +342,28 @@ already precedented for the run log (see CLAUDE.md).
   Brian's direction: screens like this end up on **function keys** (F2
   and up), the way F1 is help — not on letter keys.
 
-#### 1.8 Countermeasures (chaff)
+#### 1.8 Countermeasures (chaff) — DONE, needs Brian's ear
+
+Built and machine-tested at Veteran: "Chaff away. Missile spoofed. 3
+left." turns the incoming missile ballistic at once (`guided` false, it
+coasts and pops, hull untouched) and the next attack is scheduled
+`enemyChaffFollowUpS` 2 s out instead of the usual 7–12; against a beam
+"Chaff away. Chaff does nothing against a laser. Shields. 2 left."; with
+nothing inbound "Chaff away, nothing inbound. N left."; at zero "No chaff
+left." (plus "Station Meridian restocks." inside a sector run); `I` reads
+"N chaff"; in open sector space D answers "Nothing shoots at you in open
+space. Chaff is for encounters."; docking refills to 4 ("Chaff restocked
+to 4." in the service line — same one-liner as the missile rearm, code-
+verified rather than heard in the test, whose dock started from a fresh
+run). The burst is a new `chaff_burst` cue (bright noise plus a scatter
+of panned clicks, UI bus). No console errors. Not yet heard.
+
+One simplification vs the sketch below: "Veteran/Ace may launch a second
+missile while the first coasts" is built as the fast follow-up above —
+`threat` is a singleton throughout (shields, status, `endThreat`), so a
+true second simultaneous missile is a larger change; the spoofed one
+pops within 1.5 s and the next attack (missile or beam by range) comes
+2 s later, which plays the same. Rookie keeps the normal gap.
 
 - Key `D` ("decoy") **(accepted by default)**. Menu D still jumps to
   Delivery run; KEY_DESCRIPTIONS says both.

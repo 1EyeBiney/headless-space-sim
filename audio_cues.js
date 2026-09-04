@@ -54,6 +54,18 @@ SIM.cues = (function () {
                       A.sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
                       A.sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
                   } },
+                { id: 'chaff_burst', name: 'Chaff Burst', source: 'spec-1.8',
+                  // A bright crackling burst at the ship (UI bus): a hiss of
+                  // bright noise and a scatter of short clicks fanning out.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxNoise({ dur: 0.35, vol: 0.35, filter: 'highpass', freq: 3000 });
+                      var ats = [0.02, 0.05, 0.09, 0.12, 0.17, 0.21, 0.28];
+                      for (var i = 0; i < ats.length; i++) {
+                          A.sfxNoise({ dur: 0.03, vol: 0.25, filter: 'bandpass', freq: 2200 + i * 500, q: 6,
+                                       at: ats[i], pan: (i % 2 ? 1 : -1) * (0.2 + i * 0.1) });
+                      }
+                  } },
                 { id: 'hull_hit', name: 'Hull Hit', source: 'v11-extraction',
                   fn: function () {
                       var A = SIM.audio;

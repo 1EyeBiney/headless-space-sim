@@ -145,6 +145,8 @@ var CFG_DEFAULTS = {
     stationBeaconScale: 0.5,  // Station Meridian's blinking tone, half volume (Brian: too loud)
 
     missileMax: 8,                    // magazine; Station Meridian rearms
+    chaffMax: 4,                      // decoys (D); Station Meridian restocks (SPEC 1.8)
+    enemyChaffFollowUpS: 2,           // Veteran/Ace: a spoofed missile brings the next attack this soon
     missileDamage: 75,
     missileSpeed: 130,                // u/s
     missileTurn:  70 * Math.PI / 180, // max steer per second
@@ -529,6 +531,7 @@ var sectorHome = null;   // set while inside an encounter entered from the secto
 var lost = false;        // hull breached: the encounter is over, like won
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
+var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var docking = null;      // { poi, axis, right, up, coachAt, tickTimer } while approaching
@@ -681,6 +684,7 @@ var HELP_SECTIONS = [
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
+        function () { return 'D fires chaff: a decoy burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Chaff does nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
         'If your hull reaches zero the encounter is lost. Enter tries again.'
@@ -814,7 +818,7 @@ var KEY_DESCRIPTIONS = {
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
-    d: 'At the mission menu, jumps to the delivery run.',
+    d: function () { return 'Fire chaff: a decoy burst that spoofs the missile coming at you, so it loses guidance at once, no shield needed. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'At the mission menu, jumps to space mining.',
     tab: 'Cycle to the next target and speak its bearing. Shift Tab cycles back.',
     t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T cycles back to the previous target.',
@@ -2064,6 +2068,34 @@ function startEnemyMissile(t) {
     say(t.name + ' missile launch! Incoming.' + shieldCoach());
 }
 
+// D (SPEC 1.8): a decoy burst that spoofs the missile coming at you right
+// now — it loses guidance at once and coasts like a shielded one, no
+// shield needed. Useless against a beam. A press with nothing inbound
+// still spends one (Brian: decided) — chaff is a reflex, not a menu.
+function fireChaff() {
+    if (chaff <= 0) {
+        SIM.cues.play('refusal_dud');
+        say('No chaff left.' + (sectorHome ? ' Station Meridian restocks.' : ''));
+        return;
+    }
+    chaff--;
+    SIM.cues.play('chaff_burst');
+    var th = threat, left = chaff + ' left.';
+    if (th && th.type === 'missile' && th.guided) {
+        th.guided = false; th.coast = 0;
+        // Veteran and Ace answer a spoof fast: the next attack comes while
+        // the decoyed missile is still popping, not after the usual gap.
+        if (TIERS[tierIdx].alwaysHostile) th.followUp = true;
+        say('Chaff away. Missile spoofed. ' + left);
+    } else if (th && th.type === 'missile') {
+        say('Chaff away. That missile was already ballistic. ' + left);
+    } else if (th && th.type === 'laser') {
+        say('Chaff away. Chaff does nothing against a laser. Shields. ' + left);
+    } else {
+        say('Chaff away, nothing inbound. ' + left);
+    }
+}
+
 function endThreat() {
     if (!threat) return;
     var th = threat; threat = null;
@@ -2075,7 +2107,8 @@ function endThreat() {
             }, 200);
         } catch (e) {}
     }
-    scheduleNextThreat();
+    if (th.followUp) threatIn = CFG.enemyChaffFollowUpS;   // (SPEC 1.8, Veteran/Ace)
+    else scheduleNextThreat();
 }
 
 function stepThreat(dt) {
@@ -2612,7 +2645,8 @@ function statusReport() {
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
           : aliveTargets().length + ' targets remain. ';
     if (mode !== 'mining') {
-        line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ');
+        line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
+                chaff + ' chaff. ';
     }
     if (mode === 'combat' || mode === 'mining') line += laserStatusText();
     if (mode === 'combat') {
@@ -2672,7 +2706,7 @@ function runLogKey(lname) {
 // help, and the map stop it), and hyperwarp time counts.
 function startDemo() {
     menuOpen = false;
-    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
     sectorHome = null;
     demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
     newGame('sector');
@@ -2969,10 +3003,11 @@ function finishDocking() {
     docked = { poi: poi };
     stationIdx = 0;
     var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
-        refueled = warpCharge < CFG.warpTankMax;
-    hull = CFG.shipHull; missiles = CFG.missileMax; refillWarp();
+        restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax;
+    hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp();
     var service = (repaired ? 'Hull repaired. ' : '') +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
+                  (restocked ? 'Chaff restocked to ' + CFG.chaffMax + '. ' : '') +
                   (refueled ? 'Warp tank filled. ' : '');
     var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
     autoThrust = false;
@@ -3359,6 +3394,10 @@ function onKeyDown(e) {
             if (!paused) selectSlot(parseInt(lname, 10) - 1);
             break;
         case 'g':      if (!paused && !over()) shieldKey(); break;
+        case 'd':
+            if (mode === 'sector') say('Nothing shoots at you in open space. Chaff is for encounters.');
+            else if (!paused && !over()) fireChaff();
+            break;
         case 'b':      beaconKey(); break;
         case 'tab':    if (!paused && !over()) cycleTarget(); break;
         case 'r':      rangeReport(); break;
@@ -3413,7 +3452,7 @@ function onKeyDown(e) {
                 // cargo and the missile count. A retry after a loss always
                 // comes with a repaired hull (there is no other way back).
                 if (mode === 'mining' && !sectorHome) ore = 0;
-                if (!sectorHome) missiles = CFG.missileMax;
+                if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; }
                 if (lost || !sectorHome) hull = CFG.shipHull;
                 newGame();
                 say(mode === 'mining' ? miningIntro() : combatIntro());
@@ -3558,7 +3597,7 @@ window.__sim = {
         return {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
-            hull: hull, missiles: missiles, laserHot: laserHot(),
+            hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
@@ -3623,6 +3662,7 @@ window.__sim = {
         if (o && o.enemyHp !== undefined) targets.forEach(function (t) { if (!t.kind && t.alive) t.hp = o.enemyHp; });
         if (o && o.laserReady) laserReadyAt = [];
         if (o && o.warpCharge !== undefined) warpCharge = o.warpCharge;
+        if (o && o.chaff !== undefined) chaff = o.chaff;
         // Live, never saved: a test sets beacons off without touching the profile.
         if (o && o.beacons !== undefined) beaconMode = o.beacons;
         if (o && o.sound && profile) { Object.assign(profile.sound, o.sound); applySoundLevels(); }
@@ -3746,7 +3786,7 @@ function menuAnnounce(prefix) {
 
 function startMission(m) {
     menuOpen = false;
-    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
     newGame(m);
     if (m === 'sector') placeAtStationStart();
     say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());

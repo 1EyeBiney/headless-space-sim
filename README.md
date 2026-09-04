@@ -96,6 +96,7 @@ Right hand on the arrows, left hand on everything else.
 | 1-6 | Select a laser slot. Switching takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
+| D | Chaff. A decoy burst that spoofs the missile coming at you — no shield needed. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
 | B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
 | Tab / T | Cycle targets / report the selected target. Shift+T or Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
@@ -124,7 +125,10 @@ hear working, and come back at half charge; drop them yourself before that
 and whatever charge is left keeps recovering. A ship that survives one of
 your missiles breaks away hard and hits back within seconds — except a
 Rookie-tier Cruiser, which only ever answers by missile and never bothers
-with the dramatic evade.
+with the dramatic evade. Against a missile you also have D, chaff: the
+missile loses guidance on the spot and your weapons stay live — but it
+does nothing against a beam, you carry four, and at Veteran and Ace a
+spoofed missile brings the next attack fast.
 
 Your own laser burst locks you in too: once you fire, it runs the full
 five seconds and G is refused until it's done — commit to the shot, then
