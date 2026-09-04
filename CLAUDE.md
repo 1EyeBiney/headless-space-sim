@@ -197,6 +197,28 @@ read-only browse-and-Escape overlay modeled on the quadrant map, not yet
 the shared `listMenu` the plan describes for 1.7 — that refactor is where
 mission menu / station menu / run log converge on one implementation.
 
+**Profile version (Round 15, SPEC 2.18)**: `PROFILE_VERSION = 2` (the
+number bumps whenever a field is added or reshaped — 1 was the original
+Round 10-11 shape, 2 is everything since: modules, sound, beacons, laser
+slots, resources). `defaultProfile()` stamps `version: PROFILE_VERSION`.
+`loadProfile()` captures `loadedVersion = profile.version || 1` right
+after merging the saved JSON in, then runs the same per-field defensive
+normalization that was already there before 2.18 gave it a version
+number (runs/upgrades/stations/slots/sound/beacons/resources each get
+backfilled if missing or malformed — this IS the v1→v2 migration, it
+just isn't new code), and finishes with `profile.version =
+Math.max(loadedVersion, PROFILE_VERSION)` so a save is never written
+back with a lower version than it already had — an unrecognized newer
+field survives untouched too, since the initial `Object.assign(profile,
+saved)` copies everything and nothing downstream deletes a key it
+doesn't recognize. `__sim.state().economy.version` exposes it for
+testing. Confirmed at a local server: a fresh profile boots to version
+2; a seeded v1-shaped save (no `version`, no `resources`/`sound`/
+`beacons`/`slots`) loads with its data intact and gets backfilled to
+version 2; a seeded "future" save (`version: 3` plus an unknown field)
+keeps version 3 and the unknown field on load. Nothing to hear here —
+pure persistence plumbing.
+
 **Difficulty tiers (Round 11)**: `TIERS` in CONFIG (Rookie/Veteran/Ace).
 `CFG_DEFAULTS` is the frozen numeric baseline; `CFG` is a live copy
 `applyTier(idx)` rebuilds from `CFG_DEFAULTS` + `TIERS[idx].cfg` — every
@@ -885,7 +907,19 @@ bank (and dropped two laser groups from its on-disk list that had
 actually been in the manifest since SPEC 2.12 — a staleness this file
 never got updated for until now). See the `audio_assets.js`/
 `audio_engine.js` bullets above and SPEC 2.19 itself for the full shape.
-2.18 (the profile version) is next, then 2.16, 2.17.
+
+Round 15 also built **SPEC 2.18** (the profile version — see the
+"Profile version" bullet above for the full shape): `PROFILE_VERSION`,
+migration, and the never-downgrade rule, machine-tested against a
+fresh profile, a seeded v1-shaped save, and a seeded future-version
+save with an unknown field, all at a local server with zero console
+errors. Built retroactively — the original brief wanted it landed
+before 2.14/2.15, but those had already shipped earlier this session
+with no tester save yet in existence to lose, so nothing was at risk.
+2.10 through 2.15, 2.18, and 2.19 are all DONE now. 2.16 (death by tug)
+is next, then 2.17 (escort and defend missions) — the last two Phase 2
+items before the Sunday 2026-09-06 demo target. Nothing from Rounds
+10-15 has been heard or flown by Brian yet.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

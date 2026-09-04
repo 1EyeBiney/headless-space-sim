@@ -935,8 +935,7 @@ beacons off, docs in sync, push, re-test at Pages, close every tab.
 rest fixes or explains things Brian has already heard. Order: 2.10,
 2.11, 2.12+2.13 together, 2.14, 2.15, 2.18, then 2.16 and 2.17.
 
-2.10 through 2.15 and now 2.19 are DONE (Sonnet). 2.18 next (the profile
-version), then 2.16, 2.17.
+2.10 through 2.15, 2.18, and 2.19 are DONE (Sonnet). 2.16 next, then 2.17.
 
 Every number below is a placeholder Brian retunes by ear; all live in
 CFG or a data table. Decisions behind them are in Part C.
@@ -1251,13 +1250,38 @@ placeholders for his ear.
 - Each mission is offered once per station per `missionCooldownS` 600 of
   game time.
 
-#### 2.18 The profile version (ideas5)
+#### 2.18 The profile version (ideas5) — DONE
 
-- `profile.version` 2, written on every save. `loadProfile()` migrates:
-  a v1 profile (no `version`) gains `resources`, `rcs`, `slotVersion`
-  with defaults and keeps everything else; a version NEWER than the code
-  is loaded as-is and never rewritten with fields dropped. Do this before
-  2.14/2.15 land, so no tester's save is thrown away.
+Built retroactively (2.14/2.15/2.19 already landed by the time this was
+built, so the "do this before 2.14/2.15 land" ordering in the original
+brief didn't happen — no tester's save existed yet to lose, since Brian
+hasn't played any of this session's rounds). `PROFILE_VERSION = 2` in
+`index.html`; `defaultProfile()` stamps `version: PROFILE_VERSION`.
+`loadProfile()` captures `loadedVersion = profile.version || 1` right
+after the `Object.assign` merge, runs every existing defensive
+per-field normalization (runs/upgrades/stations/slots/sound/beacons/
+resources — this is the actual v1→v2 migration; those checks already
+existed field-by-field before 2.18 gave them a version number, so
+nothing about their behavior changed here) and finishes with
+`profile.version = Math.max(loadedVersion, PROFILE_VERSION)` so a save
+is never downgraded. (The original brief named `rcs`/`slotVersion` as
+migrated fields; neither exists as persisted profile state — `rcs` is
+session-only battery charge, rebuilt fresh every boot, and there's no
+separate slot-version field, just the `slots` id array already
+covered — so the real migration list is the fields above instead.)
+`__sim.state().economy` gained a `version` field for testing.
+
+Machine-tested at a local server, three scenarios: a fresh profile
+(no localStorage entry) booted straight to `version: 2`; a seeded
+v1-shaped save (`{tier, credits, upgrades, chaff, runs}`, no `version`
+and none of the newer fields) loaded with credits/tier/upgrades intact
+and `version` backfilled to 2; a seeded "future" save (`version: 3`,
+every current field present, plus one field the code has never seen,
+`futureField`) loaded with its data intact, `version` staying 3 (not
+downgraded to 2), and `futureField` still present verbatim in
+localStorage afterward since nothing overwrote it. Zero console errors
+in a fresh tab across all three. Not yet heard/played by Brian — there's
+nothing to hear, this is pure persistence plumbing.
 
 #### 2.19 Recorded audio as fetched files, not base64 (Brian, 2026-09-04) — DONE; supersedes 3.15 and the `file://` requirement
 

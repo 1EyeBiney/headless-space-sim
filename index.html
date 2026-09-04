@@ -276,9 +276,19 @@ function applyTier(idx) {
 // without persistence instead of erroring.
 var PROFILE_KEY = 'hss_profile';
 var profile = null;
+// SPEC 2.18: 1 = the original Round 10-11 shape (tier/credits/upgrades/
+// chaff/runs only); 2 = everything since (modules, sound, beacons, laser
+// slots, resources). Bump this whenever a field is added or reshaped so
+// loadProfile has one clear place to migrate from, instead of a save
+// silently missing a field forever. `saveProfile` never writes a LOWER
+// number than what was loaded, so a save from a newer build than this
+// code (an unlikely rollback scenario) keeps its own version stamp —
+// Object.assign already preserves any fields this code doesn't know
+// about, so nothing about an unrecognized newer field gets dropped.
+var PROFILE_VERSION = 2;
 
 function defaultProfile() {
-    return { tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
+    return { version: PROFILE_VERSION, tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
              resources: { salvage: 0, alloy: 0 } };
@@ -293,6 +303,12 @@ function loadProfile() {
             if (saved && typeof saved === 'object') Object.assign(profile, saved);
         }
     } catch (e) { /* no persistence this session; profile stays default */ }
+    var loadedVersion = profile.version || 1;
+    // v1 -> v2 (SPEC 2.18): a save from before modules/sound/beacons/
+    // resources existed gets every field below backfilled with defaults,
+    // same as a v2 save with one of them missing or malformed gets today
+    // — these checks were already here field-by-field before 2.18 gave
+    // them a version number; nothing about their behavior changes.
     if (!Array.isArray(profile.runs)) profile.runs = [];
     if (!Array.isArray(profile.upgrades)) profile.upgrades = [];
     if (!profile.stations || typeof profile.stations !== 'object') profile.stations = {};
@@ -312,6 +328,8 @@ function loadProfile() {
     if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0 };
     if (typeof profile.resources.salvage !== 'number') profile.resources.salvage = 0;
     if (typeof profile.resources.alloy !== 'number') profile.resources.alloy = 0;
+    // Never write a version lower than what was actually loaded.
+    profile.version = Math.max(loadedVersion, PROFILE_VERSION);
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
 }
 
@@ -4185,7 +4203,8 @@ window.__sim = {
             beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
                                 .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
-                                  mass: shipMass(), stations: profile.stations } : null,
+                                  mass: shipMass(), stations: profile.stations,
+                                  version: profile.version } : null,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
