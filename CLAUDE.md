@@ -201,9 +201,13 @@ static once tiers exist.
   still goes — the pilot drops out where the charge runs dry ("Warp charge
   exhausted... Thrust the rest", cue `warp_dry`). `refillWarp()` on
   `returnToSector` (leaving any encounter) and at the station; slow regen
-  in open flight (`warpRegenPerS` 40, an audible core-cooling hiss via
-  `warpCoreSound` that thins as it fills, chime + "Warp core cooled" when
-  full); zero charge refuses. New pilots start `sectorStartDist` 1800 from
+  in open flight (`warpRegenPerS` 40; as of SPEC 1.13 the regen is
+  SILENT — Brian dropped the old core-cooling hiss — and `updateWarpCore`
+  speaks "Warp core N percent" as the charge crosses each
+  `CFG.warpAlertPcts` [50, 75] threshold, stateless: it compares the
+  percentage before and after that frame's regen, so a jump that drops
+  the charge re-arms the alert with no flag to reset; chime + "Warp core
+  cooled. Tank full." when full); zero charge refuses. New pilots start `sectorStartDist` 1800 from
   the station toward the Contested Zone (`placeAtStationStart`), just
   outside the no-warp zone, and the delivery run preselects the zone.
   `SECTOR_POIS` moved (combat 5200,400,-5600; mining -9500,-800,-2800) so
@@ -521,8 +525,9 @@ Shift+T cycles back / Shift+W auto-thrust. Brian answered the five open
 questions the same day (Part C: `B` key for beacons with a Target-only
 state, per-slot switch clips 3/4/5/1/2/6 stretched into 1.4–3.2 s,
 time-stretch to fit, Shift+R for the sweep, build order 1.12 → 1.13 →
-1.14 → 1.15 → 1.8). 1.12 is built and machine-tested (see "Sound
-options" above); 1.13 is next.
+1.14 → 1.15 → 1.8). 1.12 (see "Sound options" above) and 1.13 (the
+warp-core alerts, in the Sector bullet) are built and machine-tested;
+1.14 (laser switching) is next.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

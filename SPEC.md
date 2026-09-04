@@ -128,9 +128,10 @@ and the audio split (`audio_engine.js` / `audio_cues.js`, see CLAUDE.md
 
 1.7's economy hook (Sell ore, Modules) is also DONE now (see below).
 Brian's ideas3 notes (2026-09-04) are folded in as 1.12–1.15 below; 1.12
-(sound options, the `B` beacon key) is DONE. Order for the rest (Brian:
-decided) — 1.13, 1.14, 1.15 (small, one commit each), then 1.8 chaff,
-then 1.11 ship window if Brian wants it before Phase 2.
+(sound options, the `B` beacon key) and 1.13 (warp-core alerts) are
+DONE. Order for the rest (Brian: decided) — 1.14, 1.15 (small, one
+commit each), then 1.8 chaff, then 1.11 ship window if Brian wants it
+before Phase 2.
 
 #### 1.9 Laser slots and fire-and-forget (from A.2) — DONE, needs Brian's ear
 
@@ -424,7 +425,18 @@ generally (labels and categories: Claude's judgement, adjust later).
   'off' })`), so a leftover targeted point never sounds on Brian's side.
   `poke` never calls `saveProfile`.
 
-#### 1.13 Warp core: spoken charge alerts, no regen hiss (ideas3)
+#### 1.13 Warp core: spoken charge alerts, no regen hiss (ideas3) — DONE, needs Brian's ear
+
+Built and machine-tested: the hiss (`warpCoreSound`/`warpCoreNodes`) is
+gone from the code entirely; "Warp core 50 percent." and "Warp core 75
+percent." speak on the exact crossing and never repeat while the charge
+sits between thresholds; "Warp core cooled. Tank full." keeps its chime
+and the core is silent after; dropping the charge below a threshold
+re-arms it (a second "50 percent" after a poke back down); nothing
+regenerates or speaks in an encounter or at the menu. Stateless by
+design — the alert fires when one frame's regen carries the charge
+across a threshold, so there's no "already said" flag to reset on a
+jump. No console errors. Not yet heard.
 
 - Remove the core-cooling hiss (`warpCoreSound`: bandpass noise on the UI
   bus, breathing, thinning as the tank fills). Brian: "remove the ticking

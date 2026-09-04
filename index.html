@@ -133,6 +133,7 @@ var CFG_DEFAULTS = {
     // that off the leg) — leave the wrong way and it's a longer thrust in.
     warpTankMax: 12500,
     warpRegenPerS: 40,       // open-flight core cooling: ~6 min to a full tank
+    warpAlertPcts: [50, 75], // spoken "Warp core N percent" while cooling in open flight (full has its own line)
     sectorStartDist: 1800,   // new pilots start this far from Station Meridian, toward
                              // the Contested Zone — just outside the no-warp zone
     // Beacon panners use long-range params so every POI stays faintly
@@ -512,7 +513,6 @@ var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
-var warpCoreNodes = null;// the core-cooling hiss while the tank refills in open flight
 var docking = null;      // { poi, axis, right, up, coachAt, tickTimer } while approaching
 var docked = null;       // { poi } once docked; ship held, station menu active
 var dockToneNodes = null;// the corridor's centerline tone
@@ -695,7 +695,7 @@ var HELP_SECTIONS = [
         'Tab and T work on beacons too, and the tick guides you onto your nav target just like any other.',
         'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
         'The warp drive has a tank, measured in distance. A jump spends it, and a jump longer than the tank still goes: you drop out where the charge runs dry and thrust the rest. The map says whether each point is in warp range.',
-        'The tank refills at the station and whenever you leave an encounter — the core cools while you fight and mine. In open flight it recovers slowly, and you can hear the core cooling until it is full.',
+        'The tank refills at the station and whenever you leave an encounter — the core cools while you fight and mine. In open flight it recovers slowly and silently; the ship reports the core at 50 and 75 percent, and again when the tank is full.',
         'You start just outside Station Meridian with a full tank. It reaches the Contested Zone; the legs after that run it dry a little short, so expect to fly the last stretch into the asteroid field and back to the station.',
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
@@ -2728,45 +2728,26 @@ function warpReachText(dist) {
          : 'beyond warp range by ' + round10(need - warpCharge);
 }
 
-// Open-flight regen, audible: a low core-cooling hiss on the UI bus that
-// thins as the tank fills, then a chime when it's full. Silent in
-// encounters and at full charge.
+// Open-flight regen (SPEC 1.13, Brian: no hiss — the old core-cooling
+// noise is gone). Speech as the charge crosses each CFG.warpAlertPcts
+// threshold, then the existing full line with its chime. Stateless on
+// purpose: an alert fires when one frame's regen carries the charge
+// across a threshold, so a jump that drops it back under re-arms it for
+// free. Silent in encounters and at full charge — the station and every
+// encounter exit say "Warp tank filled" themselves.
 function updateWarpCore(dt) {
-    if (mode !== 'sector' || warping || warpCharge >= CFG.warpTankMax) { warpCoreSound(false); return; }
+    if (mode !== 'sector' || warping || warpCharge >= CFG.warpTankMax) return;
+    var before = warpCharge / CFG.warpTankMax * 100;
     warpCharge = Math.min(CFG.warpTankMax, warpCharge + CFG.warpRegenPerS * dt);
+    var after = warpCharge / CFG.warpTankMax * 100;
     if (warpCharge >= CFG.warpTankMax) {
-        warpCoreSound(false);
         SIM.cues.play('ready_chime');
         say('Warp core cooled. Tank full.');
         return;
     }
-    warpCoreSound(true);
-}
-
-function warpCoreSound(on) {
-    var A = SIM.audio;
-    if (!A.ctx) return;
-    if (on && !warpCoreNodes) {
-        var g = A.ctx.createGain(); g.gain.value = 0.0001;
-        var f = A.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 180; f.Q.value = 1.2;
-        var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf; src.loop = true;
-        var lfo = A.ctx.createOscillator(); lfo.frequency.value = 0.6;   // slow breathing
-        var lg = A.ctx.createGain(); lg.gain.value = 0.0;
-        lfo.connect(lg); lg.connect(g.gain);
-        src.connect(f); f.connect(g); g.connect(A.uiBus);
-        src.start(); lfo.start();
-        warpCoreNodes = { src: src, lfo: lfo, lg: lg, g: g };
-    }
-    if (warpCoreNodes) {
-        if (on) {
-            var vol = 0.01 + (1 - warpCharge / CFG.warpTankMax) * 0.04;   // thins as it fills
-            A.ramp(warpCoreNodes.g.gain, vol, 0.3);
-            A.ramp(warpCoreNodes.lg.gain, vol * 0.5, 0.3);
-        } else {
-            var n = warpCoreNodes; warpCoreNodes = null;
-            A.ramp(n.g.gain, 0.0001, 0.3);
-            setTimeout(function () { try { n.src.stop(); n.lfo.stop(); n.g.disconnect(); } catch (e) {} }, 500);
-        }
+    for (var i = 0; i < CFG.warpAlertPcts.length; i++) {
+        var p = CFG.warpAlertPcts[i];
+        if (before < p && after >= p) { say('Warp core ' + p + ' percent.'); break; }
     }
 }
 
@@ -3079,7 +3060,6 @@ function startWarp() {
         say('Warp charge exhausted. Fly it, or let the core cool. Q for the map.');
         return;
     }
-    warpCoreSound(false);
     warping = true;
     keysDown = {};
     thrusterSync(null);
@@ -3534,7 +3514,7 @@ function clearMission() {
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();
     laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
-    warpCoreSound(false);                        // (the charge itself persists across a sector run)
+    // (the warp charge itself persists across a sector run)
     stopDocking(true); docked = null; dockToneOn(false);
     // NOTE: ore is NOT reset here — it is the cargo hold, persistent across
     // a whole sector run. The mission menu zeroes it when starting fresh.
