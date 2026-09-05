@@ -32,8 +32,10 @@ magazine). It's saved to your browser and remembered next time you play.
 ## Run log
 
 The last item on the menu reads back your best delivery-run times, up to
-10, fastest first, with the difficulty and date of each — also saved to
-your browser. Finish a run to add to it.
+10, fastest first, with the difficulty and date of each, followed by your
+best times on the quadrant's own timed contract (see below) — a separate
+board, since its legs vary with whatever the sky looks like that trip.
+Also saved to your browser. Finish a run to add to it.
 
 ## Sound
 
@@ -91,6 +93,13 @@ take hits. Survive the escort's run or clear both of the defend's waves
 and the friendly lives, paying credits and a little standing at the
 station; lose the friendly and the mission pays nothing. Each mission
 goes back on offer a while after you take it.
+
+Out in the open **Sector**, Station Meridian's own hail also offers a
+**Timed delivery** contract: clear the quadrant's current Contested Zone,
+mine 15,000 ore at any field, and dock back at Meridian with it — paid at
+the ore's usual price plus a bonus, on its own clock, with its own
+best-time log in the run log. Selling ore is blocked while one is open,
+same as it is during the fixed delivery run above.
 
 Thrust and braking both draw on a reaction mass tank, and so do the
 automatic stabilizers that quietly cancel your drift whenever you coast —

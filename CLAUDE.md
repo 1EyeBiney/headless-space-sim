@@ -953,6 +953,58 @@ static once tiers exist.
   math confirmed at both full and damaged friendly hull, F2/F3/I all
   confirmed reading the friendly's shield/hull and the boost countdown.
   Zero console errors. Not yet heard or flown by Brian.
+  **The quadrant's own timed contract (Round 22, SPEC 3.28)**: a third
+  mission alongside escort/defend, but Station Meridian's alone —
+  `CONTRACT_MISSION` is held out of the `MISSIONS` array and only
+  appended by `activeMissions()` when `hailMenu.poi.name === 'Station
+  Meridian'`. Accepting it (`startMissionRun('contract')`) never enters
+  a combat encounter the way escort/defend do — no `sectorHome` snapshot,
+  no `newGame('combat', spec)` — it just starts a module-level `contract`
+  object (`{elapsed, combatCleared, delivered, quotaSaid}`, byte-for-byte
+  `demo`'s own shape) and hands the pilot back to the quadrant they were
+  already flying. `destroyTarget()`'s zone-clear check and
+  `dockAtStation()`'s delivery check both gained a `contract` branch
+  parallel to their existing `demo` one (the delivery branch additionally
+  gated on `poi.name === 'Station Meridian'`, since only home completes
+  it); a new `contractDockNote()` names whichever of the three steps
+  (zone, ore, station) is still outstanding when a dock doesn't complete
+  it. `oreSellBlocked()` now also checks `contract`, so Sell ore refuses
+  anywhere while one is open, same rule the demo already had.
+  **Deliberate simplification, flagged for Brian's call**: unlike the
+  demo, mining is NOT hard-blocked before the zone is cleared — the open
+  quadrant stays a free-flight sandbox, and only the final delivery is
+  gated on `contract.combatCleared`; ore mined early still counts once
+  the zone is cleared. **A real bug found and fixed**: `contract` is
+  never reset to null on a successful delivery (`delivered: true`
+  lingers on purpose, so F2's Contract heading still has something to
+  report) — the first `missionAvailable('contract')` checked bare
+  truthiness of `contract`, which meant a completed contract stayed
+  permanently un-reofferable regardless of the cooldown timer counting
+  to zero. Fixed by checking `contract && !contract.delivered` instead.
+  Its own log, `recordContractRun()` writing to `profile.contractRuns`
+  (byte-for-byte `recordRun`'s own bookkeeping) — the Run log (last
+  mission-menu item) now lists delivery-run times first, then contract
+  times after, one flat list, each line self-labeled so the two boards
+  never merge or sort against each other. F2 gained a conditional
+  "Contract" heading independent of the existing "Mission" heading (an
+  escort/defend encounter and an open contract can be live at once,
+  since accepting one never touches the other); `exitToMenu()` clears
+  `contract` to null the same way it already cleared `demo`.
+  `PROFILE_VERSION` → 5 (`contractRuns: []`,
+  `missionCooldownUntil.contract: 0`), migrated the same way every prior
+  bump was — `Object.assign` preserves an old save missing the fields,
+  an `Array.isArray` guard backfills a malformed one defensively.
+  Machine-tested at a local server end to end: the Meridian-only Missions
+  list gating, accepting leaving `mode` and `sectorHome` untouched, the
+  zone-clear branch (via both real fired shots and `poke({combatCleared:
+  true})`), a full delivery paying exactly 1,700 credits (15,000 ore +
+  the 200 bonus) and recording a "New personal best!", all three
+  `contractDockNote()` refusal branches, the cooldown-reopening bug
+  before and after its fix, F2's new heading, the run log's combined
+  listing, and a full regression pass confirming the escort mission still
+  accepts and enters combat unaffected by `activeMissions()`'s new
+  station-aware filtering. Zero console errors. Every contract number is
+  a placeholder for Brian's ear. Not yet heard or flown by Brian.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
   `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)`
   — **Round 18, SPEC 3.24 fix**: Shift+digit never actually worked from a
@@ -1796,6 +1848,32 @@ and no module, Z refused by name; buying `tractor_1` at a real station
 and dropped F2's "Test fit" qualifier. Zero console errors throughout.
 Every tractor number is a placeholder for Brian's ear. Not yet heard
 or flown by Brian.
+
+**Round 22 (Sonnet) built SPEC 3.28**, the quadrant's own timed delivery
+contract — see the "The quadrant's own timed contract (Round 22, SPEC
+3.28)" bullet above for the full shape: a third mission, Station
+Meridian's alone, that starts a `contract` clock (mirroring `demo`'s own
+shape) without entering a combat encounter, completed by clearing the
+current Contested Zone, mining 15,000 ore at any field, and docking
+back at Meridian with it, for the ore's own price plus a 200-credit
+bonus and its own best-time log. One deliberate simplification flagged
+for Brian's own call (mining stays unblocked before the zone is cleared,
+unlike the demo's hard gate — only the delivery itself is order-gated)
+and one real bug found and fixed before it shipped (a completed
+contract's lingering, non-null `delivered: true` object was read as
+"still open" by the availability check, permanently blocking
+re-acceptance regardless of the cooldown timer — fixed by checking
+`!contract.delivered` instead of bare truthiness). Machine-tested at a
+local server end to end: the Meridian-only Missions gating, the full
+accept-clear-mine-deliver loop paying exactly 1,700 credits on a
+15,000-ore/200-bonus run and recording a personal best, all three
+docking-short-of-complete refusal messages, the cooldown bug confirmed
+both before and after its fix, F2's new Contract heading, the run log's
+combined delivery-run/contract listing, and a full regression pass on
+the untouched escort mission. Zero console errors. Not yet heard or
+flown by Brian. Next: SPEC 3.23 (favor, control, and the three ranges —
+Brian's station game), which touches docking directly and so goes in
+before the quadrant's ports multiply.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

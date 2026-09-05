@@ -1860,10 +1860,10 @@ the lighthouse gate, DONE both halves) → **the three game items it
 brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
 page, DONE → 3.30 the tractor beam, DONE — **Phase 3L and its three
 game items are all complete**)
-→ 3.28 the quadrant's timed contract, next
+→ 3.28 the quadrant's timed contract, DONE
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
-ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
+ports multiply), next → 3.18 containers and hydrogen → 3.11 ports and F4 →
 3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
 3.20 hauling and biomass → 3.21 threat escalation → 3.13 salvage gates
 and the drone swarm → 3.22 the gate and the frontier quadrant. Then
@@ -2968,6 +2968,120 @@ flown by Brian.
   `contractCredits` 200 on top; favor once 3.23 exists. Cooldown
   `missionCooldownS` like the others. Selling ore is blocked while a
   contract is open, exactly as 3.24 blocks it for the run.
+
+**3.28 — DONE (Round 22, Sonnet).** A new `contract` object (`{elapsed,
+combatCleared, delivered, quotaSaid}`, module-level, mirroring `demo`'s own
+shape exactly) tracks the quadrant's own run, kept deliberately separate
+from `demo` — the two are mutually exclusive in practice (`contract` only
+ever starts from a station hail, reachable only in the open quadrant) but
+nothing enforces that as a hard rule, so every check treats them
+independently rather than assuming one implies the other's absence.
+`CONTRACT_MISSION` is a third mission definition alongside `MISSIONS`'
+escort/defend, but held out of that array and only appended by
+`activeMissions()` when the station being hailed is named "Station
+Meridian" — escort/defend stay offered everywhere, the contract is home's
+alone. Accepting it (`startMissionRun('contract')`) is a real branch, not
+a variant of the escort/defend path: unlike those, it never snapshots
+`sectorHome` or calls `newGame('combat', spec)` — it just starts the clock
+and hands the pilot back to the open quadrant they were already flying,
+since the "encounter" here is the whole rest of the quadrant trip, not one
+scripted fight. `destroyTarget()`'s zone-clear win check gained an
+`else if (contract && !contract.combatCleared)` branch alongside `demo`'s
+existing one, so killing every ship in the quadrant's current Contested
+Zone flips `contract.combatCleared` the same way it flips `demo`'s.
+`dockAtStation()` gained a parallel completion branch, gated on all three
+of `contract.combatCleared`, `poi.name === 'Station Meridian'`, and
+`ore >= CFG.demoOreGoal` — paying `Math.floor(ore / CFG.oreCreditRate) +
+CFG.contractCredits` credits (15,000 ore + the 200 bonus = 1,700 credits
+in testing, confirmed exact), zeroing the hold, and recording the run via
+a new `recordContractRun()` (byte-for-byte `recordRun`'s own bookkeeping,
+writing to `profile.contractRuns` instead). Docking anywhere else, or at
+Meridian without every condition met, falls to a new `contractDockNote()`
+naming whichever of the three steps is still outstanding (zone, ore
+count, or "wrong station") — all three branches confirmed by direct
+test. `oreSellBlocked()` now also checks `contract && !contract.delivered`,
+so Sell ore refuses at any station's hail or a docked station menu for the
+whole time a contract is open, same rule 3.24 already gave the fixed run.
+
+**One deliberate simplification, flagged for Brian's call**: the spec text
+describes the same three-step order the demo enforces ("clear the zone,
+mine 15,000, deliver"), but the demo enforces that order with a hard
+block — Asteroid Field Kappa outright refuses mining rights until the zone
+is cleared. This build does NOT add an equivalent block to the open
+quadrant's mining fields: a pilot can mine at any field at any time,
+contract open or not, exactly as the quadrant already worked before this
+item. Only the final delivery is gated on `contract.combatCleared` — ore
+mined before the zone is cleared still counts once it is. Reasoning: the
+demo's hard block makes sense as a guided, linear tutorial; hard-blocking
+every mining field in the open quadrant felt like it would compromise the
+sandbox's own free-flight character for a mechanic this text doesn't
+explicitly ask for. Easy to add later if Brian wants the harder gate.
+
+**A real bug found in testing, fixed before it shipped**: the first
+implementation's `missionAvailable('contract')` checked plain truthiness
+of `contract` to refuse re-offering one already open — but `contract`
+itself is never reset to null on a SUCCESSFUL delivery (`delivered: true`
+lingers, same as `demo` does, purely so its F2 heading and status line
+still have something to report until the pilot leaves the sector via X).
+That meant once a pilot completed one contract, `missionAvailable` would
+return false FOREVER afterward, regardless of the cooldown timer —
+`CFG.missionCooldownS` would tick down to zero with the contract still
+permanently refused, unlike escort/defend which correctly reopen after
+their own cooldown. Fixed by checking `contract && !contract.delivered`
+instead of bare truthiness, in both `missionAvailable` and the "already
+open" message in `missionText`. Confirmed by completing a contract,
+advancing `profile.clock` (via `poke({clock})`) past the 600-second
+cooldown, and confirming the Missions list correctly re-offered "Timed
+delivery" with its full description rather than "already open" or a
+stale refusal.
+
+Also touched: F2 (SPEC 3.29) gained a conditional "Contract" heading
+(independent of the existing "Mission" heading — a pilot can have an
+escort/defend encounter live at the same time as an open contract, since
+accepting one never touches the other), reading the clock and
+`contractObjective()` live; `statusReport()` (I) speaks the same pairing
+whenever `demo` isn't active; the Run log (last mission-menu item)
+now lists the fixed delivery run's times first, then the contract's
+own times after, in one flat browsable list — each line self-labeled
+("Delivery run number N" / "Timed delivery contract number N") so the
+two boards are both reachable without ever merging or sorting against
+each other, matching "the two boards never compare." `exitToMenu()`
+(X from the open sector) clears `contract` to null, same as it already
+cleared `demo` — abandoning the quadrant abandons its contract too.
+`PROFILE_VERSION` → 5 (`profile.contractRuns: []`,
+`profile.missionCooldownUntil.contract: 0`), migrated the same way
+every prior version bump was: `Object.assign` already preserves an old
+save missing these fields, and an explicit `Array.isArray` guard
+backfills a malformed one defensively, matching the established pattern.
+The Sector, Sound, and README help text all gained a line naming the
+contract; the README's "Run log" and "Missions" sections were updated
+to match.
+
+Machine-tested at a local server end to end: the Missions list at
+Station Meridian correctly lists Escort, Defend, and Timed delivery (in
+that order, wrapping correctly); the identical list at Station Two omits
+the contract entirely; accepting it sets `contract` and returns the
+pilot to open flight with `mode` unchanged and the hail closed and
+un-ducked; Sell ore refuses by name at both the hail and a dock while a
+contract is open; killing every ship in the Contested Zone (via
+`poke({enemyHp: 0})` plus real fired shots, and separately via
+`poke({combatCleared: true})` for faster re-testing of the delivery
+branch alone) flips `contract.combatCleared` and speaks the "Contested
+Zone cleared" line named for the contract, not the demo; docking at
+Meridian with the zone cleared and 15,000 ore paid exactly 1,700 credits,
+zeroed the hold, recorded a "New personal best!", and left `demo`
+untouched (still null throughout); the run log then listed the new
+"Timed delivery contract number 1" entry correctly; a second full pass
+confirmed the cooldown-reopening bug above, both before and after the
+fix; docking short of the goal, before the zone is cleared, and at
+Station Two with the goal met all produced their own distinct, correct
+refusal line; F2's new Contract heading appeared and read correctly
+once a contract was open; a full regression pass confirmed the escort
+mission still accepts and enters combat exactly as before, unaffected by
+`activeMissions()`'s new station-aware filtering. Zero console errors
+throughout. All contract numbers (`contractCredits`, the reuse of
+`demoOreGoal`) are placeholders for Brian's ear, same as everywhere else
+in this file. Not yet heard or flown by Brian.
 
 #### 3.23 Favor, control, and the three ranges (A.6 — Brian's station game)
 
