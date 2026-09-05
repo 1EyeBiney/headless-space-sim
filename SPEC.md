@@ -1858,8 +1858,9 @@ round, DONE** (Brian, ideas8, 2026-09-05: L.1 the explorer, DONE → L.5
 the 3D vortex, DONE → L.4 the flyby, DONE → L.8 the room, DONE → L.9
 the lighthouse gate, DONE both halves) → **the three game items it
 brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
-page, DONE → 3.30 the tractor beam, next)
-→ 3.28 the quadrant's timed contract
+page, DONE → 3.30 the tractor beam, DONE — **Phase 3L and its three
+game items are all complete**)
+→ 3.28 the quadrant's timed contract, next
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
 ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
@@ -2855,7 +2856,7 @@ browser-level `[info]` autofocus log, unrelated to this feature, was
 also present before this round's changes). Not yet heard or flown by
 Brian.
 
-#### 3.30 The tractor beam — Z pulls rocks to you (ideas8)
+#### 3.30 The tractor beam — Z pulls rocks to you (ideas8) — DONE
 
 - Brian: "pull asteroids toward the ship; at game start it would not be
   on the ship, but build it to test; keybind Z; does nothing to huge or
@@ -2896,6 +2897,60 @@ Brian.
   runs only while pulling; Shift+Z cycles the zone exactly as Z did;
   with `tractorTestFit` false and no module, Z says the shipyard sells
   it.
+
+Built as scoped, with the "fight" between the tractor and the laser's
+own `beamPush` **deliberately simplified, flagged for Brian's call**:
+rather than modeling a real competing force (which would need the
+pull to push against `t.vel` frame by frame, in tension with the
+existing rock-friction physics every rock already has), the tractor
+is a clean, constant kinematic pull — it closes distance by exactly
+`tractorPullCore`/`tractorPullMedium` units a second regardless of
+`t.vel`, while separately damping whatever velocity the target already
+carries (`tractorDamp`, stronger than the ambient `rockFriction`) so a
+laser-shoved rock's own momentum bleeds off quickly instead of
+persisting. This gives the clean, exact numbers the spec's own worked
+example asks for (500 → 300 in precisely 10 s) without an unbounded
+tug-of-war, at the cost of the pull never literally *losing* to a
+laser's shove mid-frame the way the original wording implies — a
+pilot can still out-shove the tractor's SELECTION (a laser blast still
+knocks the rock's position around before the next tractor tick catches
+up and damps it), just not by out-pulling it once engaged. `core and
+small rock` share `ROCK_SIZES.length - 1` (a core is a collapsed small
+rock, same `t.size`), so the size-to-pull-rate mapping needed no new
+field. `updateTractor(dt)` runs from `simTick`'s existing mining-mode
+rock-physics block, right after the ambient friction/cloud-radius
+pass, so both the ambient physics and the tractor's own pull apply to
+the same target in the same frame (any one-frame residual drift from a
+laser shove gets a chance to show before the tractor's stronger
+damping catches it — a small, honest bonus alignment with the "fight"
+language, not a full model of it).
+
+Machine-tested at a local server, via new test hooks (`poke({
+targetPos, targetSize, tractorTestFit })`, `state().tractor`) that
+place and resize the SELECTED rock directly rather than hunting for
+one of the right size and distance by hand: Z on a core forced to
+exactly 500 engaged immediately; ticked to exactly 10 s it closed to
+300 and self-stopped with "In extractor range." (a real floating-point
+bug was found and fixed here — the pull's own clamped closeAmount can
+leave `dist` a hair above `vacRange` by rounding noise, so a strict
+`<=` check never actually tripped; fixed with a 0.5-unit tolerance); a
+medium rock measured exactly 4 units closed per second; large and huge
+both refused by name without engaging; a rock forced to 900 (beyond
+`tractorRange`) refused naming both the distance and the reach; Z
+again toggled a running tractor off; Shift+Z was confirmed still
+cycling the target zone exactly as Z used to (both from the standalone
+mining drill); Z in a combat drill correctly refused ("only works
+while mining"); with `tractorTestFit` forced false and the module not
+yet owned, Z correctly refused by name; buying `tractor_1` at a real
+station (600 credits, 2 alloy, confirmed deducted) let Z work
+immediately afterward and dropped F2's Tractor beam heading's "Test
+fit" qualifier now that it's genuinely owned; F2's new heading (added
+only once `tractorFitted()` is true, so it doesn't appear as a
+placeholder before this item existed) reads its numbers live in both
+the test-fit and owned cases. Zero console errors throughout. All
+tractor numbers (the two pull rates, the damping factor, the range,
+the module price) are placeholders for Brian's ear. Not yet heard or
+flown by Brian.
 
 #### 3.28 The quadrant's timed contract (ideas7 — the timed run lives in both places)
 

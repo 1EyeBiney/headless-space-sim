@@ -1207,7 +1207,8 @@ selected laser (fire-and-forget, cannot be stopped) · F missile · D decoy (spo
 · Tab cycle targets (Shift+T / Shift+Tab cycle back) · T report selected
 target (lock onset also speaks distance) · R range to target with
 closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
-zone size · Q map · H warp · C call · B beacons on/off/target only · I
+tractor beam (mining, SPEC 3.30) · Shift+Z zone size · Q map · H warp ·
+C call · B beacons on/off/target only · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
 objective) · X leave · F1 help · F12 explore · Escape opens the mission
 menu (SPEC 1.18 — see below; no separate pause any more). Menu: arrows +
@@ -1745,6 +1746,56 @@ initial cycles (`s`/`m`/`r`) all confirmed wrapping correctly; the
 live-update check above; F12 describing F2's new shape without
 opening it; Escape restoring the audio duck. Zero console errors.
 Not yet heard by Brian. Next: SPEC 3.30 (the tractor beam).
+
+**Round 21 also built SPEC 3.30** (the tractor beam), **completing
+Phase 3L and its three game items** — next up is SPEC 3.28. Z now
+starts/stops a tractor on the selected rock or core (mining only,
+within `tractorRange` 500), pulling it toward the ship at a clean,
+constant `tractorPullCore`/`tractorPullMedium` units a second by size
+(20 for a small rock or a core — they share `ROCK_SIZES.length - 1`,
+same `t.size` — 4 "barely" for a medium, 0/refused for large or huge);
+`updateTractor(dt)` runs from `simTick`'s existing mining rock-physics
+block and separately damps whatever velocity the target already
+carries (`tractorDamp`, stronger than ambient `rockFriction`) so a
+laser-shoved rock's momentum dies out fast. **A deliberate
+simplification, flagged for Brian's call**: rather than modeling the
+pull as a force competing with the laser's `beamPush` frame by frame,
+it's a clean kinematic close-the-distance-by-X-per-second, which is
+what gives the spec's own exact worked example (500 → 300 in precisely
+10 s) — a laser can still visibly jostle the rock's position before
+the tractor's damping catches up next frame, but it can't out-*pull*
+the tractor once engaged, only nudge it momentarily. Not standard gear:
+`CFG.tractorTestFit` (true) fits it to every ship for free until Brian
+has heard it; `tractor_1` in `MODULES` (600cr, 2 alloy) is the real
+gate once he flips it off. **Z's old job — the target-zone cycle —
+moves to Shift+Z** (`cycleZone()`, extracted from the old inline case
+so both bindings share it); Shift+Z is handled in its own branch ahead
+of the existing W/T/Tab/R shift-chord block since the zone cycle is a
+harmless preference toggle, not a combat action gated on `tug`/
+`mission`/`over()` the way those are. F2 gained a conditional "Tractor
+beam" heading (only appears once `tractorFitted()` is true — no
+placeholder heading before the feature exists), reading its numbers
+live and naming "Test fit" only when the module isn't actually owned.
+New test hooks `poke({targetPos, targetSize, tractorTestFit})` and
+`state().tractor` place/resize the selected rock directly rather than
+hunting for the right size and distance by hand. **A real bug found
+and fixed**: the auto-stop check was a strict `dist <= CFG.vacRange`,
+but the pull's own clamped `closeAmount` can leave `dist` a hair above
+`vacRange` by floating-point rounding as the gap shrinks to nearly
+zero, so the strict comparison never actually tripped and the tractor
+ran forever once it got close — fixed with a 0.5-unit tolerance.
+Machine-tested at a local server: a core forced to exactly 500 engaged
+immediately and, ticked 10 s, closed to 300 and self-stopped with "In
+extractor range."; a medium measured exactly 4/s closed; large and
+huge both refused by name; a rock forced to 900 refused naming the
+distance and the reach; Z toggled a running tractor off; Shift+Z
+confirmed still cycling the zone exactly as before; Z in a combat
+drill refused ("only works while mining"); with `tractorTestFit` false
+and no module, Z refused by name; buying `tractor_1` at a real station
+(credits and alloy confirmed deducted) let Z work immediately after
+and dropped F2's "Test fit" qualifier. Zero console errors throughout.
+Every tractor number is a placeholder for Brian's ear. Not yet heard
+or flown by Brian.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

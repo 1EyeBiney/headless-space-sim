@@ -120,9 +120,20 @@ var CFG_DEFAULTS = {
     cloudRadius: 800,        // a rock past this distance from origin is lost
     rockFriction: 0.85,      // vel *= friction^dt — rocks bleed energy, ~15%/s
     beamPush: 6,             // u/s of shove per laser damage tick, scaled by size
-    vacRange: 300,           // core extractor (E) reach
+    vacRange: 300,           // core extractor (E) reach — also the tractor's hold distance (SPEC 3.30)
     vacArc: 20 * Math.PI / 180,
     vacTickMs: 600,
+
+    // Tractor beam (SPEC 3.30): Z pulls the selected rock/core toward the
+    // ship at a clean fixed rate by size — not a force fighting momentum,
+    // a deliberate simplification (see SPEC.md 3.30). Not standard gear;
+    // tractorTestFit fits it to every ship for free until Brian has heard
+    // it, after which the tractor_1 module becomes the only way to get one.
+    tractorTestFit: true,
+    tractorRange: 500,           // Z refuses beyond this
+    tractorPullCore: 20,         // u/s closed on a small rock or a core (500 -> vacRange 300 in 10s)
+    tractorPullMedium: 4,        // "barely" moves a medium
+    tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
 
     // particulates: every laser tick and every stage blast sheds dust that
     // hangs where it was knocked loose; the vacuum (V) filters it up.
@@ -668,7 +679,14 @@ var MODULES = [
       cfg: { repairHalfS: 45 } },
     { id: 'repair_crew_2', name: 'repair crew upgrade II', cost: 400, mass: 5, requires: 'repair_crew_1',
       desc: 'The repair crew works three times stock speed.',
-      cfg: { repairHalfS: 30 } }
+      cfg: { repairHalfS: 30 } },
+    // SPEC 3.30: tractor beam, tier 1 — not standard gear; CFG.tractorTestFit
+    // fits it to every ship for free until Brian has heard it, after which
+    // owning this is the only way. No cfg override yet (tier 1's numbers
+    // are the CFG defaults); a later tier would move heavier rocks.
+    { id: 'tractor_1', name: 'tractor beam', cost: 600, mass: 10, alloy: 2,
+      desc: 'Pulls a targeted small rock or core toward you instead of flying to it.',
+      cfg: {} }
 ];
 
 function moduleById(id) {
@@ -1265,6 +1283,15 @@ var lastLaserAt = 0;
 var radarBusy = false;
 var autoThrust = false;  // Shift+W cruise (SPEC 1.15): thrusts as if W were held until cancelled
 var zoneIdx = 0;         // start Wide: a big center for first-time pilots
+// SPEC 3.30: Z now starts/stops the tractor beam (a tool used constantly);
+// the zone cycle it used to be moves to Shift+Z (a setting changed rarely).
+function cycleZone() {
+    zoneIdx = (zoneIdx + 1) % ZONES.length;
+    SIM.audio.blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
+    say('Target zone ' + ZONES[zoneIdx].name.toLowerCase() +
+        '. Laser hits inside ' + ZONES[zoneIdx].laser +
+        ' degrees, missile needs ' + ZONES[zoneIdx].missile + '.');
+}
 var help = { open: false, idx: -1, lines: [] };
 var map = { open: false, idx: -1 };   // the Q quadrant map overlay
 var warping = false;
@@ -1429,7 +1456,7 @@ var HELP_SECTIONS = [
         'The tick comes from the side you should turn toward.',
         'A solid tone means locked on.',
         'Targets behind you sound muffled, as if behind the hull.',
-        'Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.'
+        'Shift Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.'
     ] },
     { heading: 'Weapons', items: [
         'Your ship has six laser slots. Keys 1 through 6 select a slot and speak what is fitted there; Space fires the selected laser. You start with mining laser one in slot 1 and mining laser two in slot 2; the rest are empty until the station sells more.',
@@ -1483,6 +1510,7 @@ var HELP_SECTIONS = [
         'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
         'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
         'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
+        function () { return 'Z engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — Z again releases it. It barely moves a medium rock and does nothing to large or huge ones, and it needs the target within ' + CFG.tractorRange + '.'; },
         'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
         'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
         'Careful: lasering or missiling a finished core shatters it. Most of the ore is lost; only a dust mist remains.',
@@ -1602,7 +1630,7 @@ var KEY_DESCRIPTIONS = {
     t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T cycles back to the previous target.',
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
-    z: 'Cycle the target zone size: wide, standard, or narrow.',
+    z: 'Tractor beam: pulls the selected rock or core toward you while mining. Z again releases it. Shift Z cycles the target zone size instead: wide, standard, or narrow.',
     e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
@@ -3738,6 +3766,96 @@ function debrisTotal() {
     return debris.reduce(function (s, d) { return s + d.amount; }, 0);
 }
 
+// ---- tractor beam (SPEC 3.30) -----------------------------------------------
+// Z pulls the selected rock or core toward the ship instead of flying to
+// it. A clean, constant-rate pull by size (not a force competing with the
+// laser's own beamPush frame by frame — a deliberate simplification,
+// flagged in SPEC.md) while damping whatever velocity the target already
+// carries, so a laser-shoved rock's momentum dies out fast instead of
+// sailing past the pull. Not standard equipment: tractorTestFit fits it
+// to every ship for free until Brian has heard it; after that, owning
+// the tractor_1 module is the only way.
+var tractor = { active: false, targetIdx: -1, nodes: null };
+
+function tractorFitted() { return CFG.tractorTestFit || ownedModules().indexOf('tractor_1') >= 0; }
+
+// core and small rock share ROCK_SIZES.length-1 (a core is a collapsed
+// small rock, SPEC 3.30's own "core and small rock" pairing) — 0 for
+// large/huge refuses the pull entirely.
+function tractorPullRateFor(t) {
+    if (t.size >= ROCK_SIZES.length - 1) return CFG.tractorPullCore;
+    if (t.size === ROCK_SIZES.length - 2) return CFG.tractorPullMedium;
+    return 0;
+}
+function tractorStartHum() {
+    if (!SIM.audio.ctx || tractor.nodes) return;
+    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+    var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 90;
+    o.connect(g); g.connect(SIM.audio.uiBus);
+    o.start();
+    tractor.nodes = { g: g, o: o };
+    SIM.audio.ramp(g.gain, 0.12, 0.2);
+}
+function tractorStopHum() {
+    if (!tractor.nodes) return;
+    var n = tractor.nodes; tractor.nodes = null;
+    SIM.audio.ramp(n.g.gain, 0.0001, 0.2);
+    setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+}
+function stopTractor(reason) {
+    if (!tractor.active) return;
+    tractor.active = false; tractor.targetIdx = -1;
+    tractorStopHum();
+    if (reason) say(reason);
+}
+function tractorKey() {
+    if (tractor.active) { stopTractor('Tractor released.'); return; }
+    if (mode !== 'mining') { SIM.cues.play('refusal_dud'); say('The tractor beam only works while mining.'); return; }
+    if (!tractorFitted()) { SIM.cues.play('refusal_dud'); say('No tractor beam fitted. The shipyard sells it.'); return; }
+    var t = targets[selected];
+    if (!t || !t.alive || t.kind !== 'rock') { say('No rock selected. Tab cycles targets.'); return; }
+    var dist = len(sub(t.pos, ship.pos));
+    if (dist > CFG.tractorRange) {
+        SIM.cues.play('refusal_dud');
+        say('Too far for the tractor. Distance ' + round10(dist) + ', reach ' + CFG.tractorRange + '.');
+        return;
+    }
+    if (tractorPullRateFor(t) <= 0) {
+        SIM.cues.play('refusal_dud');
+        say('Too massive for this tractor.');
+        return;
+    }
+    tractor.active = true; tractor.targetIdx = selected;
+    tractorStartHum();
+    say('Tractor engaged on ' + t.name + '.');
+}
+// Runs every frame in mining mode (simTick). A pure kinematic pull — see
+// the section comment above for why this doesn't model a real force.
+function updateTractor(dt) {
+    if (!tractor.active) return;
+    var t = targets[tractor.targetIdx];
+    if (!t || !t.alive || t.kind !== 'rock') { stopTractor('Tractor lost its target.'); return; }
+    var rel = sub(ship.pos, t.pos);
+    var dist = len(rel);
+    // A tiny tolerance, not a strict <=: closeAmount below clamps to exactly
+    // (dist - vacRange) as that gap shrinks, and the resulting position's
+    // own distance can land a hair above vacRange by floating-point noise,
+    // never quite tripping a strict equality.
+    if (dist <= CFG.vacRange + 0.5) { stopTractor('In extractor range.'); return; }
+    if (dist > CFG.tractorRange * 1.5) { stopTractor('Tractor lost its target.'); return; }
+    t.vel = scale(t.vel, Math.pow(CFG.tractorDamp, dt));
+    var pullRate = tractorPullRateFor(t);
+    var dir = scale(rel, 1 / dist);
+    var closeAmount = Math.min(pullRate * dt, dist - CFG.vacRange);
+    t.pos = add(t.pos, scale(dir, closeAmount));
+    if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+    if (tractor.nodes) {
+        // Pitch rises from 90 Hz at tractorRange to ~260 Hz at vacRange.
+        var frac = clamp(1 - (dist - CFG.vacRange) / (CFG.tractorRange - CFG.vacRange), 0, 1);
+        SIM.audio.ramp(tractor.nodes.o.frequency, 90 + frac * 170, 0.2);
+    }
+}
+
 // ---- rock lifecycle ---------------------------------------------------------
 function rockPush(t) { return t.resource ? 2.2 : ROCK_SIZES[t.size].push; }
 function pushRock(t, dv) { t.vel = add(t.vel, dv); }
@@ -4198,6 +4316,14 @@ function buildShipLines() {
 
     heading('Vacuum');
     line('Cloud radius ' + CFG.cloudRadius + '.');
+
+    if (tractorFitted()) {
+        heading('Tractor beam');
+        line('Pull ' + CFG.tractorPullCore + ' a second on a small rock or a core, ' +
+             CFG.tractorPullMedium + ' on a medium, none on large or huge.');
+        line('Range ' + CFG.tractorRange + '.' +
+             (ownedModules().indexOf('tractor_1') < 0 ? ' Test fit.' : ''));
+    }
 
     heading('Sensor');
     var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
@@ -5630,6 +5756,14 @@ function onKeyDown(e) {
             return;
         }
     }
+    // Shift+Z (SPEC 3.30): the target-zone cycle Z used to be, unguarded by
+    // tug/mission/over() same as it always was — a preference toggle, not
+    // a combat action, so it stays available any time.
+    if (e.shiftKey && lname === 'z') {
+        if (e.repeat) return;
+        cycleZone();
+        return;
+    }
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
     // 'w' and would otherwise just be a held thrust key.
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
@@ -5699,13 +5833,7 @@ function onKeyDown(e) {
                                        : 'No target selected. Tab cycles targets.');
             break;
         }
-        case 'z':
-            zoneIdx = (zoneIdx + 1) % ZONES.length;
-            SIM.audio.blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
-            say('Target zone ' + ZONES[zoneIdx].name.toLowerCase() +
-                '. Laser hits inside ' + ZONES[zoneIdx].laser +
-                ' degrees, missile needs ' + ZONES[zoneIdx].missile + '.');
-            break;
+        case 'z':      if (!over()) tractorKey(); break;
         case 'f1':     openHelp(); break;
         case 'f2':     openShipScreen(); break;
         case 'f3':     openResourceScreen(); break;
@@ -5880,6 +6008,7 @@ function simTick(dt) {
             if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
             if (len(t.pos) > CFG.cloudRadius) loseRock(t);
         });
+        updateTractor(dt);
     }
     // (Combat ship motion — the orbiting Cruiser and evade bursts — lives in
     // updateEnemies, along with enemy fire.)
@@ -6012,6 +6141,9 @@ window.__sim = {
                 return g ? { name: g.name, phase: Math.round((g.gatePhase || 0) * 10) / 10,
                              hasAsset: !!(g.nodes && g.nodes.oscs.some(function (o) { return o.buffer; })) } : null;
             })(),
+            tractor: { active: tractor.active, fitted: tractorFitted(),
+                       targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
+                       dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null },
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), stations: profile.stations,
                                   version: profile.version, alloy: profile.resources.alloy,
@@ -6090,6 +6222,12 @@ window.__sim = {
         // everything at once (the same effect docking has).
         if (o && o.knockout) { shipSystems[o.knockout] = 0; applyKnockoutEffects(o.knockout); }
         if (o && o.systemHealth) Object.assign(shipSystems, o.systemHealth);
+        // SPEC 3.30: move/resize the SELECTED rock directly (distance and
+        // size drive every tractor refusal) and force the test-fit flag,
+        // without needing to fly to a rock of the exact size by hand.
+        if (o && o.targetPos !== undefined) { var tt = targets[selected]; if (tt) tt.pos = v3(o.targetPos.x, o.targetPos.y, o.targetPos.z); }
+        if (o && o.targetSize !== undefined) { var tt2 = targets[selected]; if (tt2 && tt2.kind === 'rock') tt2.size = o.targetSize; }
+        if (o && o.tractorTestFit !== undefined) CFG.tractorTestFit = o.tractorTestFit;
         if (o && o.repairAllSystems) repairAllSystems();
         if (o && o.depleteField && profile.quadrants[profile.quadrantId]) {
             profile.quadrants[profile.quadrantId].fields.forEach(function (f) {
@@ -6109,6 +6247,7 @@ window.__sim = {
 function clearMission() {
     targets.forEach(stopVoice);
     killMissile();
+    stopTractor();
     stopBeam(true);
     thrusterSync(null);
     stopLockTone();

@@ -137,7 +137,8 @@ Right hand on the arrows, left hand on everything else.
 | Tab / T | Cycle targets / report the selected target. Shift+T or Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
-| Z | Target zone size: wide, standard, narrow |
+| Z | Tractor beam (mining): pulls the selected rock or core toward you instead of flying to it. Z again releases it. Barely moves a medium rock, does nothing to large or huge ones |
+| Shift+Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails the station within 500, docks within 150 |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
 | X | Leave the mission |
