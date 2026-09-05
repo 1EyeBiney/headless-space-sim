@@ -143,6 +143,31 @@ stations. Every income source feeds credits or a resource.
   instance is built when its sound exists.
 - Time is game time everywhere; every quadrant keeps its own saved
   state; favor and control are per station, so per quadrant by nature.
+- **The galactic map is 3D and browsed by ear** (Brian, ideas8,
+  2026-09-05). The quadrant map stays the flat spoken list it is — this
+  is a *new* map, opened at the gate after the Frontier, that lays the
+  quadrants out with real elevation: a **sound cursor** the arrows steer
+  through the field (azimuth, elevation, distance), each quadrant
+  sounding at its true bearing from where you are, and Enter on whatever
+  is centred sets the destination and jumps. Elevation is meant to
+  *mean* something strategically — travel cost, territory, or a rule
+  not yet chosen (DECIDE, Phase 4). Confirmed possible on the present
+  engine: it is the Position Explorer (L.1) plus the listener
+  orientation the game already sets every frame. L.1 is its prototype;
+  the lab's elevation demos are how Brian finds out how much height the
+  ear can carry before the galaxy is given any.
+
+### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
+
+The lab stops being only a list of every sound and becomes the place
+the spatializer itself is put through its paces, one perceptual trick
+per demo: a sound you place anywhere (L.1), eight vortices you shape
+individually (L.5), planes on routes and stunts (L.4), a room you turn
+in and are tested on (L.8), a directional source (L.9). Two rules: a
+demo never changes the game by itself — anything that graduates gets
+its own numbered item — and every new asset is auditioned here first
+(the gate's lighthouse in L.9, the station recordings in 3.31), so
+Brian hears a thing in isolation before he meets it in flight.
 
 ### A.7 What stays true at every scale
 
@@ -1828,8 +1853,12 @@ in CFG or a data table for Brian's ear and hands.
 **Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
 2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
 second pass and kill buffs, DONE → 3.26 laser levels and wear, DONE →
-3.27 system damage and the repair crew, DONE → 3.28 the quadrant's timed
-contract, next)
+3.27 system damage and the repair crew, DONE) → **Phase 3L, the lab
+round, next** (Brian, ideas8, 2026-09-05: L.1 the explorer → L.5 the
+3D vortex → L.4 the flyby → L.8 the room → L.9 the lighthouse gate,
+lab and game) → **the three game items it brought with it** (3.31
+recorded station beacons → 3.29 the ship page → 3.30 the tractor beam)
+→ 3.28 the quadrant's timed contract
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
 ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
@@ -2456,6 +2485,268 @@ throughout. Numbers (the 40% knockout chance, all eight weights, the
 are placeholders for Brian's ear, same as everything else in Phase 3.
 Not yet heard or flown by Brian.
 
+### Phase 3L — the Sound Lab as an HRTF laboratory (ideas_crazy_7 + ideas8, 2026-09-05)
+
+Brian's notes on a ten-point review of the lab (`ideas_crazy_7.txt`)
+and his answers (`ideas8.txt`, both untracked like every ideas file).
+**Only the five items he bracketed are written** — L.1, L.4, L.5, L.8,
+L.9, numbered to match the note so he can cross-read it. Deliberately
+NOT written, on his instruction: the turn-your-head demo (#2 — its
+listener-rotation machinery is built anyway, inside L.8), stereo-vs-3D
+(#3), the breathing radius (#6), the localization game (#7, "leave it
+out"), the cue audition position (#10), and Doppler. All of it lives in
+`soundlab.html` on the same shape as the vortex demo today: native
+buttons to start and stop, a focused `role=application` arena box that
+takes the keys, a polite live region that reads every change back,
+STOP ALL stops everything. Every demo stops every other demo when it
+starts, and any demo that moves the listener puts it back at the origin
+facing forward when it stops — the `AudioListener` is global, and a
+head-turn left behind would rotate every other demo on the page. Every
+number below is a placeholder for Brian's ear; he tunes in the lab.
+
+#### L.1 The 3D Position Explorer — the galactic map's cursor, prototyped
+
+- One continuous recognizable sound at a point around the listener:
+  default the corvette engine loop (`ship_corvette_1`), a second button
+  swaps it for a repeating short blip (a 60 ms 880 Hz sine every 0.8 s)
+  for the sharper transients elevation needs. Starts directly ahead,
+  level, at 200.
+- Keys in the arena, each press a fixed step: Left/Right rotate the
+  sound 45° around you; Up/Down move it 30° above/below; Page Up/Down
+  move it 100 farther/closer (50–800); Shift with any of them is the
+  fine step (15°, 10°, 25); Home resets to dead ahead, level, 200;
+  Enter "selects" — a short beacon ding and "Selected: front-left, 30
+  above, distance 300." — standing in for the galactic map's jump;
+  Escape stops.
+- Every step reads back in compass words, never raw degrees first:
+  "Rear-left, 30 above, distance 200." The eight azimuth names are
+  front, front-right, right, rear-right, rear, rear-left, left,
+  front-left (45° steps land exactly on them; fine steps say "front,
+  15 right"); elevation says "level", "N above", "N below", "directly
+  overhead", "directly underneath".
+- Test: every key changes the readout and the panner position;
+  directly overhead and directly underneath are reachable; Home
+  resets; Enter speaks the selection; Escape silences.
+
+#### L.5 The true 3D vortex — eight vortices shaped one at a time (Brian's bracket on #5)
+
+- Replaces the shared height with per-vortex shape. Each vortex keeps
+  its radius, direction, and rate, and gains: a **centre height**
+  (`height`, ±300), a **vertical sway** (`sway` amplitude 0–200 on its
+  own slow sine, rates 0.1–0.3 rad/s with offset phases so they weave,
+  not bob together), and an **orbit offset** (`offset`, the orbit's
+  centre slid along the line from the listener toward the vortex's
+  starting angle, so it passes close on one side and far on the other;
+  clamped to radius − 20 so no orbit ever passes through your head).
+- Keys: **Up/Down select** a vortex (1–8, wrapping; the selected one
+  briefly swells in level so you know which you have); **Page Up/Down**
+  its sway ±20; **Home/End** its centre height ±15; **[ and ]** its
+  offset ∓20/±20; **Left/Right the shared speed** for all eight (as
+  today, ×/÷ 1.25); **R** resets every vortex to its starting shape;
+  Escape stops. Every change reads back the whole selected vortex:
+  "Vortex 3: height 40, sway 90, offset 60, speed times 1.25."
+- At all-zero sway and offset it is today's demo exactly; at sway 200
+  on all eight it is the chaotic cloud around the head the note
+  describes.
+- Test: selection wraps and swells; each key changes only the selected
+  vortex except Left/Right; the readout names every field; R restores
+  the starting shape; no panner position ever comes within 20 of the
+  origin; Escape stops all eight.
+
+#### L.4 The flyby — planes on routes, planes doing stunts (Brian's bracket on #4)
+
+- Brian's eight `audio/demo/propeller_plane1–8.mp3` (all stereo 48k;
+  measured: 1–3 are 5.0 s, 4 is 8.0 s, 5–8 are 12.0 s). Manifest keys
+  `propeller_plane1–8`, excluded from `AUDIO_PRELOAD` like the vortex
+  set. The folder is new and untracked — it gets staged explicitly.
+- **Planes 1–4 loop on set routes** around the listener — routes, not
+  orbits, and different from each other so the variation shows: 1 a
+  low racetrack (a long oval, close in front at 120, far behind at
+  400, level); 2 a figure-eight that crosses directly overhead at 150;
+  3 a tilted circle that climbs from below-front to above-behind and
+  back; 4 (the 8 s clip) a wide circuit at 350 whose height flips sign
+  every lap. Laps of 12–20 s. "Start routes" starts all four at once,
+  staggered so they don't cross the same point together; "Stop routes"
+  stops them.
+- **Planes 5–8 are one-shot stunts**, each path fitted to its measured
+  12 s so the approach, the stunt, and the fly-off land on the audio:
+  5 a close pass (far ahead-left 600 → close left 80 → far behind-right
+  600); 6 an overhead dive (far ahead high → directly overhead at 60 →
+  far behind low); 7 a corkscrew (spiralling in from 500 to 100 around
+  you, then out the other side); 8 an underneath pass (far ahead low →
+  directly beneath at 60 → far behind). "Next stunt" plays the next in
+  rotation, over the routes if they are running, announcing it first:
+  "Overhead dive. Twelve seconds." Distance does the rest — the
+  panners' inverse model with the lab's `refDistance` 50 makes 600 to
+  60 a real crescendo.
+- No Doppler (not bracketed). If Brian wants it later it is a
+  `playbackRate` ramp on the stunt's source, labelled as its own thing.
+- Test: all eight load; the four routes run and stop together; each
+  stunt announces, fits its 12 s (the source ends within 0.2 s of the
+  path's end), and the rotation returns to 5 after 8; Escape stops
+  everything.
+
+#### L.8 The spatial audio room — five sounds, a solo pass, a turn, a test (Brian's bracket on #8)
+
+- Five quiet distinct sounds at fixed world positions: **Generator**
+  (a ship engine loop), **Beacon** (the station blink), **Crackle**
+  (bandpassed noise ticking), **Pump** (a slow low pulse), **Radio**
+  (a repeating three-chirp). Level 0.08 each — deliberately quiet, so
+  the solo pass is the way you learn the room.
+- **Every run is randomised so it can't be memorised**: azimuth from
+  the eight compass points with no two sharing one, elevation from
+  high / level / low, distance from 120 / 200 / 300 — all five
+  drawn fresh on every Start.
+- **The flow Brian gave**: Start test → every level lowered → the name
+  of an object is spoken ("Generator") → its level rises to 0.35 for
+  three seconds → lowers → next name → and so on through all five, in
+  a **shuffled order that is never the order of distance** → then
+  "Turning 90 degrees left" (or right — chosen at random per run,
+  spoken *before* the turn) → the listener orientation ramps 90° over
+  1.5 s while all five keep sounding at the quiet level → then the
+  questions.
+- **The test is on-screen multiple choice**, native buttons in the
+  arena (Tab/arrows browse, Enter answers — the lab's own idiom, not
+  the game's key trap), three questions per run: two of "Where is the
+  Pump now?" (eight direction buttons, the answer judged against the
+  post-turn bearing) and one "Which is closest?" (five name buttons —
+  the reason the distances differ). Each answer is confirmed at once
+  ("Correct, rear-left." / "You chose left. The Pump is rear-left,
+  high."), then the score: "2 of 3." Escape or Stop ends the run and
+  puts the listener back facing forward.
+- Test: five distinct positions and no duplicate azimuth on any run;
+  the solo order is never distance order; the turn is spoken before it
+  happens and measures 90° on the listener; every question judges
+  against the *turned* bearing; the listener is reset on stop.
+
+#### L.9 The lighthouse gate — a directional source, in the lab and in the game (Brian's bracket on #9)
+
+- `PannerNode` orientation and cones, which nothing in the game uses
+  yet. **The lab demo**: the gate sound at a fixed point 150 to your
+  right, its beam sweeping a full turn every `gateSweepS` **10 s**;
+  Left/Right walk it around you in 45° steps, Page Up/Down change the
+  sweep period (5–30 s), Escape stops. You hear its place *and* its
+  turning — loud as the beam passes you, faint as it points away.
+- **The game**: the Jump Gate's beacon in `buildPoiVoice` (today a
+  synthesized 55 Hz hum, a 3.10 placeholder) becomes Brian's
+  `audio/stations/space_station6.mp3` (8.0 s, stereo 48k; manifest
+  key `space_station6`) looping through the *same* gain → lowpass →
+  mute → panner chain every beacon uses, so the B key, the distance
+  haze, and the range cutoff all still apply — with the panner given a
+  cone: `gateConeInner` 60°, `gateConeOuter` 180°, `gateConeOuterGain`
+  0.15 (never zero — silence is a bug, and "target only" beacon mode
+  still has to find it), its orientation rotated a full turn every
+  `gateSweepS` 10 s from `updateTargeting`, where the beacon mute is
+  already driven every frame. This lands on the existing 3.10 gate now;
+  3.22 inherits it.
+- Test (lab): the readout names the bearing and period; the level at
+  the listener rises and falls once per period. Test (game): the gate
+  plays the recording, the cone's orientation completes a turn in 10 s
+  (`__sim.state()` exposes the gate's sweep phase), the beacon is still
+  audible at the outer-gain floor when pointed away, B mutes it, and
+  the delivery run (which has no gate) is untouched.
+
+#### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8)
+
+- `audio/stations/space_station1–10.mp3` (new, untracked, staged
+  explicitly; durations measured on build — number 6 is 8.0 s stereo
+  48k). Brian: "use the new assets for space stations including existing
+  ones; just start going down the list." Manifest keys
+  `space_station1–10`, filename equals key.
+- **Assignment, in order**: Station Meridian = `space_station1` (both
+  the delivery run's fixed sector and the quadrant — same station);
+  Station Two = `space_station2`; the Jump Gate = `space_station6`
+  (L.9, Brian's explicit pick); every future station takes the next
+  unused number (3, 4, 5, 7 …) via a `beaconAsset` field on its
+  `QUADRANT`/`SECTOR_POIS` row. A station's recording loops through the
+  same chain as every beacon (gain → lowpass → mute → panner), replacing
+  the 660 Hz square-gated blink for that station; `stationBeaconScale`
+  still halves it; a row with no `beaconAsset` keeps the synthesized
+  blink, so nothing breaks while the list is being filled.
+- Any recording Brian wants swapped is a one-field change on the row.
+- Test: both stations and the gate play their recordings from their
+  positions; the delivery run's Meridian plays number 1; B and the
+  distance cutoff still work; a row without `beaconAsset` still blinks.
+
+#### 3.29 The ship page — F2 becomes the full reference (ideas8)
+
+- Brian: "the ship page needs to show all ship systems and components
+  and their status and attributes and properties — where players look
+  up stats on things like lasers, or how far their extractor at this
+  tier can go." F2 grows from the SPEC 2.13 status list into that
+  reference, **every number read live from `CFG`, `LASERS`,
+  `profile`, and `shipSystems`** so tiers, modules, wear, and damage all
+  show through without a second source of truth.
+- **Headings, browsable like Help and the map**: H and Shift+H jump
+  between headings (the F1 idiom), a first letter jumps to the heading
+  that starts with it (the map's idiom), arrows read line by line,
+  Escape closes. Headings and lines: **Hull** (percent, collision
+  damage owed); **Shields** (pool of max, raise time, regen per second,
+  disrepair time and return fraction, state); **Lasers** (per family:
+  level owned of 8, health, damage per tick at this level, ticks and
+  burst length, cooldown, range and point-blank bonus, bites/weak
+  matchups; per slot: what's fitted and ready/recharging); **Missiles**
+  (count of max, damage, speed, reach in units, the zone it needs);
+  **Decoys** (count of max); **Warp** (charge of tank, regen per
+  second in open flight, minimum to jump, reach at this charge);
+  **Reaction mass** (percent, battery factor); **Thrusters** (thrust,
+  brake, turn rate, mass factor); **Extractor** (reach — `vacRange`,
+  300 today — and "tier 1" until a tier exists); **Vacuum** (cloud
+  radius); **Tractor beam** (3.30, once fitted: pull rates by rock
+  size, reach); **Sensor** (the three zone sizes' lock angles, which is
+  active, the tick's cadence); **Repair crew** (tier, seconds to half
+  and to full); **Systems** (every broken one, health, crew on it —
+  3.27's lines); **Cargo** (ore, credits; the limit once 3.14 exists);
+  **Modules** (each fitted, its effect, its mass; total mass).
+- Every value that a tier or module changes says so in the line ("at
+  level 5", "tier 2 crew"), so a pilot can hear what an upgrade bought.
+- Test: every heading reachable by H, Shift+H, and first letter; every
+  line reads a live value (buy a module, reopen F2, the number moved);
+  no line ever reads `undefined`; Escape closes and the audio duck
+  restores; F12 describes F2's new shape.
+
+#### 3.30 The tractor beam — Z pulls rocks to you (ideas8)
+
+- Brian: "pull asteroids toward the ship; at game start it would not be
+  on the ship, but build it to test; keybind Z; does nothing to huge or
+  large asteroids and only barely moves mediums; used instead of
+  thrusters; range 500; in 10 seconds pulls a core to within 300."
+- **Z** starts the tractor on the selected rock or core within
+  `tractorRange` 500 (refused by name beyond it, or with no rock
+  selected, or in any mode but mining); Z again stops it; it stops by
+  itself when the target is within `tractorHoldDist` 300 — which is the
+  extractor's own `vacRange`, so a core reeled in is a core E can take
+  without thrusting — or when the target dies, shatters, or leaves
+  range. While it runs it is a cockpit sound (a steady low pull hum on
+  the UI bus, pitch rising as the target closes) *and* the rock's own
+  voice approaching — its HRTF panner moves with it for free.
+- **Pull by size, tier 1** (`tractorPull` per second): core and small
+  rock 20 (500 → 300 in exactly Brian's 10 s), medium 4 ("barely"),
+  large and huge 0 (refused by name: "Too massive for this tractor.").
+  Each tick also damps the target's own velocity by `tractorDamp` 0.5
+  a second, so a rock the laser has shoved keeps coming instead of
+  sailing past. The laser's `beamPush` still shoves; tractor and laser
+  fight, and the tractor's numbers decide who wins by size.
+- **A module, not standard**: `tractor_1` in `MODULES` (600 credits, 2
+  alloy, mass 10, placeholder) — the thing the shipyard sells later,
+  with higher tiers moving large and then huge rocks as the tier
+  numbers Brian sets. Until he has heard it, `CFG.tractorTestFit`
+  **true** fits it to every ship for free (and F2 says "test fit"); it
+  flips to false, and the module becomes the only way, once he says so.
+- **The Z key conflict**: Z is today's target-zone cycle (wide /
+  standard / narrow). The zone size is a setting changed rarely; the
+  tractor is a tool used constantly, and Brian asked for Z by name — so
+  the tractor takes **Z** and the zone cycle moves to **Shift+Z**
+  (accepted by default, Part C; help, F12, README, and the key map
+  updated together).
+- Test: Z on a core at 500 pulls it to 300 in 10 ± 0.5 s and stops with
+  a spoken "In extractor range."; Z on a medium moves it 4 a second; Z
+  on a large or huge refuses by name; Z beyond 500 refuses with the
+  distance; Z again stops it; the rock's velocity damps; the pull hum
+  runs only while pulling; Shift+Z cycles the zone exactly as Z did;
+  with `tractorTestFit` false and no module, Z says the shipyard sells
+  it.
+
 #### 3.28 The quadrant's timed contract (ideas7 — the timed run lives in both places)
 
 - The **Delivery run** menu item stays exactly as it is — the fixed
@@ -2994,6 +3285,49 @@ credits a point times the level, wear spoken at half and a quarter; the
 knockout weights in the 3.27 table; the base crew 90 s to half and 90
 to full, the module halving it, a second tier to 30/30; repair_crew.wav
 on every start, a chime at half; the contract pays ore price plus 200.
+
+Decided (Brian, ideas_crazy_7 and ideas8, 2026-09-05): of the ten lab
+suggestions, **only the five he bracketed are built** — the position
+explorer (L.1), the flyby with his eight propeller recordings (L.4),
+the per-vortex 3D vortex (L.5), the room with his solo-then-turn-then-
+test flow (L.8), and the lighthouse gate (L.9); the localization game
+is **out**; the galactic map (not the quadrant map) is **3D, with
+elevation meant to carry strategic weight**, browsed by a sound cursor
+you steer to a quadrant and warp to (A.13); the room's turn is **spoken
+before the spin, 90° either way**, its positions and its solo order
+**randomised every run**, its questions **on-screen multiple choice**;
+in the vortex, **Left/Right stays the shared speed**, the bracket
+offset **slides the orbit centre toward you**, **R resets** and every
+change **reads the whole vortex back**; planes **1–4 loop on set
+routes**, **5–8 are one-shot stunts fitted to their length and rotated
+through**; the gate is built **for the game and the lab, a 10-second
+sweep, `space_station6.mp3`**; the ten station recordings are **applied
+down the list to every station, existing ones included**, swapped on
+his word; the **ship page** is the full component reference with
+headings; the **tractor beam** is Z, range 500, a core to 300 in 10 s,
+nothing on large or huge, barely on mediums, not on the ship at start
+but fitted for testing; and the order is **the lab round first, then
+its three game items, then 3.28**.
+
+Accepted by default (say otherwise), the lab round: explorer steps of
+45° / 30° / 100 with Shift for 15° / 10° / 25, the corvette loop as its
+default voice, Enter as a stand-in "select"; vortex sway 0–200 and
+offset clamped to radius − 20; the four routes and four stunt shapes
+named in L.4, laps of 12–20 s, no Doppler; the room's five sounds
+(generator, beacon, crackle, pump, radio) at 0.08, solo at 0.35 for 3 s,
+distances 120 / 200 / 300, a 1.5 s turn, three questions (two "where is
+X", one "which is closest"); the gate cone 60° / 180° at an outer gain
+of 0.15, never silent; station 1 for Meridian, 2 for Station Two, the
+next unused number for each new station; the tractor's pull of 20 / 4 /
+0 by size with 0.5 velocity damping, hold at 300 = `vacRange`, a 600
+credit + 2 alloy module, `tractorTestFit` on until heard; **Z becomes
+the tractor and the zone cycle moves to Shift+Z**.
+
+**DECIDE** (open, from the lab round): what elevation *means* on the
+galactic map (a Phase 4 question — A.13); the tractor's higher tiers
+(what a tier-2 and tier-3 beam move, and their prices) once tier 1 has
+been felt; which of the ten station recordings ends up where, after
+Brian has heard them in place.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code

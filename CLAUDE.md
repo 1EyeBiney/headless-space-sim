@@ -77,7 +77,13 @@ expands.
   = 16 lasers (Mining ×8, Rapid-pulse ×8, all 16 in the manifest as of
   SPEC 2.12) plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
   masters with served MP3 siblings, all 6 in the manifest — the per-slot
-  switch delay is timed off their original lengths); `audio/Explosions/`
+  switch delay is timed off their original lengths); **`audio/demo/`
+  = `propeller_plane1–8.mp3` (Brian, 2026-09-05, for the lab's flyby
+  L.4 — 1–3 are 5 s, 4 is 8 s, 5–8 are 12 s, all stereo 48k; UNTRACKED
+  until L.4 stages the folder explicitly) and `audio/stations/` =
+  `space_station1–10.mp3` (same day, for 3.31's recorded station
+  beacons and L.9's gate — number 6 is the gate by Brian's pick;
+  UNTRACKED until those items stage it)**; `audio/Explosions/`
   = 8 new unintegrated hull-breach/explosion candidates, no manifest key
   yet. `soundlab.html` is the up-to-date "what's connected" checker —
   trust it over this paragraph for the current count. `audio/z.old/`
@@ -1604,8 +1610,43 @@ resuming `requestAnimationFrame` alongside a test script's manual
 `__sim.step()` calls and briefly doubling the effective tick rate for
 one measurement — resolved by reading the CFG value directly instead
 of trusting a polluted rate. Zero console errors throughout. Not yet
-heard or flown by Brian. Next: SPEC 3.28 (the quadrant's own timed
-delivery contract).
+heard or flown by Brian.
+
+**The next round is the lab, not 3.28** (Fable, 2026-09-05, docs only —
+nothing built): Brian's `ideas_crazy_7.txt` (a ten-point review of the
+Sound Lab as an HRTF demonstrator) and his answers in `ideas8.txt`
+(both untracked, like every ideas file) are written into SPEC.md as
+**Phase 3L** — only the five items he bracketed: **L.1** the 3D
+Position Explorer (the prototype of a *3D galactic map* browsed by a
+sound cursor, A.13 — the quadrant map stays flat and untouched),
+**L.5** the per-vortex 3D vortex (Up/Down select, Page Up/Down sway,
+Home/End height, brackets slide the orbit centre, Left/Right shared
+speed, R resets, full readback), **L.4** the flyby (his eight
+`audio/demo/propeller_plane` clips — 1–4 loop on set routes, 5–8 are
+one-shot stunts fitted to their 12 s and rotated), **L.8** the room
+(five quiet sounds randomised every run, a solo pass in non-distance
+order, a spoken 90° turn, on-screen multiple-choice questions), and
+**L.9** the lighthouse gate (a directional `PannerNode` cone sweeping
+every 10 s — in the lab AND on the game's Jump Gate, using
+`space_station6.mp3`). The localization game, turn-your-head,
+stereo-vs-3D, breathing radius, audition position, and Doppler are
+deliberately NOT written. Three game items came with it: **3.31**
+recorded station beacons (`audio/stations/space_station1–10` applied
+down the list, Meridian = 1, Station Two = 2, gate = 6, via a
+`beaconAsset` row field), **3.29** the ship page (F2 as the full
+live-number component reference with H/Shift+H and first-letter
+heading jumps), and **3.30** the tractor beam (**Z** — which means the
+zone cycle moves to **Shift+Z**, accepted by default — range 500, a
+core reeled to `vacRange` 300 in 10 s, 4/s on mediums, nothing on
+large/huge, a `tractor_1` module test-fitted via `CFG.tractorTestFit`
+until Brian has heard it). Build order per Brian: L.1 → L.5 → L.4 →
+L.8 → L.9 → 3.31 → 3.29 → 3.30 → then 3.28. Two gotchas for the
+builder, both in SPEC: the `AudioListener` is global, so any lab demo
+that turns the listener (L.8) must reset it on stop or every other demo
+inherits the turn; and the two new audio folders are untracked — stage
+them explicitly, never `git add -A`. Part C carries the decisions and
+the accepted-by-default numbers; every number is a placeholder for
+Brian's ear.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
