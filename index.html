@@ -1591,7 +1591,7 @@ var KEY_DESCRIPTIONS = {
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles among owned levels backward.',
     '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
-    f2: 'Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
+    f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, Escape closes it.',
     f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
@@ -4109,63 +4109,141 @@ function oreGained() {
     }, 500);
 }
 
-// ---- F2 ship screen (SPEC 2.13) --------------------------------------------
-// Same browsable-overlay shell as the run log: build the lines once at
-// open time, arrows step through them, Escape closes. The per-slot line is
-// the point of the screen — the family matchup in words, never numbers,
-// so a pilot learns which laser suits which rock or ship by ear.
+// ---- F2 ship screen (SPEC 2.13, grown into the full reference by 3.29) ----
+// Same browsable shell as Help/the map: build once at open time, one
+// heading per subsystem, H/Shift+H jump between headings (the F1 idiom),
+// a first letter jumps to a heading (the map's idiom — several headings
+// share a first letter, so a repeated letter cycles forward through them,
+// wrapping, same as any type-ahead list), arrows read line by line,
+// Escape closes. Every number is read LIVE off CFG/LASERS/profile/
+// shipSystems — no second source of truth, so a tier or module bump
+// shows up here the instant it's bought.
 function buildShipLines() {
     var lines = [];
-    lines.push('Your hull ' + hull + ' percent.');
-    lines.push('Shields ' + (shield.up ? 'up' : 'down') + ', pool ' +
-                Math.round(shield.pool) + ' of ' + Math.round(shieldPoolMax()) +
-                (shield.repairing ? ', repairing' : '') + '.');
-    // SPEC 3.27: repair crew tier, then anything currently broken (in the
-    // crew's own fixed work order, matching what it'll actually fix next).
+    function heading(name) { lines.push({ text: name + ', heading.', heading: true, name: name }); }
+    function line(text) { lines.push({ text: text, heading: false }); }
+
+    heading('Hull');
+    line('Hull ' + hull + ' percent.');
+    if (collisionDamage > 0) {
+        line(Math.ceil(collisionDamage) + ' points of collision damage owed, billed at the next landing.');
+    }
+
+    if (mission) {
+        heading('Mission');
+        var mf = mission.friendly;
+        line(mf.name + ': shields ' + Math.round(mf.shield / mf.shieldPool * 100) +
+             ' percent, hull ' + Math.round(mf.hp / mf.maxHp * 100) + ' percent.');
+    }
+
+    heading('Shields');
+    line('Shields ' + (shield.up ? 'up' : 'down') + ', pool ' + Math.round(shield.pool) +
+         ' of ' + Math.round(shieldPoolMax()) + (shield.repairing ? ', repairing' : '') + '.');
+    var raiseS = CFG.shieldRaiseMs / 1000;
+    line('Raises in ' + raiseS + (raiseS === 1 ? ' second.' : ' seconds.'));
+    line('Regenerates ' + CFG.shieldRegenPerS + ' a second while down.');
+    line('A depleted pool takes ' + CFG.shieldRepairS + ' seconds to repair, returning at ' +
+         Math.round(CFG.shieldRepairReturn * 100) + ' percent.');
+
+    heading('Lasers');
+    if (laserBoostActive()) {
+        line('Laser boost active, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left.');
+    }
+    LASER_FAMILIES.forEach(function (fam) {
+        var level = profile.laserLevels[fam.id];
+        var perTick = Math.round(fam.tickBase * laserLevelMult(level));
+        line(capFirst(fam.label) + ' laser level ' + level + ' of 8, health ' +
+             Math.round(profile.laserHealth[fam.id]) + '.');
+        line(perTick + ' per tick, ' + fam.tickCount + ' ticks over ' + (fam.tickCount * fam.tickS) +
+             ' seconds, ' + fam.cooldownS + ' second cooldown.');
+        line('Bites ' + fam.matchupSpoken.strong + '. Weak on ' + fam.matchupSpoken.weak + '.');
+    });
+    line('Range ' + CFG.laserRange + ', up to ' + Math.round((CFG.laserCloseMult - 1) * 100) +
+         ' percent more at point-blank.');
+    for (var i = 0; i < LASER_SLOTS; i++) {
+        var L = profile ? laserById(profile.slots[i]) : null;
+        if (!L) { line('Slot ' + (i + 1) + ' is empty.'); continue; }
+        var left = laserCooldownLeft(i);
+        line('Slot ' + (i + 1) + ', ' + L.name +
+             (left > 0 ? ', recharging ' + Math.ceil(left) + ' seconds' : ', ready') + '.');
+    }
+
+    heading('Missiles');
+    line(missiles + ' of ' + CFG.missileMax + '.');
+    line(CFG.missileDamage + ' damage, ' + CFG.missileSpeed + ' units a second, about ' +
+         Math.round(CFG.missileSpeed * CFG.missileLifeS) + ' reach.');
+    line('Needs the target inside ' + ZONES[zoneIdx].missile + ' degrees.');
+
+    heading('Decoys');
+    line(chaff + ' of ' + CFG.chaffMax + '.');
+
+    heading('Warp');
+    line('Charge ' + Math.round(warpCharge) + ' of ' + CFG.warpTankMax + '.');
+    line('Regenerates ' + CFG.warpRegenPerS + ' a second in open flight.');
+    line('Needs at least ' + CFG.warpMinChargePct + ' percent to jump.');
+    line('Reaches ' + Math.round(warpEffectiveCharge()) + ' at this charge.');
+
+    heading('Reaction mass');
+    line(Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
+    line('Battery power holds thrust, braking, and the stabilizers to ' +
+         Math.round(CFG.rcsBatteryFactor * 100) + ' percent.');
+
+    heading('Thrusters');
+    line('Thrust ' + CFG.thrust + ', brake ' + CFG.brakeThrust + ', turn rate ' +
+         Math.round(CFG.turnRate * 180 / Math.PI) + ' degrees a second.');
+    line('Mass factor ' + shipMass().toFixed(2) + '.');
+
+    heading('Extractor');
+    line('Reach ' + CFG.vacRange + '. Tier 1.');
+
+    heading('Vacuum');
+    line('Cloud radius ' + CFG.cloudRadius + '.');
+
+    heading('Sensor');
+    var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
+    ZONES.forEach(function (z, i) {
+        line(z.name + (i === zoneIdx ? ', active' : '') + ': lock on ' +
+             (z.lockOn * sensorMult).toFixed(1) + ' degrees, lock off ' +
+             (z.lockOff * sensorMult).toFixed(1) + ' degrees.');
+    });
+    line('Tick ' + CFG.tickFast + ' to ' + CFG.tickSlow + ' milliseconds.');
+
+    heading('Repair crew');
     var crewTier = ownedModules().indexOf('repair_crew_2') >= 0 ? 2
                   : ownedModules().indexOf('repair_crew_1') >= 0 ? 1 : 0;
-    lines.push('Repair crew: ' + (crewTier === 0 ? 'stock speed.' : crewTier === 1 ? 'upgraded, tier 1.' : 'upgraded, tier 2.'));
+    line('Tier ' + crewTier + ', ' + CFG.repairHalfS + ' seconds to half, ' +
+         (CFG.repairHalfS * 2) + ' to full.');
+
+    heading('Systems');
     var broken = brokenSystemIds();
     if (broken.length) {
         broken.sort(function (a, b) {
             var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
             return pa !== pb ? pa - pb : (a < b ? -1 : 1);
         });
-        lines.push(broken.map(function (id) {
-            return systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent' +
-                   (id === activeRepairId ? ', crew working' : '');
-        }).join('; ') + '.');
+        broken.forEach(function (id) {
+            line(systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent' +
+                 (id === activeRepairId ? ', crew working' : '') + '.');
+        });
+    } else {
+        line('Nothing broken.');
     }
-    lines.push('Warp charge ' + warpPct() + ' percent.');
-    lines.push('Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
-    lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
-    lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.'));
-    lines.push(chaff + (chaff === 1 ? ' decoy remaining.' : ' decoys remaining.'));
-    if (mission) {
-        var mf = mission.friendly;
-        lines.push(mf.name + ': shields ' + Math.round(mf.shield / mf.shieldPool * 100) +
-                   ' percent, hull ' + Math.round(mf.hp / mf.maxHp * 100) + ' percent.');
+
+    heading('Cargo');
+    line(ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
+
+    heading('Modules');
+    var owned = ownedModules();
+    if (owned.length) {
+        owned.forEach(function (id) {
+            var m = moduleById(id);
+            if (m) line(m.name + ': ' + m.desc + ' Mass ' + m.mass + '.');
+        });
+    } else {
+        line('None fitted.');
     }
-    if (laserBoostActive()) {
-        lines.push('Laser boost active, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left.');
-    }
-    LASER_FAMILIES.forEach(function (fam) {
-        lines.push(capFirst(fam.label) + ' laser level ' + profile.laserLevels[fam.id] +
-                   ', health ' + Math.round(profile.laserHealth[fam.id]) + '.');
-    });
-    for (var i = 0; i < LASER_SLOTS; i++) {
-        var L = profile ? laserById(profile.slots[i]) : null;
-        if (!L) { lines.push('Slot ' + (i + 1) + ' is empty.'); continue; }
-        var fam = LASER_FAMILIES_BY_ID[L.family];
-        var left = laserCooldownLeft(i);
-        lines.push('Slot ' + (i + 1) + ', ' + L.name + (left > 0 ? ', recharging' : ', ready') + '. ' +
-                   'Bites ' + fam.matchupSpoken.strong + '. Weak on ' + fam.matchupSpoken.weak + '.');
-    }
-    ownedModules().forEach(function (id) {
-        var m = moduleById(id);
-        if (m) lines.push(m.name + ' fitted.');
-    });
-    lines.push('Total mass ' + shipMass().toFixed(2) + '.');
+    line('Total mass ' + shipMass().toFixed(2) + '.');
+
     return lines;
 }
 
@@ -4176,7 +4254,9 @@ function openShipScreen() {
     keysDown = {};
     thrusterSync(null);
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
-    say('Ship status. ' + shipScreen.lines.length + ' lines. Down arrow reads line by line, Escape closes.');
+    var headingCount = shipScreen.lines.filter(function (l) { return l.heading; }).length;
+    say('Ship status. ' + headingCount + ' headings, ' + shipScreen.lines.length +
+        ' lines. Down arrow reads line by line, H jumps headings, a letter jumps to one, Escape closes.');
 }
 
 function closeShipScreen() {
@@ -4185,17 +4265,49 @@ function closeShipScreen() {
     say('Ship status closed.');
 }
 
-function shipScreenKey(lname) {
+function shipScreenSpeakLine() {
+    var ln = shipScreen.lines[shipScreen.idx];
+    if (ln) say(ln.text);
+}
+
+function shipScreenKey(lname, shift) {
     if (lname === 'escape' || lname === 'f2') { closeShipScreen(); return; }
     var n = shipScreen.lines.length;
     if (lname === 'arrowdown') {
-        if (shipScreen.idx < n - 1) { shipScreen.idx++; say(shipScreen.lines[shipScreen.idx]); }
-        else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
+        if (shipScreen.idx < n - 1) { shipScreen.idx++; shipScreenSpeakLine(); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of ship status.'); }
     } else if (lname === 'arrowup') {
-        if (shipScreen.idx > 0) { shipScreen.idx--; say(shipScreen.lines[shipScreen.idx]); }
-        else { shipScreen.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+        if (shipScreen.idx > 0) { shipScreen.idx--; shipScreenSpeakLine(); }
+        else { shipScreen.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of ship status.'); }
+    } else if (lname === 'h') {
+        var i = shipScreen.idx;
+        if (shift) {
+            for (i = shipScreen.idx - 1; i >= 0; i--) if (shipScreen.lines[i].heading) break;
+            if (i < 0) { SIM.audio.blip(220, 80, 0.1); say('No previous heading.'); return; }
+        } else {
+            for (i = shipScreen.idx + 1; i < n; i++) if (shipScreen.lines[i].heading) break;
+            if (i >= n) { SIM.audio.blip(220, 80, 0.1); say('No next heading.'); return; }
+        }
+        shipScreen.idx = i; shipScreenSpeakLine();
+    } else if (lname === 'home') {
+        shipScreen.idx = 0; shipScreenSpeakLine();
+    } else if (lname === 'end') {
+        shipScreen.idx = n - 1; shipScreenSpeakLine();
+    } else if (typeof lname === 'string' && lname.length === 1 && /[a-z]/.test(lname)) {
+        // First-letter jump to a heading. Several headings share an initial
+        // (Hull/Shields/Systems/Sensor, Reaction mass/Repair crew, Missiles/
+        // Modules) — searching forward from just past the cursor and
+        // wrapping means a repeated letter cycles through all of them, the
+        // same type-ahead idiom as any list.
+        var found = -1;
+        for (var k = 0; k < n; k++) {
+            var idx = (shipScreen.idx + 1 + k) % n;
+            if (shipScreen.lines[idx].heading && shipScreen.lines[idx].name.charAt(0).toLowerCase() === lname) { found = idx; break; }
+        }
+        if (found >= 0) { shipScreen.idx = found; shipScreenSpeakLine(); }
+        else { SIM.audio.blip(220, 80, 0.1); say('No heading starts with that letter.'); }
     } else {
-        say('Up and down arrows read ship status, Escape closes.');
+        say('Up and down arrows read ship status, H jumps headings, a letter jumps to one, Escape closes.');
     }
 }
 
@@ -5466,7 +5578,7 @@ function onKeyDown(e) {
     if (runlog.open) { runLogKey(lname); return; }
 
     // F2 ship status, same shell.
-    if (shipScreen.open) { shipScreenKey(lname); return; }
+    if (shipScreen.open) { shipScreenKey(lname, !!e.shiftKey); return; }
 
     // F3 resources, same shell.
     if (resourceScreen.open) { resourceScreenKey(lname); return; }

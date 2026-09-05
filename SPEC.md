@@ -1858,7 +1858,7 @@ round, DONE** (Brian, ideas8, 2026-09-05: L.1 the explorer, DONE → L.5
 the 3D vortex, DONE → L.4 the flyby, DONE → L.8 the room, DONE → L.9
 the lighthouse gate, DONE both halves) → **the three game items it
 brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
-page, next → 3.30 the tractor beam)
+page, DONE → 3.30 the tractor beam, next)
 → 3.28 the quadrant's timed contract
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
@@ -2777,7 +2777,7 @@ Meridian/Station Two/the gate is Brian's own to reorder by ear later,
 per his "just start going down the list, I'll say if I want something
 changed" instruction. Not yet heard by Brian.
 
-#### 3.29 The ship page — F2 becomes the full reference (ideas8)
+#### 3.29 The ship page — F2 becomes the full reference (ideas8) — DONE
 
 - Brian: "the ship page needs to show all ship systems and components
   and their status and attributes and properties — where players look
@@ -2813,6 +2813,47 @@ changed" instruction. Not yet heard by Brian.
   line reads a live value (buy a module, reopen F2, the number moved);
   no line ever reads `undefined`; Escape closes and the audio duck
   restores; F12 describes F2's new shape.
+
+Built as scoped, with **Tractor beam left out on purpose**: 3.30 hasn't
+landed yet, and a heading for a system that doesn't exist would read
+either empty or `undefined` — it goes in as part of 3.30's own work
+instead, when there's a real `tractorPull`/`tractorRange` to read.
+Everything else in the list is built exactly as named, plus one line
+the original SPEC 2.13 screen already had and the new heading list
+didn't explicitly re-mention: a conditional **Mission** heading (only
+present while `mission` is set) carrying the escort/defend friendly's
+shield and hull percent, right after Hull — dropping it would have
+been a real regression, not a simplification. First-letter jump
+**cycles on repeats** rather than refusing or picking arbitrarily among
+duplicates: several headings share an initial (Hull/Shields/Systems/
+Sensor all start with a repeated few letters, as do Reaction mass/
+Repair crew and Missiles/Modules), so the search runs forward from just
+past the cursor and wraps — the same type-ahead idiom any listbox uses,
+and it needed no new state beyond the existing cursor. `updateTargeting`
+gained a `dt` parameter for this round's gate-cone work (SPEC 3.31,
+built first) that F2's Sensor heading also reads from (`systemState`,
+`zoneRad`'s own halving math) — no new machinery, just live reads of
+what 3.27 already tracks.
+
+Machine-tested at a local server: F2 opens naming its heading and line
+count (15 in a standalone drill, 16 once a mission is accepted); H
+walks all 15/16 headings in order and correctly refuses past the last;
+Shift+H walks back; every one of the 56+ lines was read via repeated
+arrow-down with zero instances of `undefined`/`NaN` in any of them;
+first-letter jump confirmed cycling correctly for `s` (Shields → Sensor
+→ Systems → wraps to Shields), `m` (Missiles → Modules → wraps), and
+`r` (Reaction mass → Repair crew → wraps), and correctly refusing for a
+letter no heading starts with; buying a shield-capacitor module at a
+real station and reopening F2 showed the fitted module under Modules
+AND the raise time already updated under Shields (1 second, not 1.5) —
+confirmed live, no stale cache; forcing the targeting sensor to half
+health showed the Sensor heading's lock angles already halved (4.0/6.0
+instead of 8.0/12.0), matching `zoneRad()` exactly; F12 explore mode
+speaks F2's new description without opening it; Escape closes and
+restores the audio duck. Zero console errors throughout (one benign
+browser-level `[info]` autofocus log, unrelated to this feature, was
+also present before this round's changes). Not yet heard or flown by
+Brian.
 
 #### 3.30 The tractor beam — Z pulls rocks to you (ideas8)
 

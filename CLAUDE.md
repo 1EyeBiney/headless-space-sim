@@ -69,7 +69,11 @@ expands.
 - (F2, the ship status screen, SPEC 2.13 — same browsable shell as the run
   log, listing hull/shields/warp/cargo/missiles/chaff, one line per laser
   slot with its family matchup in words, fitted modules, and total mass;
-  works from any live mission or the mission menu.)
+  works from any live mission or the mission menu. **Grown into the full
+  component reference by SPEC 3.29 (Round 21)** — one heading per system,
+  H/Shift+H and a cycling first-letter jump, every number read live; see
+  the "Round 21 also built SPEC 3.29" bullet near the end of this file
+  for the full shape.)
 - `README.md` — player-facing intro for the GitHub share (keys, delivery run).
 - `audio/` — Brian's recordings, organized by category as of Round 12's
   housekeeping pass. As of SPEC 2.19 these ARE the runtime assets
@@ -1708,6 +1712,39 @@ boot; the gate's sweep phase measured exactly 180° after 5 of its
 still cycles correctly with the new asset-based voices; rebuilding the
 roster on a return to sector produced no errors. Zero console errors.
 Not yet heard by Brian. Next: SPEC 3.29 (the ship page).
+
+**Round 21 also built SPEC 3.29** (the ship page — F2 grown into the
+full component reference): `buildShipLines()` now returns
+`{text, heading}` pairs, same shape as `help.lines`/`map.items`, with
+one heading per system (Hull, a conditional Mission when one's active,
+Shields, Lasers, Missiles, Decoys, Warp, Reaction mass, Thrusters,
+Extractor, Vacuum, Sensor, Repair crew, Systems, Cargo, Modules — 15
+normally, 16 mid-mission); `shipScreenKey` grew H/Shift+H heading
+navigation (copied from `helpKey`) and a first-letter jump (copied
+from `mapKey`) that **cycles forward on repeats** rather than picking
+one arbitrarily, since several headings share an initial (`s` walks
+Shields → Sensor → Systems and wraps; `m` walks Missiles → Modules;
+`r` walks Reaction mass → Repair crew) — no new state needed, it just
+searches from just past the current cursor and wraps. Every line reads
+live off `CFG`/`LASERS`/`profile`/`shipSystems` (no cached copy), so a
+module purchase or a system knockout shows up the instant F2 reopens —
+confirmed by buying a shield-capacitor module and seeing both the new
+Modules line AND the Shields heading's already-updated raise time (1 s,
+not 1.5) in the same reopen, and by forcing the sensor to half health
+and seeing the Sensor heading's lock angles already halved. Tractor
+beam is deliberately NOT in the heading list yet — 3.30 hasn't been
+built, so there's nothing real for it to read; it lands as part of
+3.30's own work instead of a placeholder heading now. `updateTargeting`
+picked up a `dt` parameter for the prior 3.31 gate-cone work in this
+same round, which F2's Sensor heading also reads through (`systemState`,
+`zoneRad`'s halving) — no new machinery of its own. Machine-tested at
+a local server: every heading reachable by H (forward and Shift+H
+back, correctly refusing past either end); all 56+ lines read via
+repeated arrow-down with zero `undefined`/`NaN`; the three duplicate-
+initial cycles (`s`/`m`/`r`) all confirmed wrapping correctly; the
+live-update check above; F12 describing F2's new shape without
+opening it; Escape restoring the audio duck. Zero console errors.
+Not yet heard by Brian. Next: SPEC 3.30 (the tractor beam).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

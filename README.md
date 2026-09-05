@@ -127,7 +127,7 @@ Right hand on the arrows, left hand on everything else.
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
 | 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse); pressing the slot's key again cycles among the levels you own, Shift+ the key cycles back. Higher levels are bought at the station with credits and alloy, and wear down with use until the shipyard repairs them. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
-| F2 | Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with what it's good against, fitted modules, and mass |
+| F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (level, health, damage, matchups, every slot), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, broken systems, cargo, modules. H jumps between headings, a letter jumps to one, arrows read line by line |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
