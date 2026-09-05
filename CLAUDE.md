@@ -1485,7 +1485,9 @@ docking, or `clearMission` ends it; the Shift chords are checked in
 `onKeyDown` BEFORE the `HELD` branch, since Shift+W arrives as `lname`
 'w') · 1-6 select laser slot (a switch takes 1.4–3.2 s by slot, SPEC 1.14) · Space fires
 selected laser (fire-and-forget, cannot be stopped) · F missile · D decoy (spoofs the incoming missile, SPEC 1.8; "chaff" in the code, "decoy" to the player as of ideas6) · G shields
-· Tab cycle targets (Shift+T / Shift+Tab cycle back) · T report selected
+· Tab cycle targets (Shift+T / Shift+Tab cycle back — **SPEC 3.38,
+not yet built, rebinds Shift+T to auto-target**; Shift+Tab keeps
+cycle-back) · T report selected
 target (lock onset also speaks distance) · R range to target with
 closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
 tractor beam (mining, SPEC 3.30) · Shift+Z zone size · Q map · H warp ·
@@ -2220,3 +2222,32 @@ console errors. Per the user's own instruction, these two fixes came
 before resuming the SPEC.md build order — the next step per that order
 is still **Brian flying everything since 3.24**, a human playtesting
 checkpoint, not a build task.
+
+**Round 27 (Fable, docs only)**: Brian's `ideas10.txt` — a FILE, not the
+chat answers SPEC.md's Part C already labels "ideas10" (a label
+collision, now explained there; the file is called **ideas10.txt**
+everywhere) — is seven notes from flying the Round 25/26 build, written
+into SPEC.md as **3.35–3.40**, to build next, in this order, before
+quadrant 2: **3.39** the Press-Enter screen speaks at load and repeats at
+10 s then every 20 s until Enter (aria-live works before audio); **3.40**
+`soundlab.html` links back to `index.html` (start gate, nav, bottom);
+**3.37** decoys — FIRST prove a spoofed missile actually goes ballistic
+and pops clear (Brian isn't sure they work; that may be a bug), THEN a
+distinct `decoy_took` cue and "Decoy took it." at the pop, a real timer
+after the launch line; **3.35** the tug second pass — 100 starting
+credits, the 50-credit rush repeatable (each halves what's left; a fresh
+pilot buys two), and the countdown reminding a lost pilot of F2/F3 (F4
+once 3.11 exists); **3.36** the repair crew works the hull when no
+system is broken, rate `50 / repairHalfS` per second (the crew modules
+speed it for free), no cap, docking still instant; **3.38** auto-target
+on **Shift+T** (rebound from cycle-back — Shift+Tab keeps that; the key
+map above is annotated): the stabilizers slew yaw+pitch onto the
+selected target at a rate set so the worst case (180° behind at
+`pitchLimit`) takes 2 s at the fastest tier, hold 5 s tracking it, then
+release; 3 charges a sortie refilled with missiles, a kill-buff roll for
+one more, three shipyard tiers (6/4/2 s) with `autoTargetTestFit` giving
+everyone tier 3 until Brian has flown it (the tractor's pattern). Five
+readings flagged in Part C's new "DECIDE (open, from ideas10.txt)" for
+Brian to overrule: "2x" read as *twice*; the Shift+T rebind; the 5 s
+hold; hull repair uncapped and tier-derived; decoy confirmation at the
+pop. Nothing built this round.

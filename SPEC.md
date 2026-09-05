@@ -323,6 +323,11 @@ hours is a strategic choice:
   time. The delivery clock keeps running through it.
 - Training drills (Combat training, Mining from the menu) keep today's
   instant Enter-to-retry — the tug is a campaign thing.
+- **ideas10.txt (2026-09-05):** pilots start with 100 credits and the
+  50-credit rush is repeatable — each payment halves what's left, so a
+  fresh pilot can buy two. And the wait teaches: the countdown reminds a
+  lost pilot that F2 reads the ship and F3 the hold (F4 once it exists).
+  Built as 3.35.
 
 ### A.12 Screens (ideas5)
 
@@ -1930,8 +1935,11 @@ built: 3.33 favor second pass, DONE → 3.34 a full stop to dock, DONE →
 the lab second pass L.1b/L.4b/L.5b/L.8b, DONE → 3.32 reaction mass,
 DONE) → **ideas11, DONE** (Brian, 2026-09-05, from playing the build
 above: the home-station favor correction folded into 3.33, DONE → L.10
-"Be the Way" voices, DONE) → **Brian flies everything since 3.24,
-next** → **quadrant 2
+"Be the Way" voices, DONE) → **ideas10.txt, next** (Brian, 2026-09-05,
+from flying: 3.39 the first screen speaks → 3.40 the lab links home →
+3.37 decoys confirmed and heard → 3.35 the tug second pass → 3.36 the
+crew works the hull → 3.38 auto-target) → **Brian flies everything since
+3.24** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
 fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
@@ -3817,6 +3825,180 @@ and the budget estimator's own assumptions — is a placeholder for
 Brian's ear and, per his own text, for him to actually fly and judge.
 Not yet heard or flown by Brian.
 
+#### ideas10.txt — Brian's notes from flying the Round 25/26 build (2026-09-05, 14:26)
+
+A file, not the chat answers Part C already calls "ideas10" — see the
+note there. Seven items, all small except the last, all before quadrant
+2: 3.39 → 3.40 → 3.37 → 3.35 → 3.36 → 3.38 (the two one-liners first,
+then the possible bug, then the tug, the hull, and the one real new
+system). Every number is a placeholder for Brian's ear.
+
+#### 3.39 The first screen speaks, and repeats (ideas10.txt)
+
+- The Press-Enter-to-Begin page is silent until Enter. Brian: announce
+  it, and if the player misses it, again after 10 seconds and every
+  20 seconds after that until Enter is pressed.
+- `say()` works before the AudioContext exists (it's an aria-live div,
+  not audio), so the boot script speaks at load: "Headless Space Sim.
+  Press Enter to begin. Wear headphones." Then a `setTimeout` at
+  `beginRemindFirstMs` 10,000, then `setInterval` at `beginRemindEveryMs`
+  20,000, both cleared the instant the begin gesture fires (click or
+  Enter). The reminder is the same line — a second wording would be a
+  second thing to learn.
+- The live region must exist before the click, not be created by it —
+  check, since this is the one moment nothing else has spoken yet.
+- Test: load, hear the line at 0, 10, 30, 50 s; press Enter at 35 s and
+  confirm nothing speaks at 50.
+
+#### 3.40 The lab links home (ideas10.txt)
+
+- `soundlab.html` is reached from the mission menu's Sound Lab item but
+  has no way back except the browser's Back. Brian: links to the main
+  menu on the demo pages.
+- A "Back to the game" link (`index.html`) at the top of the page — on
+  the start gate too, so a screen-reader user who lands here can leave
+  without ever starting audio — first in the Quick Navigation list, and
+  again at the very bottom. Plain `<a href>`, no custom key trap: Tab
+  reaches it, Enter follows it.
+- "Demo pages" is plural; today only the lab exists. Any future
+  standalone page gets the same link by rule.
+- Test: Tab from the start gate reaches the link before the Start
+  button; following it lands on the mission menu.
+
+#### 3.37 Decoys: confirmed working, and heard working (ideas10.txt)
+
+- Brian: "I'm not certain that decoys are working, or at least need a
+  separate announcement or sound that they worked." Two jobs, in order.
+- **First, prove it.** Test a guided enemy missile inbound, D pressed
+  mid-flight: `threat.guided` flips false, the missile coasts
+  `missileCoastS` and pops without touching the hull. Record the
+  measurement in the DONE note. If it does NOT work, that is the bug,
+  and the announcement below is built on the fix.
+- **Then say so when it pays off, not when it launches.** Today the only
+  line is at the press ("Decoy away. Missile spoofed."), in the same
+  breath as the launch cue — the player has no way to tell a spoof that
+  worked from one that didn't. Add the outcome:
+  - a new cue `decoy_took` — a short, distinct sound, NOT `chaff_burst`
+    (the launch) — played at the missile's own position on the world
+    bus at the moment the spoofed missile pops harmlessly, with "Decoy
+    took it." (`endThreat`'s ballistic-pop branch, gated on a
+    `th.spoofed` flag D sets). A real timer separates this from the
+    launch line, so both are heard (SPEC 2.15's rule).
+  - a spoofed missile whose ballistic path still clips the hull says
+    "Spoofed missile clipped you." on its hull line instead of the
+    plain hit — rare, but the silence would read as "the decoy lied."
+  - the launch line drops "Missile spoofed" (a promise it can't yet
+    keep) for "Decoy away. Missile going ballistic." — the confirmation
+    comes a second later from the pop.
+- Test: the proof above; the two lines a second apart; a beam-only
+  threat still gets today's "Decoys do nothing against a laser."
+
+#### 3.35 The tug, second pass: 100 credits, a second rush, and a wait that teaches (ideas10.txt)
+
+- **100 credits to start.** `defaultProfile().credits` 0 → `startCredits`
+  100. New profiles only — no migration adds money to a save.
+- **Rush the tug more than once.** Brian: "50 is the tow cost so can
+  shorten that 2x." Read as: the fee is repeatable — every
+  `tugFeeCredits` 50 paid halves whatever is LEFT, as many times as the
+  pilot can afford, so a fresh pilot's 100 credits buy exactly two
+  halvings (90 s → 45 → 22.5). `tug.paid` becomes a count; the line
+  after each payment says the new time and, while credits allow,
+  "Enter pays another 50." Broke refuses as now. Flagged in Part C in
+  case "2x" meant something else.
+- **The wait teaches.** Brian: a lost player needs reminders of F2 (the
+  ship), F3 (the hold), F4 (once 3.11 exists). The countdown already
+  speaks every 10 s; at two of those marks (the first after death and
+  the 30-second mark) it appends one clause: "F2 reads your ship, F3
+  your hold." — one `say()`, never a second, and only while F2/F3 are
+  actually reachable from the wait (they are). When 3.11 lands F4 joins
+  the clause. The delivery run's own tug wait says it too.
+- A.11 gains the repeatable fee.
+- Test: a fresh profile reads 100 credits on F3; a campaign death at
+  90 s: Enter → 45 and "another 50", Enter → 22.5 and no offer (0 left),
+  Enter → "Need 50 credits"; the two reminder marks speak the clause
+  once each; a drill death is unchanged.
+
+#### 3.36 The repair crew works the hull (ideas10.txt)
+
+- Brian: "repair crews should work on the hull when it gets damaged, so
+  that if a player takes damage but their shields recharge, they can
+  actually get healthier while still fighting."
+- The hull becomes the crew's job **when nothing else is broken** — the
+  lowest rung under `REPAIR_PRIORITY`, so a knocked-out system always
+  pulls the crew off the hull first and the hull resumes when the
+  systems are whole (3.27's preemption, one rung longer). Rate
+  `repairHullPerS` derived from the crew's own tier, not a second knob:
+  `50 / repairHalfS` hull points a second — stock 90 → ~0.56/s, a
+  100-point hull in about three minutes; the two `repair_crew` modules
+  speed it exactly as they speed everything else (45 → 0.9 min to 50,
+  30 → 1.4/s). No cap: the crew takes the hull back to 100 given time.
+  Docking stays instant. Collision damage repaired by the crew is still
+  BILLED at the next landing (2.14's `collisionDamage` is money owed,
+  not hull) — say so in the DONE note if it feels wrong in play.
+- Spoken: "Damage control on the hull." once when the crew turns to it
+  after a hit; "Hull repaired." at 100 (the 2.13 pattern — a threshold
+  crossing, spoken once, no flag). No line per point. F2's Hull heading
+  says whether the crew is on it; the Repair crew heading lists the
+  hull as its idle job.
+- Never during the tug wait (the ship is lost) and never while docked
+  (the station does it instantly).
+- Test: hull to 60 with no systems broken → rising at the derived rate,
+  "Hull repaired." once at 100; a knockout mid-repair pulls the crew
+  off (hull frozen) and it resumes after; the modules change the rate.
+
+#### 3.38 Auto-target — the stabilizers aim the ship (ideas10.txt)
+
+- Brian's problem, verbatim: "i just did a combat mission where i just
+  could not get the cruiser targetted." The cruiser orbits; a blind
+  pilot steering onto a moving tick by ear can lose it for a whole
+  fight. His ask: an "auto target" that positions and aims the ship —
+  never fires, never does damage — as an emergency, from a limited
+  pool, not something a starting pilot has, in levels, the fastest
+  built first so he can test it. Shift+T.
+- **The key.** Shift+T today cycles targets backward (1.15), as does
+  Shift+Tab. Shift+Tab keeps cycle-back alone; **Shift+T becomes
+  auto-target**. Help, F12, README, and `KEY_DESCRIPTIONS` all change.
+  Flagged in Part C — a rebinding of a shipped key.
+- **What it does.** With a target selected (Tab), Shift+T spends one
+  charge and hands the stabilizers the ship: `updateAutoTarget(dt)`
+  yaws and pitches toward the selected target at `autoTargetRate`
+  degrees a second (yaw and pitch together), then **holds on it** for
+  `autoTargetHoldS` 5 s — tracking a moving target so the lock
+  actually lands — then releases with "Auto-target released." Any
+  arrow key mid-slew cancels it (the pilot always wins) and the charge
+  is spent regardless. The lock itself is untouched: `updateTargeting`
+  acquires it the moment the nose is inside the zone, and speaks the
+  distance as it always has. The thrust keys keep working under it.
+  Sound: the stabilizer puffs already exist (2.14) and play from the
+  jets doing the work; add a steady `autotarget_hum` on the UI bus for
+  the duration so the pilot hears it's the ship steering, not them.
+- **The rate, from the worst case.** Brian: enemy directly behind and
+  at max height, the fastest tier takes 2 seconds. Worst case = 180° of
+  yaw plus `pitchLimit` (whatever the pitch clamp is) of pitch, moving
+  together → `autoTargetRate = max(180, pitchMax) / autoTargetWorstS`
+  with `autoTargetWorstS` **2** for the fastest tier, **4** and **6**
+  for the two slower ones (placeholders). Mass (1.7's `shipMass`) does
+  NOT slow it — the tier is the number Brian tunes.
+- **The pool.** `autoTargetCharges` **3** per sortie, refilled wherever
+  missiles are (mission start, retry, docking, the transporter's Rearm);
+  I and F2 report them; a press with none left refuses ("No auto-target
+  charges. The station refills them."). Brian: "it might be a buff of
+  sorts" — a fourth roll in 3.25's `rollKillBuff` (`killBuffAutoTargetChance`
+  0.25, +1 charge, folded into the same kill line) so a fight can hand
+  one back.
+- **Not standard gear.** Three shipyard modules, `auto_target_1/2/3`
+  (the 6 s, 4 s, 2 s tiers, each requiring the one below, priced like
+  the repair crew's tiers — placeholders), and `CFG.autoTargetTestFit`
+  true so every ship has **tier 3** until Brian has flown it — the
+  tractor's pattern (3.30). F2 gains an "Auto-target" heading naming
+  the tier, the charges, and "Test fit" when the module isn't owned.
+- Test: a Cruiser set directly behind at max pitch → locked in 2.0 s
+  measured via `__sim.step`; a ship 30° off → proportionally sooner; an
+  orbiting Cruiser stays locked through the 5 s hold; an arrow press
+  mid-slew releases it and the charge is gone; three presses then a
+  refusal; docking refills; the kill-buff roll adds one; Shift+Tab
+  still cycles back and Shift+T no longer does.
+
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
 - **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', serves,
@@ -4415,6 +4597,42 @@ reaction mass too. (6) and (8) unanswered — below.
   produces and wants — needed before 3.22 builds. Fable will propose one
   (a star, two stations, two planets, a gate back and one on, rich
   fields, the anomaly) unless Brian hands over names and pairs first.
+
+**A label collision, for the record:** the block above is labelled
+"ideas10" because Brian answered the eight questions in chat before any
+file of that name existed. The FILE `ideas10.txt` (2026-09-05, 14:26) is
+a different thing — seven notes from flying the Round 25/26 build,
+written into Phase 3 as 3.35–3.40 and referred to everywhere as
+**ideas10.txt**. "ideas11" is the chat correction about the home station
+(folded into 3.33) plus the "Be the Way" lab note (L.10).
+
+**Decided (Brian, ideas10.txt, 2026-09-05):** pilots start with 100
+credits; the tug rush is repeatable; the repair crew works the hull;
+decoys get an outcome sound; auto-target exists, on Shift+T, in tiers,
+the fastest (2 s worst case) first with a test fit, from a limited pool;
+the first screen speaks and repeats at 10 s then every 20 s; the lab
+links home.
+
+**DECIDE (open, from ideas10.txt)** — each built as Fable read it,
+flagged here for Brian to overrule:
+- **"Can shorten that 2x"** (3.35) is read as *twice*: two 50-credit
+  payments, each halving what's left. If it meant "one payment, 2×
+  shorter," today's once-only fee already does that and only the 100
+  starting credits change.
+- **Shift+T is rebound** (3.38) from cycle-back to auto-target; Shift+Tab
+  keeps cycle-back. Say so if Shift+T should stay and auto-target go
+  elsewhere.
+- **Auto-target holds for 5 s** after acquiring, tracking a moving
+  target, rather than one slew-and-release — an orbiting cruiser was the
+  whole problem, and a one-shot slew wouldn't have fixed it. 3 charges a
+  sortie, 3 shipyard tiers at 6/4/2 s, a kill-buff roll for a charge —
+  all placeholders.
+- **Hull repair has no cap and derives its rate from the crew's tier**
+  (3.36) — ~3 minutes to full at stock. Collision damage the crew
+  repairs is still billed at the next landing.
+- **Decoy confirmation comes at the pop, not the press** (3.37) — "Decoy
+  took it." a second after the launch. And: it is possible decoys are
+  simply broken; the build proves it first.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts
