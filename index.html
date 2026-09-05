@@ -1568,6 +1568,18 @@ var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
 var resourceScreen = { open: false, idx: -1, lines: [] };   // F3 (SPEC 2.15)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
 var beaconMode = 'on';   // 'on' | 'off' | 'target' — live; profile.beacons is the saved copy
+// SPEC 3.43 (ideas11.txt): a session-only kill switch for every Web Audio
+// bus, set from ?mute=1 or poke({mute}) — never saved (the Sound menu's
+// own levels are the saved thing; a saved "everything off" would silently
+// persist into a real session in the same browser). Speech (say()) is a
+// separate aria-live mechanism and is never touched by this.
+var muted = false;
+function setMuted(m) {
+    muted = !!m;
+    if (SIM.audio.ctx && SIM.audio.masterGain) {
+        SIM.audio.ramp(SIM.audio.masterGain.gain, muted ? 0 : CFG.masterGain, 0.05);
+    }
+}
 function over() { return won || lost; }
 
 function zoneRad() {
@@ -7108,6 +7120,7 @@ window.__sim = {
                 dry: warpFlight.dry, phase: warpFlight.phase, engagedPlaying: !!warpEngagedNode } : null,
             stationSubmenu: stationSubmenu,
             beacons: beaconMode,
+            muted: muted,
             autoThrust: autoThrust,
             sound: profile ? Object.assign({}, profile.sound) : null,
             beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
@@ -7257,6 +7270,7 @@ window.__sim = {
         if (o && o.collisionDamage !== undefined) collisionDamage = o.collisionDamage;
         // Live, never saved: a test sets beacons off without touching the profile.
         if (o && o.beacons !== undefined) beaconMode = o.beacons;
+        if (o && o.mute !== undefined) setMuted(o.mute);
         if (o && o.sound && profile) { Object.assign(profile.sound, o.sound); applySoundLevels(); }
         // SPEC 3.23: force a port straight to a given favor (bypassing the
         // sell/mission grind to test tier gating directly), and/or its
@@ -7648,11 +7662,17 @@ function init() {
     // for the demo, e.g. https://.../?run=delivery
     var params = new URLSearchParams(location.search);
     var autoRun = params.get('run');
+    // SPEC 3.43: ?mute=1 silences every Web Audio bus for this session —
+    // Sonnet's own standing test convention, alongside beacons off.
+    muted = params.get('mute') === '1';
 
     initBtn.addEventListener('click', function () {
         clearTimeout(beginRemindTimeout);
         clearInterval(beginRemindInterval);
         SIM.audio.audioStart();                    // must live inside the user gesture
+        // Set directly, not ramped, so a muted boot has no audible blip
+        // before the ramp would have reached zero.
+        if (muted && SIM.audio.masterGain) SIM.audio.masterGain.gain.value = 0;
         applySoundLevels();
         initBtn.style.display = 'none';
         container.hidden = false;

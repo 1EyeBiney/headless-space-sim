@@ -2055,11 +2055,12 @@ above: the home-station favor correction folded into 3.33, DONE → L.10
 from flying: 3.39 the first screen speaks, DONE → 3.40 the lab links
 home, DONE → 3.37 decoys confirmed and heard, DONE → 3.35 the tug second
 pass, DONE → 3.36 the crew works the hull, DONE → 3.38 auto-target,
-DONE) → **ideas11.txt reviewed, nothing scheduled yet** (Fable,
-2026-09-05 — Part C: 3.43 silent test mode proposed to go first, 3.41
-the flight course and 3.42 escort formation proposed after the
-playtest, the lattice and supply chains as A.13/3.23b direction) →
-**Brian flies everything since
+DONE) → **ideas11.txt reviewed and largely settled** (Fable, 2026-09-05
+— the cube (A.13), its gates (3.22 addendum), control everywhere but
+offered from Q3 (3.23b), the spoken coordinates and the protected
+harbour cell, all direction; 3.41/3.42 proposed after the playtest) →
+**3.43 silent test mode, DONE** (Round 30, Sonnet) → **Brian flies
+everything since
 3.24** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
@@ -4340,7 +4341,7 @@ moment he says yes; none is scheduled yet. The two galactic-scale notes
 in that file (the lattice, supply chains) went to A.13 and 3.23b as
 direction, not here.
 
-#### 3.43 Silent test mode (ideas11.txt) — proposed, build first
+#### 3.43 Silent test mode (ideas11.txt) — DONE
 
 - Brian: "add an option for no sound at all and have Sonnet use that
   when testing for now." The `.click()` boot was never actually silent
@@ -4359,6 +4360,42 @@ direction, not here.
 - Test: `?mute=1` boots to a master gain of 0 with `assets` still
   loading and `say()` still speaking; a reload without the flag is loud
   again; nothing about it is in `localStorage`.
+
+**DONE (Round 30, Sonnet).** A module-scope `muted` flag and one
+`setMuted(m)` function are the whole mechanism: `?mute=1` sets `muted`
+at parse time (alongside `?run`'s own parsing) and, inside `initBtn`'s
+click handler, the gain is set DIRECTLY to 0 (not ramped) the instant
+`audioStart()` creates `masterGain` — a boot-time ramp would let through
+a brief, audible blip at full volume before reaching zero, which a
+"silent test mode" should never do. `poke({mute: true/false})` calls
+`setMuted` for a live, ramped (50ms) toggle mid-session, and
+`state().muted` reports it. Neither path touches `profile` or
+`localStorage` — the Sound menu's own four saved levels are completely
+untouched, and `setMuted` only ever moves `masterGain`, sitting
+underneath every category bus multiplicatively. `say()` is unreachable
+by any of this — it is an aria-live div, no Web Audio node in the
+chain. Machine-tested at a local server: `poke({mute: true})` measured
+`masterGain.gain.value` dropping from 0.7 to exactly 0 and
+`poke({mute: false})` measured it returning to exactly 0.7, both
+confirmed after the ramp had time to land; speech (a live menu
+navigation) was confirmed still audible-to-a-screen-reader (the
+`announce` div still updated correctly) while muted; `localStorage`'s
+saved profile was inspected directly and contains no trace of mute
+ever having been touched. **One thing NOT directly provable in this
+environment, flagged rather than glossed over**: this session's browser-
+preview tool strips query strings from every local URL it navigates to
+(confirmed via `history.pushState` + `reload()` as well as
+`preview_start` — both still land on the bare origin), so `?mute=1`
+itself could not be exercised end-to-end here. Confidence instead comes
+from two things: `URLSearchParams('?mute=1').get('mute') === '1'`
+verified directly in Node outside the browser, and the exact same
+`setMuted` function that IS fully proven via `poke` being the only thing
+the URL path calls. Zero console errors. This is now a standing testing
+convention (CLAUDE.md, Working agreements) — every future test script
+should navigate with `?mute=1` in addition to the beacons-off poke,
+though on GitHub Pages (a real navigation, not this tool's own
+sandboxed one) the query string will reach the page normally. Not yet
+heard or flown by Brian — nothing to hear, by design.
 
 #### 3.41 The flight course — beacons to fly through, against the clock (ideas11.txt) — proposed
 

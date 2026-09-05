@@ -1710,6 +1710,16 @@ Rookie/Veteran/Ace in place.
   (the in-game `B` key cycles On / Off / Target only; `poke` never saves,
   so the pane's profile keeps whatever it had). And still never leave a
   tab open between steps.
+- **Fully silent testing (SPEC 3.43, Round 30, ideas11.txt)**: Brian
+  asked for a no-sound-at-all mode specifically so testing stops
+  reaching his speakers at all — beacons-off alone still leaves lasers,
+  explosions, the tug countdown, every UI chime audible. Every test
+  script now navigates to the page with `?mute=1` in the URL (in
+  addition to, not instead of, the beacons-off poke above) — this zeros
+  `SIM.audio.masterGain` for the session, live and unsaved, same
+  never-touches-the-profile guarantee as beacons. `poke({mute: true})`
+  does the same mid-session without a reload. Speech is untouched
+  either way — `say()` is an aria-live div, not a Web Audio node.
 - Hidden-tab gotcha (confirmed Round 11, calibrated at 0 simulated seconds
   over 10 real seconds): a backgrounded/hidden browser pane (`document.hidden`
   true) fully suspends `requestAnimationFrame`, not just throttles it — the
@@ -2536,3 +2546,34 @@ the pilot's mid-game harbour — storage beyond the hold, a free yard;
 the cube's centre stays the endgame base), what opens the fourth gate
 (favor at Q2's station, or a quest), and whether rivals can ever enter
 (Fable: no). Nothing built.
+
+**Round 30 (Sonnet) built SPEC 3.43** (silent test mode — see the
+"Fully silent testing" bullet, Working agreements, for the full shape):
+a module-scope `muted` flag and one `setMuted(m)` function are the
+whole mechanism. `?mute=1` sets it at parse time and the boot handler
+sets `masterGain`'s value DIRECTLY to 0 (no ramp — a ramp would let a
+brief blip through before muting); `poke({mute: true/false})` calls the
+same `setMuted` for a live, ramped toggle mid-session; `state().muted`
+reports it. Neither path touches `profile` or `localStorage` — the
+Sound menu's own four saved levels are untouched, and muting only ever
+moves `masterGain`, underneath every category bus. `say()` is
+unreachable by any of it (an aria-live div, no Web Audio node).
+Machine-tested at a local server: `poke({mute:true})` measured
+`masterGain.gain.value` dropping from 0.7 to exactly 0 and back on
+`poke({mute:false})`; a live menu navigation confirmed speech
+unaffected while muted; the saved profile was inspected directly and
+carries no trace of mute. **One thing flagged rather than glossed
+over**: this session's browser-preview tool strips query strings from
+every local URL (confirmed via `history.pushState`+reload and via
+`preview_start` with a query string, both landing on the bare origin),
+so `?mute=1` itself couldn't be exercised end-to-end here — confidence
+instead comes from `URLSearchParams('?mute=1').get('mute') === '1'`
+verified directly in Node, plus the fact that the URL path calls the
+exact same `setMuted` already proven via `poke`. Zero console errors.
+This is now a standing test convention — every future test script
+should add `?mute=1` to its navigation, in addition to the beacons-off
+poke; on GitHub Pages, a real navigation reaches the page normally, so
+the query string should work there even though it couldn't be checked
+in this pane. Not yet heard by Brian — nothing to hear, by design. Per
+the build order, the next step is still **Brian flying everything since
+3.24**, the human playtesting checkpoint.
