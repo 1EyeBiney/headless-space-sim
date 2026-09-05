@@ -224,6 +224,15 @@ SIM.cues = (function () {
                       SIM.audio.blip(660, 80, 0.12);
                       SIM.audio.sfxTone({ type: 'sine', f1: 990, dur: 0.11, vol: 0.12, at: 0.09 });
                   } },
+                { id: 'repair_half', name: 'Repair Crew Halfway Chime', source: 'v20-systems',
+                  // A broken system crossing 50% health — usable again,
+                  // still degraded. Distinct from ready_chime's two-note
+                  // rise so the two "back online" moments don't sound alike.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 500, dur: 0.1, vol: 0.12 });
+                      A.sfxTone({ type: 'sine', f1: 750, dur: 0.12, vol: 0.12, at: 0.1 });
+                  } },
                 { id: 'refusal_dud', name: 'Refusal (short)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.06, vol: 0.08 } },
                 { id: 'slot_select', name: 'Laser Slot Select', source: 'v12-lasers',

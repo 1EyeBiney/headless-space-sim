@@ -31,6 +31,10 @@ window.AUDIO_MANIFEST = {
   // Weapons.
   missile_fire: 'audio/weapons/missiles/missile-firing-fl-106655.mp3',
 
+  // Damage control (SPEC 3.27): the repair crew's own voice, plays each
+  // time it starts work on a newly broken system.
+  repair_crew: 'audio/ships/repair_crew.mp3',
+
   // Ship engine loops (SPEC 1.2-ish roster voices). Only one recording per
   // class is wired in today; the rest of audio/ships/ is on disk, not in
   // the manifest, until a future round assigns them to other classes.

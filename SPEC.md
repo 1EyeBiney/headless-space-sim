@@ -1828,8 +1828,8 @@ in CFG or a data table for Brian's ear and hands.
 **Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
 2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
 second pass and kill buffs, DONE → 3.26 laser levels and wear, DONE →
-3.27 system damage and the repair crew, next → 3.28 the quadrant's timed
-contract)
+3.27 system damage and the repair crew, DONE → 3.28 the quadrant's timed
+contract, next)
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
 ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
@@ -2312,7 +2312,7 @@ else in Phase 2/3 — and the single-health-per-family read above is
 flagged for his call specifically, not just the numbers. Not yet
 heard or flown by Brian.
 
-#### 3.27 System damage and the repair crew (ideas7 — un-defers Part C's "subsystem damage")
+#### 3.27 System damage and the repair crew (ideas7 — un-defers Part C's "subsystem damage") — DONE
 
 - **What can break** (Brian's list, plus one): each laser slot
   (independently), missiles, decoys, shields, the warp engine,
@@ -2357,6 +2357,104 @@ heard or flown by Brian.
   offline/half effect in the table; the priority order; the two
   announcements and the cue; docking clears all; the crew module halves
   the times.
+
+Built exactly as scoped, laser slots included dynamically (one entry
+per FITTED slot, weight 3 each — a two-laser ship draws from 9 systems
+total, matching the "nine systems" figure named when this item was
+scoped). Every effect in the table is wired at its own call site
+(`startBeam`/`beamTick` for a laser slot, `fireMissile`/`stepMissile`
+for missiles, `fireChaff` for decoys, `shieldKey`/a new `shieldPoolMax()`
+helper for shields, `startWarp`/`updateWarpCore`/`warpReachText` for the
+warp engine, `simTick`'s thrust block for thrust, `zoneRad`/
+`updateTargeting`/`tickBeat` for the sensor, `hullHit` for the cargo
+spill) rather than one central dispatcher — each system's "offline"
+and "half" behavior lives next to the code it actually changes, same
+as the rest of this codebase's style. `hullHit` gained an `isMissile`
+parameter, true ONLY at the one call site that's an enemy missile
+actually landing on the hull (confirmed by reading every other call
+site — the enemy beam tick, and `updateCollisions`' station/planet
+impact — neither passes it); the knockout roll and the cargo spill
+share that one function, folded into ONE `say()` call with the hull
+line (the SPEC 2.15 rule). The repair crew is priority-PREEMPTIVE, not
+FIFO: `updateRepairCrew` recomputes the highest-priority broken system
+every tick, so a higher-priority system breaking mid-repair steals the
+crew away from whatever it was working, leaving the interrupted
+system's partial progress in place — confirmed in testing (thrust
+partway through repair, shields knocked out mid-job, crew switched to
+shields immediately while thrust's progress stayed frozen). The
+repair-crew module is genuinely tiered (`repair_crew_1`/`_2` in
+`MODULES`, the second requiring the first) — the first alloy-costing
+and prerequisite-gated entries that table has ever had, so
+`moduleText`/`buyModule` both grew optional `alloy`/`requires` handling
+generalized enough for any future module to reuse. Docking
+(`dockAtStation`) and every "fresh start" path (`startDemo`,
+`startMission`, the standalone drill's Enter-retry after a loss) call
+the same `repairAllSystems()`; a mid-run mission abandon
+(`clearMission`) does NOT clear broken systems, matching hull/ore's own
+persist-across-a-sector-run behavior.
+
+Machine-tested at a local server: every system's offline refusal and
+half-effect confirmed individually via `poke({knockout: id})` and
+`poke({systemHealth: {id: N}})` — a broken laser slot refuses to fire
+and a half one deals exactly half damage (28 at full health vs. 14 at
+half, same target/range/aim, confirmed via forced A/B bursts); missiles
+refuse when offline and fly at exactly half speed when half (65 vs.
+130 u/s, stored on the missile itself so a mid-flight repair doesn't
+retroactively speed it up, since `steerToward` re-normalizes every
+guided frame); decoys refuse offline and fizzle at exactly the
+configured 50% chance when half (confirmed both branches via a seeded
+`Math.random`); shields refuse to raise offline, a raised shield drops
+silently the instant the system breaks, and the pool max halves at
+half health (confirmed `shieldPoolMax()` computing 22.5 from 45, the
+live pool clamping down to it, and shields still raising successfully
+at half); the warp engine refuses to spool offline, and jump range
+halves at half health (confirmed a jump whose full `need` was ~3711
+correctly capped to exactly 2000 — half of the 4000 charge on board —
+and returning `dry: true`); thrust does nothing at all offline and
+exactly half acceleration at half (58.5 units/s of speed gained from
+1 second of thrust at full vs. 29.3 at half); the targeting sensor
+drops or can never acquire a lock while offline (Tab/T confirmed still
+working), and at half both the lock zone (8°/12° confirmed halved to
+4°/6°) and the tick's own interval are affected; a broken cargo hold
+spills exactly the configured percentage of the current hold on every
+further hull hit (20 of 1000 ore at offline's 2%, 10 at half's 1%,
+both folded into the same line as the hull number). The knockout draw
+itself (chance-gate then weighted selection, excluding anything
+already broken) was verified with an isolated 200,000-trial simulation
+of the identical algorithm in Node: the no-knockout rate matched the
+configured 60% almost exactly, every system's observed pick rate
+matched its weight's expected fraction closely, an all-but-one-broken
+scenario only ever drew the one remaining system, and an
+everything-broken scenario always came back empty — confirming the
+math is sound without depending on live missile-flight timing (which
+turned out to be genuinely awkward to force deterministically through
+the real combat AI; the isolated simulation was the more reliable
+check). The repair crew's priority order and preemption, the module
+tiers (bought sequentially, confirmed the CFG override lands: 45 after
+tier 1, 30 after tier 2), the alloy-cost and prerequisite refusals, F2
+reading the crew's tier and every broken system with its health and
+whether the crew is on it, and I (`statusReport`) reading the same
+broken-systems list were all confirmed. Docking was confirmed clearing
+every broken system at once and announcing "Systems repaired."; a full
+regression pass on the standalone Combat training drill (kill all
+five, "Victory", the SPEC 3.25 kill buffs still firing correctly
+alongside this) confirmed unaffected. **One testing-methodology
+gotcha, not a game bug**: partway through this session's testing the
+browser pane silently became visible (`document.hidden` flipped from
+true to false), which resumed `requestAnimationFrame` WHILE a test
+script was still also manually driving `__sim.step()` — the two
+together advanced the sim at roughly double speed for one measurement
+(the repair crew's timed rate looked ~2x faster than the configured
+`repairHalfS` should allow). Re-verified the actual mechanism was
+correct by reading `CFG.repairHalfS` directly off `__sim.state()`
+rather than trusting the polluted rate measurement — confirmed 30
+after both module tiers, matching the purchase math exactly; the
+formula itself (`100 / (repairHalfS * 2) * dt`) was never in question,
+just this one measurement's real-time assumptions. Zero console errors
+throughout. Numbers (the 40% knockout chance, all eight weights, the
+90-second base repair time, every per-system offline/half multiplier)
+are placeholders for Brian's ear, same as everything else in Phase 3.
+Not yet heard or flown by Brian.
 
 #### 3.28 The quadrant's timed contract (ideas7 — the timed run lives in both places)
 

@@ -179,6 +179,15 @@ little. Ice cores top off your reaction mass tank instead of ore; iron
 cores yield alloy alongside their ore. F3 lists everything you're
 carrying and what each resource is for.
 
+A missile that actually lands on your hull — never a beam, never one
+your shields caught — can knock a subsystem offline: a laser slot,
+missiles, decoys, shields, the warp engine, thrust, the targeting
+sensor, or the cargo hold. Every ship carries a repair crew that works
+the worst one automatically, one at a time, coming back partway usable
+before it's fully fixed; F2 and I both name what's broken and how far
+along the fix is. Docking always finishes the job, and a module at the
+station speeds the crew up.
+
 ## Files
 
 - `index.html` is the game. It loads `audio_assets.js` (the sound bank),

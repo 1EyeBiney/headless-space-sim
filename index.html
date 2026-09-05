@@ -303,6 +303,22 @@ var CFG_DEFAULTS = {
     shieldRepairS: 12,       // disrepair duration after the pool is drained to zero
     shieldRepairReturn: 0.5, // fraction of a full pool the shield returns with
 
+    // System damage (SPEC 3.27): an enemy missile that lands on the hull —
+    // never a beam, never absorbed by a raised shield — can knock a
+    // subsystem out. A standard repair crew works one broken system at a
+    // time in a fixed priority; docking still repairs everything instantly.
+    knockoutChance: 0.4,     // odds a landed missile knocks something out
+    repairHalfS: 90,         // seconds from 0 to 50% health, then 90 more to full
+    repairPoolPct: 0.5,      // shields-broken: pool max multiplier at half health
+    repairThrustPct: 0.5,    // thrust-broken: thrust multiplier at half health
+    repairWarpRangePct: 0.5, // warp-broken: jump range multiplier at half health
+    repairLaserDmgPct: 0.5,  // laser-broken: damage multiplier at half health
+    repairMissileSpeedPct: 0.5, // missiles-broken: launch speed multiplier at half health
+    repairChaffFizzlePct: 0.5,  // decoys-broken: chance a decoy does nothing at half health
+    repairSensorPct: 0.5,    // sensor-broken: lock zone / tick-speed multiplier at half health
+    repairCargoSpillOff: 0.02,  // cargo-broken: fraction of ore spilled per further hit, offline
+    repairCargoSpillHalf: 0.01, // ...at half health
+
     // enemy fire (combat only, one attack in progress at a time)
     enemyFirstAttackS: 8,    // grace after the encounter starts
     enemyProvokedS: 4,       // a ship hit for the first time waits at least this long to fire back
@@ -637,7 +653,16 @@ var MODULES = [
       cfg: { warpTankMax: 18750 } },
     { id: 'core_cooling', name: 'core cooling upgrade', cost: 400, mass: 6,
       desc: 'The warp core cools twice as fast in open flight.',
-      cfg: { warpRegenPerS: 80 } }
+      cfg: { warpRegenPerS: 80 } },
+    // SPEC 3.27: every ship already carries a stock repair crew — these two
+    // are speed upgrades on top of it, tiered (the second requires the
+    // first), the only MODULES entries with an alloy cost alongside credits.
+    { id: 'repair_crew_1', name: 'repair crew upgrade', cost: 500, mass: 5, alloy: 2,
+      desc: 'The repair crew works twice as fast.',
+      cfg: { repairHalfS: 45 } },
+    { id: 'repair_crew_2', name: 'repair crew upgrade II', cost: 400, mass: 5, requires: 'repair_crew_1',
+      desc: 'The repair crew works three times stock speed.',
+      cfg: { repairHalfS: 30 } }
 ];
 
 function moduleById(id) {
@@ -1296,8 +1321,12 @@ function over() { return won || lost; }
 
 function zoneRad() {
     var z = ZONES[zoneIdx], k = Math.PI / 180;
-    return { laser: z.laser * k, lockOn: z.lockOn * k,
-             lockOff: z.lockOff * k, missile: z.missile * k };
+    // SPEC 3.27: a half-broken targeting sensor narrows the LOCK zone only
+    // (not the laser-aim or missile cones, which belong to their own
+    // separately-breakable systems).
+    var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
+    return { laser: z.laser * k, lockOn: z.lockOn * k * sensorMult,
+             lockOff: z.lockOff * k * sensorMult, missile: z.missile * k };
 }
 
 // ============================== 3. MATH =====================================
@@ -1427,6 +1456,7 @@ var HELP_SECTIONS = [
         function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
+        function () { return 'A missile that actually lands on your hull — never a beam, never one your shields caught — can knock a subsystem offline: a laser slot, missiles, decoys, shields, the warp engine, thrust, the targeting sensor, or the cargo hold. A repair crew works the worst one automatically, one at a time, and I and F2 both name what is broken and how far along the fix is; docking always finishes the job.'; },
         'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve it.'
     ] },
     { heading: 'Delivery run', items: [
@@ -2071,6 +2101,9 @@ function tickBeat() {
     if (!running || over() || help.open || map.open || menuOpen || warping || docked || hailMenu.open) { tick.timer = setTimeout(tickBeat, 250); return; }
     var t = targets[selected];
     if (!t || !t.alive) { tick.timer = setTimeout(tickBeat, 250); return; }
+    // SPEC 3.27: no tick at all while the sensor is fully dark.
+    if (systemState('sensor') === 'off') { tick.timer = setTimeout(tickBeat, 400); return; }
+    var sensorSlow = systemState('sensor') === 'half' ? 2 : 1;   // "tick slower"
     var a = aim(t.pos);
     var interval;
     if (locked && lockToneKind() === 'poi') {
@@ -2079,20 +2112,20 @@ function tickBeat() {
         // pitched by elevation and panned by azimuth.
         var ppan = clamp(Math.sin(a.azimuth) * 1.5, -1, 1);
         SIM.audio.blip(tickFreqFor(a.elev), 45, 0.11, ppan, 'square');
-        interval = CFG.tickLockedMs;
+        interval = CFG.tickLockedMs * sensorSlow;
     } else if (locked) {
         // Solid tone (or the 2 s pulse) carries the locked state; the
         // scheduler just idles.
-        interval = 200;
+        interval = 200 * sensorSlow;
     } else if (a.err > CFG.tickArc) {
         // Searching: soft slow tock, out of the tracking arc.
         SIM.audio.blip(260, 60, 0.06, 0, 'sine');
-        interval = 1000;
+        interval = 1000 * sensorSlow;
     } else {
         var z = zoneRad();
         var span = CFG.tickArc - z.lockOff;
         var frac = clamp((a.err - z.lockOff) / span, 0, 1);
-        interval = CFG.tickFast + (CFG.tickSlow - CFG.tickFast) * frac;
+        interval = (CFG.tickFast + (CFG.tickSlow - CFG.tickFast) * frac) * sensorSlow;
         var pan = clamp(Math.sin(a.azimuth) * 1.5, -1, 1);
         SIM.audio.blip(tickFreqFor(a.elev), 45, 0.11, pan, 'square');
     }
@@ -2182,6 +2215,13 @@ function updateTargeting() {
     });
     var t = targets[selected];
     if (!t || !t.alive) return;
+    // SPEC 3.27: an offline sensor can't hold (or acquire) a lock at all —
+    // Tab/T still work (they don't touch `locked`), only the lock tone
+    // and tick go dark.
+    if (systemState('sensor') === 'off') {
+        if (locked) { locked = false; stopLockTone(); SIM.cues.play('lock_lost'); }
+        return;
+    }
     var a = aim(t.pos);
     var z = zoneRad();
     if (!locked && a.err < z.lockOn) {
@@ -2304,8 +2344,8 @@ function rollKillBuff() {
             shield.repairing = Math.max(0, shield.repairing - 4);
             return 'Disrepair crew hurries. ';
         }
-        if (shield.pool < CFG.shieldPool) {
-            shield.pool = Math.min(CFG.shieldPool, shield.pool + CFG.killBuffShieldPts);
+        if (shield.pool < shieldPoolMax()) {
+            shield.pool = Math.min(shieldPoolMax(), shield.pool + CFG.killBuffShieldPts);
             return 'Shields plus ' + CFG.killBuffShieldPts + '. ';
         }
         return '';
@@ -2558,6 +2598,11 @@ function startBeam(tool) {
         }
         L = currentLaser();
         if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(laserSlot) + '. Fit a laser at the station.'); return; }
+        if (systemState('laser' + laserSlot) === 'off') {
+            SIM.cues.play('refusal_dud');
+            say(systemName('laser' + laserSlot) + ' offline. Repair crew is on it.');
+            return;
+        }
         if (laserSwitch) {
             SIM.cues.play('refusal_dud');
             say('Switching lasers, ' + Math.ceil(laserSwitchLeft()) + ' seconds.');
@@ -2661,7 +2706,10 @@ function beamTick() {
     var L = beam.laser;
     var q = beamQuality();
     var base = L.ticks[beam.tick];      // this tick's slot in the laser's damage profile
-    var dmg = Math.ceil(base * q *
+    // SPEC 3.27: a half-broken slot bites for half damage (an offline one
+    // already refused to fire back in startBeam, so beamTick never sees it).
+    var slotMult = systemState('laser' + beam.slot) === 'half' ? CFG.repairLaserDmgPct : 1;
+    var dmg = Math.ceil(base * q * slotMult *
                         (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1) *
                         (laserBoostActive() ? (1 + CFG.killBuffLaserPct) : 1));
     if (beam.nodes && beam.nodes.isAsset) {
@@ -2806,6 +2854,11 @@ function dustTick() {
 function fireMissile() {
     if (missile) { say('Missile already away.'); return; }
     if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
+    if (systemState('missiles') === 'off') {
+        SIM.cues.play('refusal_dud');
+        say('Missiles offline. Repair crew is on it.');
+        return;
+    }
     if (missiles <= 0) {
         SIM.cues.play('refusal_wait');
         say('No missiles left.' + (sectorHome ? ' Station Meridian rearms.' : ''));
@@ -2822,10 +2875,16 @@ function fireMissile() {
     }
     // The missile is a real world object with its own HRTF voice - hearing it
     // fly away and converge on the target's hum is the demo's best showcase.
+    // SPEC 3.27: a half-broken missile system launches — and flies, the
+    // whole way, since steerToward re-normalizes every guided frame — at
+    // half speed. Stored on the missile itself so the flight stays
+    // consistent even if the system finishes repairing mid-flight.
+    var mSpeed = CFG.missileSpeed * (systemState('missiles') === 'half' ? CFG.repairMissileSpeedPct : 1);
     var m = {
         target: t,
         pos: v3(ship.pos.x, ship.pos.y, ship.pos.z),
-        vel: scale(shipForward(), CFG.missileSpeed),
+        vel: scale(shipForward(), mSpeed),
+        speed: mSpeed,
         age: 0,
         guided: true, outCone: 0, coast: 0
     };
@@ -2902,7 +2961,7 @@ function stepMissile(dt) {
         }
     }
     if (m.guided) {
-        m.vel = steerToward(m.vel, norm(sub(m.target.pos, m.pos)), CFG.missileSpeed, CFG.missileTurn * dt);
+        m.vel = steerToward(m.vel, norm(sub(m.target.pos, m.pos)), m.speed, CFG.missileTurn * dt);
     } else {
         m.coast += dt;
         if (m.coast > CFG.missileCoastS) {
@@ -3111,12 +3170,24 @@ function startEnemyMissile(t) {
 // shield needed. Useless against a beam. A press with nothing inbound
 // still spends one (Brian: decided) — chaff is a reflex, not a menu.
 function fireChaff() {
+    if (systemState('decoys') === 'off') {
+        SIM.cues.play('refusal_dud');
+        say('Decoys offline. Repair crew is on it.');
+        return;
+    }
     if (chaff <= 0) {
         SIM.cues.play('refusal_dud');
         say('No decoys left.' + (sectorHome ? ' Station Meridian restocks.' : ''));
         return;
     }
     chaff--;
+    // SPEC 3.27: a half-broken decoy system has a coin-flip chance to
+    // fizzle — spent, no cue, no effect on any inbound threat.
+    if (systemState('decoys') === 'half' && Math.random() < CFG.repairChaffFizzlePct) {
+        SIM.cues.play('refusal_dud');
+        say('Decoy fizzles. ' + chaff + ' left.');
+        return;
+    }
     SIM.cues.play('chaff_burst');
     var th = threat, left = chaff + ' left.';
     if (th && th.type === 'missile' && th.guided) {
@@ -3201,7 +3272,7 @@ function stepThreat(dt) {
     if (len(sub(th.pos, ship.pos)) < CFG.missileHit * 1.5) {
         endThreat();
         if (shield.up) { absorbShield(CFG.enemyMissileDamage); say('Shields absorb the missile.'); }
-        else hullHit(CFG.enemyMissileDamage, t.name + ' missile');
+        else hullHit(CFG.enemyMissileDamage, t.name + ' missile', true);
     } else if (th.age > CFG.enemyMissileLifeS) {
         SIM.audio.noiseBurst(th.pos, 300, 0.35, 1200);
         endThreat();
@@ -3210,12 +3281,24 @@ function stepThreat(dt) {
 }
 
 // Hull damage: a low thud in the cockpit and the number. Hull is out of 100
-// so the raw value IS the percent.
-function hullHit(dmg, source) {
+// so the raw value IS the percent. `isMissile` (SPEC 3.27) is true only for
+// an enemy missile actually landing on the hull — the one source that can
+// knock a subsystem offline; a beam or a collision never rolls for it.
+function hullHit(dmg, source, isMissile) {
     hull = Math.max(0, hull - dmg);
     SIM.cues.play('hull_hit');
     if (hull <= 0) { shipDestroyed(source); return; }
-    say('Your hull ' + hull + '.');
+    // A broken cargo hold spills a fraction of the hold on every further
+    // hit, any source — not gated on isMissile, since the hold doesn't
+    // care what just hit the hull.
+    var spillText = '';
+    var cargoSt = systemState('cargo');
+    if (cargoSt !== 'ok' && ore > 0) {
+        var spilled = Math.min(ore, Math.ceil(ore * (cargoSt === 'off' ? CFG.repairCargoSpillOff : CFG.repairCargoSpillHalf)));
+        if (spilled > 0) { ore -= spilled; spillText = ' ' + spilled + ' ore spills from the hold.'; }
+    }
+    var knockText = isMissile ? knockoutSystem() : '';
+    say('Your hull ' + hull + '.' + spillText + knockText);
 }
 
 function shipDestroyed(source) {
@@ -3255,6 +3338,11 @@ function shieldsBusy() { return shield.up || shield.raising >= 0; }
 
 function shieldKey() {
     if (mode !== 'combat') { say('Shields are only needed in combat. Nothing here is shooting.'); return; }
+    if (systemState('shields') === 'off') {
+        SIM.cues.play('refusal_dud');
+        say('Shields offline. Repair crew is on it.');
+        return;
+    }
     if (shield.up) { shieldDrop(false, 'manual'); return; }
     if (shield.raising >= 0) { say('Shields already coming up.'); return; }
     if (shield.repairing > 0) {
@@ -3281,7 +3369,7 @@ function shieldKey() {
 function absorbShield(dmg) {
     SIM.cues.play('shield_splash');
     shield.pool = Math.max(0, shield.pool - dmg);
-    if (!shield.warnedLow && shield.pool > 0 && shield.pool <= CFG.shieldPool * 0.25) {
+    if (!shield.warnedLow && shield.pool > 0 && shield.pool <= shieldPoolMax() * 0.25) {
         shield.warnedLow = true;
         SIM.cues.play('shield_failing_warn');
         say('Shields failing.');
@@ -3340,13 +3428,18 @@ function updateShield(dt) {
         if (shield.repairing <= 0) {
             shield.repairing = 0;
             stopRepairSound();
-            shield.pool = CFG.shieldPool * CFG.shieldRepairReturn;
+            shield.pool = shieldPoolMax() * CFG.shieldRepairReturn;
             SIM.cues.play('ready_chime');
             say('Shields back online, ' + Math.round(CFG.shieldRepairReturn * 100) + ' percent.');
         }
-    } else if (shield.pool < CFG.shieldPool) {
-        shield.pool = Math.min(CFG.shieldPool, shield.pool + CFG.shieldRegenPerS * dt);
+    } else if (shield.pool < shieldPoolMax()) {
+        shield.pool = Math.min(shieldPoolMax(), shield.pool + CFG.shieldRegenPerS * dt);
     }
+    // SPEC 3.27: a knockout can shrink the pool max WHILE it's holding more
+    // than that (e.g. it finished regenerating full before the crew's
+    // repair crossed the system into 'half') — clamp every tick so the
+    // pool is never seen above its own current ceiling.
+    shield.pool = Math.min(shield.pool, shieldPoolMax());
 }
 
 function shieldDrop(silent, why) {
@@ -3370,10 +3463,142 @@ function shieldDrop(silent, why) {
 
 // Full reset between missions: full pool, no disrepair debt, no hum.
 function shieldReset() {
-    shield.up = false; shield.raising = -1; shield.pool = CFG.shieldPool;
+    shield.up = false; shield.raising = -1; shield.pool = shieldPoolMax();
     shield.repairing = 0; shield.warnedLow = false;
     stopRepairSound();
     shieldHum(false);
+}
+
+// ---- ship systems (SPEC 3.27) -----------------------------------------------
+// An enemy missile that lands on the hull — never a beam, never one caught
+// by a raised shield — has a chance to knock one subsystem offline. Only
+// ONE system breaks per landed hit, drawn by weight, never redrawing one
+// already broken; a standard repair crew works the single highest-priority
+// broken system at a time, health climbing steadily from 0 (offline) to 50
+// (usable, degraded) to 100 (fully back). Docking still repairs everything
+// instantly, unchanged — see repairAllSystems().
+var shipSystems = {};      // id -> health 0-100; absent (or 100) = fully OK
+var activeRepairId = null; // which system the crew is currently working (for the "crew starts" cue)
+
+// Fixed knockout weights (Brian's list) for everything except laser slots,
+// which are added dynamically below — one entry per FITTED slot, weight 3
+// each, so a two-laser ship draws from 9 systems total.
+var SYSTEM_DRAW = [
+    { id: 'decoys',   weight: 3 },
+    { id: 'sensor',   weight: 3 },
+    { id: 'missiles', weight: 2 },
+    { id: 'cargo',    weight: 2 },
+    { id: 'thrust',   weight: 2 },
+    { id: 'shields',  weight: 1 },
+    { id: 'warp',     weight: 1 }
+];
+var SYSTEM_NAMES = {
+    shields: 'Shields', thrust: 'Thrust', sensor: 'Targeting sensor',
+    missiles: 'Missiles', decoys: 'Decoys', warp: 'Warp engine', cargo: 'Cargo hold'
+};
+// The crew's fixed work order (Brian's list) — independent of draw weight.
+// Every laser slot shares one priority tier; ties among them resolve by
+// slot index (lowest first).
+var REPAIR_PRIORITY = ['shields', 'thrust', 'sensor', 'laser', 'missiles', 'decoys', 'warp', 'cargo'];
+
+function systemName(id) {
+    var m = /^laser(\d+)$/.exec(id);
+    return m ? 'Laser slot ' + (Number(m[1]) + 1) : (SYSTEM_NAMES[id] || id);
+}
+function systemPriorityKey(id) { return /^laser\d+$/.test(id) ? 'laser' : id; }
+function fittedLaserSystemIds() {
+    var ids = [];
+    if (!profile) return ids;
+    for (var i = 0; i < LASER_SLOTS; i++) if (profile.slots[i]) ids.push('laser' + i);
+    return ids;
+}
+function allSystemIds() { return fittedLaserSystemIds().concat(SYSTEM_DRAW.map(function (s) { return s.id; })); }
+function systemWeight(id) {
+    if (/^laser\d+$/.test(id)) return 3;
+    for (var i = 0; i < SYSTEM_DRAW.length; i++) if (SYSTEM_DRAW[i].id === id) return SYSTEM_DRAW[i].weight;
+    return 1;
+}
+function systemHealth(id) { var h = shipSystems[id]; return h === undefined ? 100 : h; }
+// 'ok' (working normally) | 'half' (usable, degraded) | 'off' (refuses).
+function systemState(id) {
+    var h = systemHealth(id);
+    if (h >= 100) return 'ok';
+    return h >= 50 ? 'half' : 'off';
+}
+
+// Shields' pool max shrinks to CFG.repairPoolPct while at half health —
+// every place that used to read CFG.shieldPool as "the max" reads this
+// instead, so a knockout takes effect the instant it lands, same as a
+// module's cfg overlay takes effect the instant it's bought.
+function shieldPoolMax() {
+    return CFG.shieldPool * (systemState('shields') === 'half' ? CFG.repairPoolPct : 1);
+}
+
+// Immediate side effects of a system going from OK to broken. Most systems
+// just start refusing on their NEXT use (handled at each call site below);
+// a raised shield is the one exception that has to drop right now, mid-
+// fight, rather than wait for the next G press.
+function applyKnockoutEffects(id) {
+    if (id === 'shields' && shield.up) shieldDrop(true, 'systemFailure');
+}
+
+// The real random path — called only from hullHit() when an enemy missile
+// (never a beam, never one a raised shield absorbed) lands. Returns a
+// spoken fragment ending in a period, or '' — folded into hullHit's own
+// single say() call (the SPEC 2.15 rule: never a second say() in one tick).
+function knockoutSystem() {
+    if (Math.random() >= CFG.knockoutChance) return '';
+    var candidates = allSystemIds().filter(function (s) { return systemState(s) === 'ok'; });
+    if (!candidates.length) return '';   // everything already broken
+    var total = candidates.reduce(function (s, c) { return s + systemWeight(c); }, 0);
+    var r = Math.random() * total, id = candidates[candidates.length - 1];
+    for (var i = 0; i < candidates.length; i++) {
+        r -= systemWeight(candidates[i]);
+        if (r <= 0) { id = candidates[i]; break; }
+    }
+    shipSystems[id] = 0;
+    applyKnockoutEffects(id);
+    return ' ' + systemName(id) + ' offline.';
+}
+
+// The repair crew: one broken system at a time, fixed priority, health
+// climbing at a steady rate from 0 to 100 over repairHalfS*2 seconds (half
+// of that to reach the 50% "usable" mark). Runs from simTick on the same
+// gate as everything else — frozen under any overlay, like the rest of
+// the sim.
+function brokenSystemIds() {
+    return Object.keys(shipSystems).filter(function (id) { return shipSystems[id] < 100; });
+}
+function updateRepairCrew(dt) {
+    var broken = brokenSystemIds();
+    if (!broken.length) { activeRepairId = null; return; }
+    broken.sort(function (a, b) {
+        var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
+        return pa !== pb ? pa - pb : (a < b ? -1 : 1);
+    });
+    var id = broken[0];
+    if (id !== activeRepairId) {
+        activeRepairId = id;
+        SIM.audio.playAsset('repair_crew', 0.4);
+    }
+    var before = shipSystems[id];
+    var after = Math.min(100, before + (100 / (CFG.repairHalfS * 2)) * dt);
+    shipSystems[id] = after;
+    if (before < 50 && after >= 50) {
+        SIM.cues.play('repair_half');
+        say(systemName(id) + ' at 50 percent, usable.');
+    } else if (after >= 100) {
+        delete shipSystems[id];
+        activeRepairId = null;
+        say(systemName(id) + ' repaired.');
+    }
+}
+
+// Docking's instant fix (behavior unchanged from before this system
+// existed): every broken system clears at once, no partial credit.
+function repairAllSystems() {
+    shipSystems = {};
+    activeRepairId = null;
 }
 
 // ---- particulate debris -----------------------------------------------------
@@ -3699,10 +3924,10 @@ function statusReport() {
     }
     if (mode === 'combat' || mode === 'mining') line += laserStatusText();
     if (mode === 'combat') {
-        line += shield.up ? 'Shields up, ' + Math.round(shield.pool / CFG.shieldPool * 100) + ' percent. '
+        line += shield.up ? 'Shields up, ' + Math.round(shield.pool / shieldPoolMax() * 100) + ' percent. '
               : shield.raising >= 0 ? 'Shields coming up. '
               : shield.repairing > 0 ? 'Shields in disrepair, ' + Math.ceil(shield.repairing) + ' seconds. '
-              : shield.pool < CFG.shieldPool ? 'Shields down, ' + Math.round(shield.pool / CFG.shieldPool * 100) + ' percent, recharging. '
+              : shield.pool < shieldPoolMax() ? 'Shields down, ' + Math.round(shield.pool / shieldPoolMax() * 100) + ' percent, recharging. '
               : 'Shields down. ';
         if (laserHot()) line += 'Laser overheated. ';
     }
@@ -3714,6 +3939,14 @@ function statusReport() {
         if (mission.kind === 'escort') line += 'Leg ' + Math.round(mission.elapsed) + ' of ' + CFG.missionEscortLegS + ' seconds. ';
     }
     if (laserBoostActive()) line += 'Laser boost, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left. ';
+    var broken = brokenSystemIds();
+    if (broken.length) {
+        broken.sort(function (a, b) {
+            var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
+            return pa !== pb ? pa - pb : (a < b ? -1 : 1);
+        });
+        line += broken.map(function (id) { return systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent'; }).join('; ') + '. ';
+    }
     say(line);
 }
 
@@ -3763,7 +3996,7 @@ function runLogKey(lname) {
 function startDemo() {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
-    refillRcs(); collisionDamage = 0;
+    refillRcs(); collisionDamage = 0; repairAllSystems();
     sectorHome = null;
     demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
     newGame('sector');
@@ -3837,8 +4070,24 @@ function buildShipLines() {
     var lines = [];
     lines.push('Your hull ' + hull + ' percent.');
     lines.push('Shields ' + (shield.up ? 'up' : 'down') + ', pool ' +
-                Math.round(shield.pool) + ' of ' + Math.round(CFG.shieldPool) +
+                Math.round(shield.pool) + ' of ' + Math.round(shieldPoolMax()) +
                 (shield.repairing ? ', repairing' : '') + '.');
+    // SPEC 3.27: repair crew tier, then anything currently broken (in the
+    // crew's own fixed work order, matching what it'll actually fix next).
+    var crewTier = ownedModules().indexOf('repair_crew_2') >= 0 ? 2
+                  : ownedModules().indexOf('repair_crew_1') >= 0 ? 1 : 0;
+    lines.push('Repair crew: ' + (crewTier === 0 ? 'stock speed.' : crewTier === 1 ? 'upgraded, tier 1.' : 'upgraded, tier 2.'));
+    var broken = brokenSystemIds();
+    if (broken.length) {
+        broken.sort(function (a, b) {
+            var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
+            return pa !== pb ? pa - pb : (a < b ? -1 : 1);
+        });
+        lines.push(broken.map(function (id) {
+            return systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent' +
+                   (id === activeRepairId ? ', crew working' : '');
+        }).join('; ') + '.');
+    }
     lines.push('Warp charge ' + warpPct() + ' percent.');
     lines.push('Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
     lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
@@ -4096,10 +4345,18 @@ function refillWarp() { warpCharge = CFG.warpTankMax; }
 // Charge a jump to a point that far away would spend (the usual dropout is
 // flown, not warped), and whether the tank covers it.
 function warpNeed(dist) { return Math.max(0, dist - CFG.warpDropout); }
+// SPEC 3.27: a half-broken warp engine halves the effective reach of
+// whatever charge is in the tank (the tank itself is untouched) — every
+// place that used to compare against warpCharge as "how far can I jump"
+// reads this instead, so the map's "in range"/"beyond by N" never lies.
+function warpEffectiveCharge() {
+    return warpCharge * (systemState('warp') === 'half' ? CFG.repairWarpRangePct : 1);
+}
 function warpReachText(dist) {
     var need = warpNeed(dist);
-    return need <= warpCharge ? 'in warp range'
-         : 'beyond warp range by ' + round10(need - warpCharge);
+    var eff = warpEffectiveCharge();
+    return need <= eff ? 'in warp range'
+         : 'beyond warp range by ' + round10(need - eff);
 }
 
 // Open-flight regen (SPEC 1.13, Brian: no hiss — the old core-cooling
@@ -4110,7 +4367,7 @@ function warpReachText(dist) {
 // free. Silent in encounters and at full charge — the station and every
 // encounter exit say "Warp tank filled" themselves.
 function updateWarpCore(dt) {
-    if (mode !== 'sector' || warping || warpCharge >= CFG.warpTankMax) return;
+    if (mode !== 'sector' || warping || warpCharge >= CFG.warpTankMax || systemState('warp') === 'off') return;
     var before = warpCharge / CFG.warpTankMax * 100;
     warpCharge = Math.min(CFG.warpTankMax, warpCharge + CFG.warpRegenPerS * dt);
     var after = warpCharge / CFG.warpTankMax * 100;
@@ -4146,7 +4403,7 @@ function dockAtStation(poi, extra) {
     if (SIM.audio.ctx) SIM.audio.playMusic('station_interior1', { vol: CFG.stationAmbientVol, fadeS: 1 });
     var repaired = hull < CFG.shipHull, rearmed = missiles < CFG.missileMax,
         restocked = chaff < CFG.chaffMax, refueled = warpCharge < CFG.warpTankMax,
-        massRefueled = rcs < CFG.rcsMax;
+        massRefueled = rcs < CFG.rcsMax, systemsFixed = brokenSystemIds().length > 0;
     // Collision damage is the only hull loss that costs anything (SPEC
     // 2.14, "bad drivers pay") — bill it here, repair whatever's afforded,
     // and only the REST of the hull (ordinary combat/mining damage) is
@@ -4168,12 +4425,13 @@ function dockAtStation(poi, extra) {
     } else {
         hull = CFG.shipHull;
     }
-    missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp(); refillRcs();
+    missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp(); refillRcs(); repairAllSystems();
     var service = billLine +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
                   (restocked ? 'Decoys restocked to ' + CFG.chaffMax + '. ' : '') +
                   (refueled ? 'Warp tank filled. ' : '') +
-                  (massRefueled ? 'Reaction mass filled. ' : '');
+                  (massRefueled ? 'Reaction mass filled. ' : '') +
+                  (systemsFixed ? 'Systems repaired. ' : '');
     var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
     autoThrust = false;
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
@@ -4366,9 +4624,15 @@ function sellResource(key, pricePerUnit, poi) {
 function moduleText(i) {
     var m = MODULES[i], owned = ownedModules().indexOf(m.id) >= 0;
     if (owned) return m.name + '. ' + m.desc + ' Already fitted.';
-    return m.name + '. ' + m.desc + ' ' + m.cost + ' credits, adds ' + m.mass + ' mass. ' +
-           (profile.credits >= m.cost ? 'You can afford it.'
-                                       : 'Need ' + (m.cost - profile.credits) + ' more credits.');
+    if (m.requires && ownedModules().indexOf(m.requires) < 0) {
+        return m.name + '. ' + m.desc + ' Requires ' + moduleById(m.requires).name + ' first.';
+    }
+    var alloyText = m.alloy ? ', ' + m.alloy + ' alloy' : '';
+    var afford = profile.credits >= m.cost && (!m.alloy || profile.resources.alloy >= m.alloy);
+    return m.name + '. ' + m.desc + ' ' + m.cost + ' credits' + alloyText + ', adds ' + m.mass + ' mass. ' +
+           (afford ? 'You can afford it.'
+            : profile.credits < m.cost ? 'Need ' + (m.cost - profile.credits) + ' more credits.'
+                                        : 'Need ' + (m.alloy - profile.resources.alloy) + ' more alloy.');
 }
 
 function openModules() {
@@ -4380,12 +4644,23 @@ function openModules() {
 function buyModule(i) {
     var m = MODULES[i];
     if (ownedModules().indexOf(m.id) >= 0) { SIM.cues.play('refusal_dud'); say('Already fitted.'); return; }
+    if (m.requires && ownedModules().indexOf(m.requires) < 0) {
+        SIM.cues.play('refusal_dud');
+        say('Requires ' + moduleById(m.requires).name + ' first.');
+        return;
+    }
     if (profile.credits < m.cost) {
         SIM.cues.play('refusal_dud');
         say('Not enough credits. Need ' + (m.cost - profile.credits) + ' more.');
         return;
     }
+    if (m.alloy && profile.resources.alloy < m.alloy) {
+        SIM.cues.play('refusal_dud');
+        say('Not enough alloy. Need ' + (m.alloy - profile.resources.alloy) + ' more.');
+        return;
+    }
     profile.credits -= m.cost;
+    if (m.alloy) profile.resources.alloy -= m.alloy;
     profile.upgrades.push(m.id);
     applyTier(tierIdx);      // re-layer CFG with the new module live, mid-session
     saveProfile();
@@ -4893,6 +5168,11 @@ function playWarpFinish(engine) {
 function startWarp() {
     if (mode !== 'sector') { say('Hyperwarp needs open sector space.'); return; }
     if (warping) return;
+    if (systemState('warp') === 'off') {
+        SIM.cues.play('refusal_dud');
+        say('Warp engine offline. Repair crew is on it.');
+        return;
+    }
     var t = targets[selected];
     if (!t) { say('No nav target. Q opens the quadrant map.'); return; }
     var near = nearbyPoi();
@@ -4915,7 +5195,7 @@ function startWarp() {
     autoThrust = false;
     var dir = norm(sub(t.pos, ship.pos));
     var need = warpNeed(d);
-    var travel = Math.min(need, warpCharge);
+    var travel = Math.min(need, warpEffectiveCharge());
     var dry = travel < need;
     // Flight time scales with the distance actually flown: warpJumpMinS at
     // the shortest allowed travel (a jump right at warpMinDist), up to
@@ -5300,7 +5580,7 @@ function onKeyDown(e) {
                 // happens at this point.)
                 if (mode === 'mining' && !sectorHome) ore = 0;
                 if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; }
-                if (lost || !sectorHome) hull = CFG.shipHull;
+                if (lost || !sectorHome) { hull = CFG.shipHull; repairAllSystems(); }
                 newGame();
                 say(mode === 'mining' ? miningIntro() : combatIntro());
             }
@@ -5403,13 +5683,18 @@ function simTick(dt) {
     // rather than stopping outright. Braking is a real reverse thruster
     // now (half of forward thrust), not an instant multiplicative stop.
     var rf = rcsFactor();
-    if (k.w) {
-        ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * rf * dt));
+    // SPEC 3.27: a broken thrust system doesn't touch the passive
+    // stabilizer damping below — only W/S themselves are affected —
+    // 'off' means neither does anything, 'half' means half the push.
+    var thrustSt = systemState('thrust');
+    var tf = thrustSt === 'half' ? CFG.repairThrustPct : 1;
+    if (k.w && thrustSt !== 'off') {
+        ship.vel = add(ship.vel, scale(shipForward(), CFG.thrust / mass * rf * tf * dt));
         spendRcs(CFG.rcsThrustPerS * dt);
     }
     thrusterSync(k);
-    if (k.s) {
-        ship.vel = add(ship.vel, scale(shipForward(), -CFG.brakeThrust / mass * rf * dt));
+    if (k.s && thrustSt !== 'off') {
+        ship.vel = add(ship.vel, scale(shipForward(), -CFG.brakeThrust / mass * rf * tf * dt));
         spendRcs(CFG.rcsBrakePerS * dt);
     }
     var beforeDampSpd = len(ship.vel);
@@ -5446,6 +5731,7 @@ function simTick(dt) {
     updateEnemies(dt);
     if (mission) updateMission(dt);
     updateWarpCore(dt);
+    updateRepairCrew(dt);
     updateStatusLine();
 }
 
@@ -5484,7 +5770,7 @@ function updateStatusLine() {
                     : 'Targets alive: ' + aliveTargets().length) +
                (missile ? '   missile in flight' + (missile.guided ? '' : ' (ballistic)') : ''));
     lines.push('Hull ' + hull + '   missiles ' + missiles +
-               '   shields ' + (shield.up ? 'UP ' + Math.round(shield.pool / CFG.shieldPool * 100) + '%' : shield.raising >= 0 ? 'raising' : shield.repairing > 0 ? 'disrepair' : 'down') +
+               '   shields ' + (shield.up ? 'UP ' + Math.round(shield.pool / shieldPoolMax() * 100) + '%' : shield.raising >= 0 ? 'raising' : shield.repairing > 0 ? 'disrepair' : 'down') +
                '   ' + laserSlotText(laserSlot) + (laserHot() ? '   LASER HOT' : '') +
                (threat ? '   threat: ' + threat.type + ' from ' + threat.t.name : '') +
                (demo ? '   clock ' + Math.floor(demo.elapsed) + 's' : ''));
@@ -5501,6 +5787,12 @@ window.__sim = {
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
             locked: locked, lockToneMode: lockToneKind(),
+            lockDebug: (function () {
+                var t = targets[selected]; if (!t) return null;
+                var a = aim(t.pos), z = zoneRad();
+                return { errDeg: Math.round(deg(a.err) * 10) / 10, lockOnDeg: Math.round(deg(z.lockOn) * 10) / 10,
+                         lockOffDeg: Math.round(deg(z.lockOff) * 10) / 10, sensorState: systemState('sensor') };
+            })(),
             music: !!SIM.audio.musicNode,
             stationBand: (function () {
                 var best = null, bestD = Infinity;
@@ -5516,8 +5808,10 @@ window.__sim = {
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
                      burstLeft: beamSecondsLeft() },
             shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
-            threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided } : null,
-            missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))) } : null,
+            threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided,
+                                pos: threat.pos ? { x: Math.round(threat.pos.x), y: Math.round(threat.pos.y), z: Math.round(threat.pos.z) } : null } : null,
+            missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))),
+                                  speed: Math.round(missile.speed), vel: Math.round(len(missile.vel)) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
             mission: mission ? { kind: mission.kind, elapsed: Math.round(mission.elapsed * 10) / 10,
                                    wavesSent: mission.wavesSent, ended: mission.ended, success: mission.success,
@@ -5541,6 +5835,7 @@ window.__sim = {
             collisionDamage: collisionDamage,
             hailMenu: hailMenu.open ? { poiName: hailMenu.poi.name, idx: hailMenu.idx } : null,
             pos: { x: Math.round(ship.pos.x), y: Math.round(ship.pos.y), z: Math.round(ship.pos.z) },
+            vel: { x: Math.round(ship.vel.x * 10) / 10, y: Math.round(ship.vel.y * 10) / 10, z: Math.round(ship.vel.z * 10) / 10, speed: Math.round(len(ship.vel) * 10) / 10 },
             docked: docked ? { poiName: docked.poi.name } : null,
             warping: warping, menuResumable: menuResumable,
             warpFlight: warpFlight ? { totalTime: Math.round(warpFlight.totalTime * 100) / 100,
@@ -5557,6 +5852,12 @@ window.__sim = {
                                   version: profile.version, alloy: profile.resources.alloy,
                                   laserLevels: Object.assign({}, profile.laserLevels),
                                   laserHealth: Object.assign({}, profile.laserHealth) } : null,
+            systems: Object.keys(shipSystems).reduce(function (o, id) {
+                o[id] = Math.round(shipSystems[id] * 10) / 10; return o;
+            }, {}),
+            activeRepair: activeRepairId,
+            repairHalfS: CFG.repairHalfS,
+            shieldPoolMax: Math.round(shieldPoolMax() * 10) / 10,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
@@ -5566,7 +5867,8 @@ window.__sim = {
                          size: t.kind === 'rock' ? ROCK_SIZES[t.size] && ROCK_SIZES[t.size].label : undefined,
                          resource: !!t.resource,
                          dist: Math.round(len(sub(t.pos, ship.pos))),
-                         speed: t.vel ? Math.round(len(t.vel)) : 0 };
+                         speed: t.vel ? Math.round(len(t.vel)) : 0,
+                         hostile: !!t.hostile, kind: t.kind, missileOnly: !!t.missileOnly };
             })
         };
     },
@@ -5617,6 +5919,13 @@ window.__sim = {
         if (o && o.laserHealth && profile) Object.assign(profile.laserHealth, o.laserHealth);
         if (o && o.laserLevels && profile) Object.assign(profile.laserLevels, o.laserLevels);
         if (o && o.clock !== undefined && profile) profile.clock = o.clock;
+        // SPEC 3.27: force a specific system straight to broken (bypasses
+        // the chance roll and weight draw — the exact test hook the spec
+        // itself asks for), or set a system's health directly, or clear
+        // everything at once (the same effect docking has).
+        if (o && o.knockout) { shipSystems[o.knockout] = 0; applyKnockoutEffects(o.knockout); }
+        if (o && o.systemHealth) Object.assign(shipSystems, o.systemHealth);
+        if (o && o.repairAllSystems) repairAllSystems();
         if (o && o.depleteField && profile.quadrants[profile.quadrantId]) {
             profile.quadrants[profile.quadrantId].fields.forEach(function (f) {
                 if (f.name === o.depleteField) f.budget = 0;
@@ -5813,7 +6122,7 @@ function resumeFromMenu() {
 function startMission(m) {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
-    refillRcs(); collisionDamage = 0;
+    refillRcs(); collisionDamage = 0; repairAllSystems();
     newGame(m);
     if (m === 'sector') placeAtStationStart();
     say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());

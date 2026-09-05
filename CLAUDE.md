@@ -66,7 +66,9 @@ expands.
   `audio/mining/` = 3 asteroid loops + 3 asteroid explosions, WAV masters
   with served MP3 siblings (all 6 in the manifest); `audio/ships/` = 18
   ship loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 in the
-  manifest so far — one per roster class) plus `audio/ships/warp/` = 18
+  manifest so far — one per roster class) plus `repair_crew.wav` (Round
+  20, SPEC 3.27's damage-control voice, WAV master with a served MP3
+  sibling, manifest key `repair_crew`) plus `audio/ships/warp/` = 18
   warp recordings for SPEC 1.17 (`warp_start1-6`, `warp_finish1-6` at
   4.0 s each, `warp_engaged1r-6r` loops at 1.5 s, all stereo 48 kHz;
   engine 1's three clips in the manifest, the other five stay on disk
@@ -1049,6 +1051,114 @@ static once tiers exist.
   and a plain empty-slot press plus an ordinary damage tick against a
   live target confirmed unaffected (regression). Zero console errors.
   Not yet heard or flown by Brian.
+- **System damage and the repair crew (Round 20, SPEC 3.27)**: an enemy
+  missile that actually lands on the hull — never a beam, never one a
+  raised shield caught — can knock one subsystem offline,
+  `CFG.knockoutChance` 0.4 per landed hit, drawn by weight from
+  whichever systems aren't ALREADY broken: every FITTED laser slot
+  (`laser0`, `laser1`, ... one per occupied slot, weight 3 each — a
+  two-laser ship draws from 9 systems total) plus `shields`/`thrust`/
+  `sensor`/`missiles`/`decoys`/`warp`/`cargo`. `shipSystems` (id → health
+  0-100, absent/100 = fully OK) and `systemState(id)` ('ok'/'half'/'off'
+  at the 50/100 boundaries) are the whole model; `hullHit()` gained an
+  `isMissile` param (true ONLY at the one call site that's an enemy
+  missile impact — a beam tick and `updateCollisions`' station/planet
+  hit both stay false) and folds the knockout roll plus a broken cargo
+  hold's ore spill into its own single `say()` call with the hull line
+  (the SPEC 2.15 rule again). Each system's offline/half effect is
+  wired at its own call site rather than a central dispatcher: a laser
+  slot refuses in `startBeam` and halves damage in `beamTick`; missiles
+  refuse in `fireMissile` and launch (and fly the WHOLE flight, since
+  `steerToward` re-normalizes speed every guided frame) at half speed,
+  stored on the missile object itself so a mid-flight repair can't
+  retroactively speed it up; decoys refuse in `fireChaff` and have a
+  `CFG.repairChaffFizzlePct` chance to do nothing at half; shields
+  refuse in `shieldKey`, a raised shield drops the instant the system
+  breaks (`applyKnockoutEffects`), and a new `shieldPoolMax()` helper
+  (replacing every direct `CFG.shieldPool` read used as "the max")
+  halves the pool ceiling at half health, with `updateShield` clamping
+  the live pool down to it every tick in case a knockout shrinks the
+  ceiling out from under a pool that was already fuller than the new
+  max; the warp engine refuses in `startWarp`, its regen stops in
+  `updateWarpCore`, and a new `warpEffectiveCharge()` halves the
+  reachable jump distance (not the tank itself) at half health, read by
+  `startWarp`'s own travel computation and by `warpReachText` so the
+  map never lies about range; thrust zeroes out entirely in `simTick`'s
+  W/S block when offline (the passive stabilizer damping is untouched —
+  only the two keys themselves), half power at half; the targeting
+  sensor can never acquire (and drops on the spot) a lock while
+  offline in `updateTargeting`, Tab/T untouched since they don't read
+  `locked`, `zoneRad()` halves the lock-on/lock-off angles at half
+  (leaving the laser/missile cones alone — those belong to their own
+  separately-breakable systems), and `tickBeat` silences the tick
+  entirely offline and doubles every interval at half. The repair crew
+  (`updateRepairCrew`, called from `simTick` on the same freeze gate as
+  everything else) is priority-PREEMPTIVE, not FIFO: every tick it
+  recomputes the single highest-priority broken system from
+  `REPAIR_PRIORITY` (`shields, thrust, sensor, laser, missiles, decoys,
+  warp, cargo` — laser slots share one tier, ties broken by slot index)
+  and works THAT one, so a higher-priority system breaking mid-repair
+  steals the crew away, leaving the interrupted system's progress
+  frozen in place until the crew comes back to it. Health climbs at a
+  constant `100 / (CFG.repairHalfS * 2)` percent per second (90 stock:
+  90 s to 50%, 90 more to 100%), speaking "X at 50 percent, usable."
+  once (with `repair_half`, a new chime cue) and "X repaired." at 100,
+  and playing `repair_crew.wav` (Brian's new asset, converted to the
+  usual mono 48k 96k MP3 sibling, manifest key `repair_crew`) each time
+  the crew starts a DIFFERENT system. `repair_crew_1`/`_2` in `MODULES`
+  (500cr+2 alloy → 45/45, then 400cr, requiring tier 1 → 30/30) are the
+  table's first tiered, alloy-costing, prerequisite-gated entries —
+  `moduleText`/`buyModule` both grew optional `alloy`/`requires`
+  handling generalized for any future module to reuse, not just these
+  two. `repairAllSystems()` (docking's instant fix, and every "fresh
+  start" path — `startDemo`, `startMission`, the standalone drill's
+  Enter-retry after a loss) just clears `shipSystems` outright;
+  `clearMission()` (abandoning a live encounter back to the menu)
+  deliberately does NOT touch it, matching hull/ore's own
+  persists-across-a-sector-run behavior. F2 gained the crew's tier and
+  a line per broken system (health, and whether the crew is on it
+  right now); `statusReport()` (I) gained the same broken-systems
+  readout. Machine-tested at a local server: every one of the eight
+  systems' offline refusal and half-effect confirmed individually via
+  `poke({knockout: id})`/`poke({systemHealth: {id: N}})` — a half laser
+  slot's damage measured exactly half (28 vs. 14, same conditions), a
+  half missile's flight speed exactly half (130 vs. 65 u/s, confirmed
+  via the missile's own stored `speed`), a half decoy's fizzle chance
+  confirmed via a seeded `Math.random` on both branches, a half
+  shield's pool max computed and clamped correctly (45→22.5), a half
+  warp's jump range measured capped to exactly half the charge on
+  board (a jump that needed ~3711 travel capped to exactly 2000 on a
+  4000 charge), half thrust measured at exactly half the full-thrust
+  speed gain (58.5 vs. 29.3 units/s after 1 s), and a half sensor's
+  lock zone measured exactly halved (8°/12° → 4°/6°) with the lock
+  still successfully re-acquired inside it; a broken cargo hold's spill
+  confirmed at exactly the configured percentage of the CURRENT hold
+  on a real collision-triggered hull hit (20 of 1000 ore offline, 10 at
+  half), folded into the same line as the hull number. The knockout
+  draw's chance-gate-then-weighted-selection algorithm was verified
+  with an isolated 200,000-trial Node simulation of the identical logic
+  (matching every weight's expected pick rate closely, correctly
+  excluding already-broken systems, and always returning nothing once
+  everything is broken) rather than depending on forcing a real enemy
+  missile's flight timing, which proved genuinely awkward to control
+  deterministically through the live combat AI. The repair crew's
+  preemption, the module tiers' CFG override (confirmed 45 then 30 via
+  `__sim.state()`), the alloy/prerequisite refusals, F2 and I's new
+  readouts, and docking's "Systems repaired." announcement were all
+  confirmed; a full regression pass on the standalone Combat drill
+  (kill all five, "Victory", SPEC 3.25's kill buffs still firing
+  alongside this) confirmed unaffected. **A testing-methodology gotcha,
+  not a game bug, found and resolved along the way**: partway through
+  this round's testing the browser pane silently became visible
+  (`document.hidden` flipped false), resuming `requestAnimationFrame`
+  WHILE a test script was still also manually driving `__sim.step()` —
+  together they advanced the sim at roughly double speed, making one
+  repair-rate measurement look ~2x too fast. Resolved by reading
+  `CFG.repairHalfS` directly off `__sim.state()` instead of trusting
+  the polluted rate measurement (confirmed exactly 30 after both module
+  tiers) — the formula itself was never in question, just that one
+  measurement's real-time assumptions. Zero console errors throughout.
+  Not yet heard or flown by Brian.
 - **Mining**: 3 rock types (Ice soft/splitty, Iron hard/chippy, Stone middle)
   × 4 sizes, HIDDEN per-stage hp rolls. Core ore 3000/6750/4500 (×1.5 as of
   Round 10); all dust ×0.75 via `CFG.debrisScale` in `addDebris`. Laser ticks
@@ -1466,6 +1576,36 @@ re-confirmed against three seeded profiles, and a regression pass on
 an empty slot and ordinary damage output. Zero console errors. Not yet
 heard or flown by Brian. Next: SPEC 3.27 (system damage and the repair
 crew).
+
+Round 20 (Sonnet) built **SPEC 3.27** (system damage and the repair
+crew) — see the "System damage and the repair crew (Round 20, SPEC
+3.27)" bullet above for the full shape: an enemy missile landing on
+the hull can knock one of up to nine systems offline (every fitted
+laser slot plus shields/thrust/sensor/missiles/decoys/warp/cargo),
+drawn by weight, each with its own offline refusal and half-health
+degraded effect wired at its own call site; a priority-preemptive
+repair crew works the single worst broken system at a time; two new
+tiered, alloy-costing, prerequisite-gated modules speed it up; F2 and I
+both read what's broken. `repair_crew.wav` (Brian's new asset) got its
+MP3 sibling and a manifest key. Machine-tested at a local server:
+every system's offline and half effect confirmed individually (laser
+damage, missile speed, decoy fizzle chance, shield pool max, warp
+range, thrust, sensor lock zone and tick, cargo spill — several via
+direct before/after A-B measurements), the repair crew's priority
+preemption, the module tiers' CFG override, F2/I's readouts, and
+docking's full-repair confirmed; the knockout draw's weighted-random
+algorithm verified separately via an isolated 200,000-trial Node
+simulation rather than fighting the live combat AI's timing; a full
+regression pass on the standalone Combat drill (kill all five,
+Victory, SPEC 3.25's kill buffs still firing) confirmed unaffected.
+One testing-methodology gotcha found and resolved along the way (not a
+game bug): the browser pane silently became visible mid-session,
+resuming `requestAnimationFrame` alongside a test script's manual
+`__sim.step()` calls and briefly doubling the effective tick rate for
+one measurement — resolved by reading the CFG value directly instead
+of trusting a polluted rate. Zero console errors throughout. Not yet
+heard or flown by Brian. Next: SPEC 3.28 (the quadrant's own timed
+delivery contract).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
