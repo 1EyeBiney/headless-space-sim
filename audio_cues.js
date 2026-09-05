@@ -66,6 +66,21 @@ SIM.cues = (function () {
                                        at: ats[i], pan: (i % 2 ? 1 : -1) * (0.2 + i * 0.1) });
                       }
                   } },
+                { id: 'decoy_took', name: 'Decoy Took It', source: 'spec-3.37',
+                  // SPEC 3.37 (ideas10.txt): the OUTCOME, not the launch —
+                  // chaff_burst already plays at the ship when D is pressed;
+                  // this plays at the MISSILE's own position, on the world
+                  // bus, the moment a spoofed missile pops harmlessly, so a
+                  // spoof that worked is audibly different from a launch
+                  // that might not have. Two quick ascending notes, clearly
+                  // not the crackle.
+                  fn: function (opts) {
+                      var A = SIM.audio, pos = opts.pos;
+                      var out = A.worldOut(pos, 300);
+                      if (!out) return;
+                      A.sfxTone({ type: 'sine', f1: 660, f2: 660, dur: 0.08, vol: 0.4, out: out });
+                      A.sfxTone({ type: 'sine', f1: 990, f2: 990, dur: 0.12, vol: 0.35, at: 0.09, out: out });
+                  } },
                 { id: 'hull_hit', name: 'Hull Hit', source: 'v11-extraction',
                   fn: function () {
                       var A = SIM.audio;

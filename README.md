@@ -115,7 +115,11 @@ back down slowly if you stay away too long — though never further than
 one step below the best you've ever reached there. Station Meridian
 starts Trusted; every other station starts a stranger. A tug always
 finds you the nearest station that actually trusts you, at the usual
-wait — or, failing that, the long way home to Meridian.
+wait — or, failing that, the long way home to Meridian. You start with
+100 credits, and Enter pays 50 to halve whatever's left of the wait —
+repeatable, for another halving each time, as long as you can afford
+it. The countdown also reminds you, twice, that F2 reads your ship and
+F3 your hold.
 
 Thrust and braking both draw on a reaction mass tank, and so do the
 automatic stabilizers that quietly cancel your drift whenever you coast —
@@ -156,10 +160,11 @@ Right hand on the arrows, left hand on everything else.
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
-| D | Decoy. A burst that spoofs the missile coming at you — no shield needed. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
+| D | Decoy. A burst that spoofs the missile coming at you, sending it ballistic at once — no shield needed, and a moment later you hear it pop clear. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
 | B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
-| Tab / T | Cycle targets / report the selected target. Shift+T or Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
+| Tab / T | Cycle targets / report the selected target. Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
+| Shift+T | Auto-target: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. A limited pool, not something you start with |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Tractor beam (mining): pulls the selected rock or core toward you instead of flying to it. Z again releases it. Barely moves a medium rock, does nothing to large or huge ones |
@@ -187,8 +192,9 @@ and whatever charge is left keeps recovering. A ship that survives one of
 your missiles breaks away hard and hits back within seconds — except a
 Rookie-tier Cruiser, which only ever answers by missile and never bothers
 with the dramatic evade. Against a missile you also have D, a decoy: the
-missile loses guidance on the spot and your weapons stay live — but it
-does nothing against a beam, you carry four, and at Veteran and Ace a
+missile loses guidance on the spot and your weapons stay live — a
+moment later you hear it pop clear, confirmation that the spoof worked.
+It does nothing against a beam, you carry four, and at Veteran and Ace a
 spoofed missile brings the next attack fast.
 
 Your own laser burst locks you in too: once you fire, it runs the full
@@ -211,8 +217,12 @@ missiles, decoys, shields, the warp engine, thrust, the targeting
 sensor, or the cargo hold. Every ship carries a repair crew that works
 the worst one automatically, one at a time, coming back partway usable
 before it's fully fixed; F2 and I both name what's broken and how far
-along the fix is. Docking always finishes the job, and a module at the
-station speeds the crew up.
+along the fix is. Once every system is whole, the same crew turns to
+your hull, at half the speed. Every point of repair — hull or system —
+spends reaction mass, so a long fight's patching shows up on your tank;
+the crew pauses rather than ever leave you unable to turn. Docking
+always finishes the job instantly, free, and a module at the station
+speeds the crew up.
 
 ## Files
 

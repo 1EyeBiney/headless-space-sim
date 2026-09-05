@@ -57,6 +57,12 @@
 
 // ============================== 1. CONFIG ===================================
 var CFG_DEFAULTS = {
+    // SPEC 3.39 (ideas10.txt): the Press-Enter-to-Begin page is silent
+    // until Enter — the aria-live div works fine before the AudioContext
+    // exists, it's just never been spoken to. Reminded again if missed.
+    beginRemindFirstMs: 10000,
+    beginRemindEveryMs: 20000,
+
     turnRate:   Math.PI / 3,     // 60 deg/s yaw and pitch while arrow held
     pitchLimit: 85 * Math.PI / 180,
     thrust:     70,              // u/s^2 along the nose while W held
@@ -104,7 +110,13 @@ var CFG_DEFAULTS = {
     // tugHomeFactor times the base (see startTug).
     tugBaseS: 90,             // base wait to a trusted station, or halved by the credit fee
     tugHomeFactor: 2,         // no trusted station anywhere: the long way home to Meridian
-    tugFeeCredits: 50,        // Enter pays this once to halve whatever's left
+    // SPEC 3.35 (ideas10.txt): the fee is now repeatable — Enter pays it
+    // again and again, each payment halving whatever's left, as many
+    // times as credits allow (a fresh 100-credit pilot buys exactly two:
+    // 90s -> 45 -> 22.5).
+    tugFeeCredits: 50,
+    tugReminderMarkS: 30,     // the countdown's second F2/F3 reminder fires at this mark
+    startCredits: 100,        // SPEC 3.35: a fresh profile's starting credits (was 0)
 
     refDistance: 50, maxDistance: 2000, rolloff: 1,
     masterGain: 0.7, targetGain: 0.25,
@@ -145,6 +157,23 @@ var CFG_DEFAULTS = {
     tractorPullCore: 20,         // u/s closed on a small rock or a core (500 -> vacRange 300 in 10s)
     tractorPullMedium: 4,        // "barely" moves a medium
     tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
+
+    // Auto-target (SPEC 3.38, ideas10.txt): Shift+T hands the stabilizers
+    // the selected target — steers the nose onto it, then holds through a
+    // few seconds of tracking so a moving/orbiting target's lock actually
+    // lands. Brian's own problem: a Cruiser he couldn't get targeted by
+    // hand. Never fires, never damages. Not standard gear — same
+    // test-fit pattern as the tractor beam above — until the auto_target_N
+    // modules exist for real.
+    autoTargetTestFit: true,
+    autoTargetWorstTiers: [6, 4, 2],  // seconds, worst case (180 deg yaw or the pitch clamp, whichever is
+                                       // larger), indexed by owned tier (1/2/3) — autoTargetTier() reads
+                                       // ownership directly (like tractorFitted()), not a cfg overlay,
+                                       // since the number needed depends on WHICH tier is owned, not a
+                                       // flat override
+    autoTargetHoldS: 5,          // once aimed, holds (still tracking) this long before releasing
+    autoTargetCharges: 3,        // per sortie; refilled wherever missiles are
+    autoTargetAimToleranceRad: 1 * Math.PI / 180,  // "aimed" means within this of dead-on
 
     // particulates: every laser tick and every stage blast sheds dust that
     // hangs where it was knocked loose; the vacuum (V) filters it up.
@@ -272,6 +301,7 @@ var CFG_DEFAULTS = {
     killBuffLaserS: 30,       // a second boost extends this timer, never the size
     killBuffShieldChance: 0.3,
     killBuffShieldPts: 15,    // into the pool, or off a disrepair countdown
+    killBuffAutoTargetChance: 0.25,  // SPEC 3.38: +1 auto-target charge — "it might be a buff of sorts"
 
     // The quadrant (SPEC 3.10): the open campaign's sector is no longer
     // four fixed points. QUADRANT (below) holds the star/stations/planets/
@@ -392,6 +422,16 @@ var CFG_DEFAULTS = {
     // time in a fixed priority; docking still repairs everything instantly.
     knockoutChance: 0.4,     // odds a landed missile knocks something out
     repairHalfS: 90,         // seconds from 0 to 50% health, then 90 more to full
+    // SPEC 3.36 (ideas10.txt): the crew also mends the hull once every
+    // system above is whole (REPAIR_PRIORITY's own lowest rung), at HALF
+    // the system rate — Brian: "hull repairs do not happen at the same
+    // rate as other modules/components". And ALL repair work, hull or
+    // system, spends reaction mass, through spendRcs() so the usual
+    // alerts/battery flip fire the same as thrusting does; the crew
+    // simply stops rather than ever drain the tank past the floor.
+    repairHullFactor: 0.5,     // hull's own rate = the system rate x this
+    repairRcsPerPoint: 0.2,    // reaction mass per point/percent restored, hull or system alike
+    repairRcsFloor: 10,        // the crew won't spend mass below this
     repairPoolPct: 0.5,      // shields-broken: pool max multiplier at half health
     repairThrustPct: 0.5,    // thrust-broken: thrust multiplier at half health
     repairWarpRangePct: 0.5, // warp-broken: jump range multiplier at half health
@@ -479,7 +519,7 @@ var profile = null;
 var PROFILE_VERSION = 6;
 
 function defaultProfile() {
-    return { version: PROFILE_VERSION, tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
+    return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
              resources: { salvage: 0, alloy: 0 },
@@ -809,6 +849,21 @@ var MODULES = [
     // are the CFG defaults); a later tier would move heavier rocks.
     { id: 'tractor_1', name: 'tractor beam', cost: 600, mass: 10, alloy: 2,
       desc: 'Pulls a targeted small rock or core toward you instead of flying to it.',
+      cfg: {} },
+    // SPEC 3.38 (ideas10.txt): auto-target stabilizers, three tiers, each
+    // requiring the one below — same test-fit pattern as the tractor beam:
+    // CFG.autoTargetTestFit fits everyone with tier 3 for free until Brian
+    // has flown it. No cfg override (autoTargetTier() reads ownership
+    // directly, since which tier is owned decides which of three
+    // worst-case times applies, not a flat CFG value to overwrite).
+    { id: 'auto_target_1', name: 'auto-target stabilizer', cost: 500, mass: 8, alloy: 2,
+      desc: 'The stabilizers can aim the ship at your selected target for you. Slowest tier, 6 seconds worst case.',
+      cfg: {} },
+    { id: 'auto_target_2', name: 'auto-target stabilizer II', cost: 400, mass: 6, requires: 'auto_target_1',
+      desc: 'A faster tier, 4 seconds worst case.',
+      cfg: {} },
+    { id: 'auto_target_3', name: 'auto-target stabilizer III', cost: 400, mass: 4, requires: 'auto_target_2',
+      desc: 'The fastest tier, 2 seconds worst case.',
       cfg: {} },
     // SPEC 3.23: range-growth modules — each a flat +50% (docking_computer
     // doubles, matching the spec's own wording), stacking with whatever an
@@ -1475,6 +1530,9 @@ function laserBoostActive() { return Date.now() < laserBoostUntil; }
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
+var autoTargetCharges = 0; // SPEC 3.38: per-sortie pool, set from CFG.autoTargetCharges alongside missiles/chaff
+var autoTarget = null;      // { holding } while engaged; null the rest of the time
+var autoTargetNodes = null; // the steady hum's own Web Audio nodes while engaged
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var docked = null;       // { poi, approachDir } once docked; ship held, station menu active
@@ -1608,7 +1666,7 @@ var HELP_SECTIONS = [
         'I speaks your speed, the selected target, and how many targets remain.'
     ] },
     { heading: 'Targeting', items: [
-        'Tab cycles through the targets, nearest first, and speaks a bearing. Shift T, or shift Tab, cycles back the other way.',
+        'Tab cycles through the targets, nearest first, and speaks a bearing. Shift Tab cycles back the other way.',
         'T reports the selected target: name, bearing, distance, and hull, without cycling away from it.',
         'When the tick walks you onto a target and the tone goes solid, the distance is spoken at that moment.',
         'The tick tone speeds up as the selected target nears your nose.',
@@ -1616,7 +1674,8 @@ var HELP_SECTIONS = [
         'The tick comes from the side you should turn toward.',
         'A solid tone means locked on.',
         'Targets behind you sound muffled, as if behind the hull.',
-        'Shift Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.'
+        'Shift Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.',
+        function () { return 'Shift T hands the stabilizers your selected target — they aim the ship at it for you, worst case ' + CFG.autoTargetWorstTiers[CFG.autoTargetWorstTiers.length - 1] + ' seconds at the fastest tier, then hold on it ' + CFG.autoTargetHoldS + ' seconds, tracking a moving target so the lock actually lands. Never fires, never damages. Any arrow key mid-slew cancels it — you always win. Not standard gear, and from a limited pool of ' + CFG.autoTargetCharges + ' a sortie.'; }
     ] },
     { heading: 'Weapons', items: [
         'Your ship has six laser slots. Keys 1 through 6 select a slot and speak what is fitted there; Space fires the selected laser. You start with mining laser one in slot 1 and mining laser two in slot 2; the rest are empty until the station sells more.',
@@ -1646,11 +1705,12 @@ var HELP_SECTIONS = [
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
-        function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It loses guidance at once and coasts, no shield needed, so your weapons stay live. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
+        function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It goes ballistic at once and coasts, no shield needed, so your weapons stay live — a moment later you hear it pop clear. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
         function () { return 'A missile that actually lands on your hull — never a beam, never one your shields caught — can knock a subsystem offline: a laser slot, missiles, decoys, shields, the warp engine, thrust, the targeting sensor, or the cargo hold. A repair crew works the worst one automatically, one at a time, and I and F2 both name what is broken and how far along the fix is; docking always finishes the job.'; },
-        'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve it.'
+        'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve whatever is left, and pays again for another halving as long as credits allow.',
+        function () { return 'A repair crew also mends your hull once every broken system is whole, at half the system rate, spending reaction mass as it goes — it pauses rather than ever leave you unable to turn.'; }
     ] },
     { heading: 'Delivery run', items: [
         'The delivery run is the first item on the mission menu, and the shareable demo. The clock starts at once and I reads it.',
@@ -1786,10 +1846,10 @@ var KEY_DESCRIPTIONS = {
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
-    d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, so it loses guidance at once, no shield needed. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
+    d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, sending it ballistic at once, no shield needed. A moment later you hear it pop clear. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'At the mission menu, jumps to space mining.',
     tab: 'Cycle to the next target and speak its bearing. Shift Tab cycles back.',
-    t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T cycles back to the previous target.',
+    t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T hands the stabilizers your selected target instead — they aim the ship at it for you, holding through the tracking, from a limited pool. Never fires, never damages.',
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
     z: 'Tractor beam: pulls the selected rock or core toward you while mining. Z again releases it. Shift Z cycles the target zone size instead: wide, standard, or narrow.',
@@ -1799,7 +1859,7 @@ var KEY_DESCRIPTIONS = {
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
     c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ', reaches its transporter within ' + CFG.stationTransporterRange + ' once it knows you, and docks within ' + CFG.stationDockRange + ' once it trusts you, and once you have come to a full stop.'; },
-    enter: function () { return 'At the mission menu, selects the highlighted item. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run.'; },
+    enter: function () { return 'At the mission menu, selects the highlighted item. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run — repeatable, each payment halving whatever is left, as long as credits allow.'; },
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
     escape: 'Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves. Escape again also resumes.',
@@ -2415,6 +2475,114 @@ function bearingText(t) {
     return line;
 }
 
+// ---- auto-target (SPEC 3.38, ideas10.txt) ----------------------------------
+// Brian's problem, verbatim: "i just did a combat mission where i just could
+// not get the cruiser targetted." Shift+T hands the stabilizers the selected
+// target — steers the nose onto it, then holds through a few seconds of
+// continued tracking so a moving/orbiting target's lock actually lands.
+// Never fires, never damages; not standard gear, from a limited pool.
+function angleDiff(a, b) {
+    var d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+}
+function angleTowards(current, target, maxStep) {
+    var d = angleDiff(current, target);
+    if (d > maxStep) d = maxStep; else if (d < -maxStep) d = -maxStep;
+    return current + d;
+}
+// Tier 0 = not fitted at all. CFG.autoTargetTestFit (the tractor's own
+// pattern, SPEC 3.30) gives everyone tier 3 for free until Brian has flown
+// it; after that, owning auto_target_1/2/3 (each requiring the one below)
+// is the only way. Deliberately NOT read through moduleCfgOverlay — which
+// tier is owned decides WHICH of the three worst-case times applies, not a
+// flat CFG override.
+function autoTargetTier() {
+    if (CFG.autoTargetTestFit) return 3;
+    var owned = ownedModules();
+    if (owned.indexOf('auto_target_3') >= 0) return 3;
+    if (owned.indexOf('auto_target_2') >= 0) return 2;
+    if (owned.indexOf('auto_target_1') >= 0) return 1;
+    return 0;
+}
+function autoTargetFitted() { return autoTargetTier() > 0; }
+// Worst case = 180 deg of yaw or the pitch clamp, whichever is larger
+// (180 always wins today), moved at once — Brian: the fastest tier should
+// take 2 seconds from directly behind at max pitch.
+function autoTargetRateRadPerS() {
+    var tier = autoTargetTier();
+    if (!tier) return 0;
+    return Math.max(Math.PI, CFG.pitchLimit) / CFG.autoTargetWorstTiers[tier - 1];
+}
+
+function autoTargetHum(on) {
+    if (!SIM.audio.ctx) return;
+    if (on && !autoTargetNodes) {
+        var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
+        var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 180;
+        o.connect(g); g.connect(SIM.audio.uiBus);
+        o.start();
+        autoTargetNodes = { g: g, osc: o };
+        SIM.audio.ramp(g.gain, 0.08, 0.15);
+    } else if (!on && autoTargetNodes) {
+        var n = autoTargetNodes; autoTargetNodes = null;
+        SIM.audio.ramp(n.g.gain, 0.0001, 0.2);
+        setTimeout(function () { try { n.osc.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+    }
+}
+
+function releaseAutoTarget(silent) {
+    if (!autoTarget) return;
+    autoTarget = null;
+    autoTargetHum(false);
+    if (!silent) say('Auto-target released.');
+}
+
+function autoTargetKey() {
+    if (mode === 'sector') { say('Nothing to aim at in open space.'); return; }
+    var t = targets[selected];
+    if (!t || !t.alive) { say('No target selected.'); return; }
+    if (!autoTargetFitted()) { say('Auto-target not fitted.'); return; }
+    if (autoTarget) { say('Auto-target already engaged.'); return; }
+    if (autoTargetCharges <= 0) {
+        SIM.cues.play('refusal_dud');
+        say('No auto-target charges. The station refills them.');
+        return;
+    }
+    autoTargetCharges--;
+    autoTarget = { holding: false, holdRemaining: CFG.autoTargetHoldS };
+    autoTargetHum(true);
+    say('Auto-target engaged, ' + autoTargetCharges + ' left.');
+}
+
+// Called from simTick right after the manual arrow-key handling, only
+// while engaged — a held arrow this same frame releases it at once (the
+// pilot always wins) with the charge already spent. Keeps steering through
+// the whole hold, not just the initial slew, so a moving target (the
+// orbiting Cruiser that started this) doesn't slip back out once aimed.
+function updateAutoTarget(dt) {
+    if (!autoTarget) return;
+    if (keysDown.arrowleft || keysDown.arrowright || keysDown.arrowup || keysDown.arrowdown) {
+        releaseAutoTarget(true);
+        return;
+    }
+    var t = targets[selected];
+    if (!t || !t.alive) { releaseAutoTarget(true); return; }
+    var dir = norm(sub(t.pos, ship.pos));
+    var targetYaw = Math.atan2(dir.x, -dir.z);
+    var targetPitch = clamp(Math.asin(clamp(dir.y, -1, 1)), -CFG.pitchLimit, CFG.pitchLimit);
+    var maxStep = autoTargetRateRadPerS() * dt;
+    ship.yaw = angleTowards(ship.yaw, targetYaw, maxStep);
+    ship.pitch = angleTowards(ship.pitch, targetPitch, maxStep);
+    if (!autoTarget.holding) {
+        if (Math.abs(aim(t.pos).err) < CFG.autoTargetAimToleranceRad) autoTarget.holding = true;
+    } else {
+        autoTarget.holdRemaining -= dt;
+        if (autoTarget.holdRemaining <= 0) releaseAutoTarget(false);
+    }
+}
+
 // Lock hysteresis + per-target front/back lowpass, run every frame.
 function updateTargeting(dt) {
     targets.forEach(function (t) {
@@ -2623,6 +2791,16 @@ function rollKillBuff() {
         if (shield.pool < shieldPoolMax()) {
             shield.pool = Math.min(shieldPoolMax(), shield.pool + CFG.killBuffShieldPts);
             return 'Shields plus ' + CFG.killBuffShieldPts + '. ';
+        }
+        return '';
+    }
+    // SPEC 3.38 (ideas10.txt): "it might be a buff of sorts" — a fight can
+    // hand back an auto-target charge. Only if the ship can actually use
+    // one (fitted, and not already at the cap).
+    if (Math.random() < CFG.killBuffAutoTargetChance) {
+        if (autoTargetFitted() && autoTargetCharges < CFG.autoTargetCharges) {
+            autoTargetCharges++;
+            return 'Auto-target charge recovered, ' + autoTargetCharges + ' left. ';
         }
         return '';
     }
@@ -3475,10 +3653,19 @@ function fireChaff() {
     var th = threat, left = chaff + ' left.';
     if (th && th.type === 'missile' && th.guided) {
         th.guided = false; th.coast = 0;
+        // SPEC 3.37 (ideas10.txt): this flag is the ONLY thing that
+        // distinguishes a decoy-spoofed ballistic missile from one a
+        // raised shield already dropped guidance on (shieldKey does the
+        // same guided=false/coast=0 reset) — it's what lets the pop later,
+        // in stepThreat, announce "Decoy took it." only for this one.
+        th.spoofed = true;
         // Veteran and Ace answer a spoof fast: the next attack comes while
         // the decoyed missile is still popping, not after the usual gap.
         if (TIERS[tierIdx].alwaysHostile) th.followUp = true;
-        say('Decoy away. Missile spoofed. ' + left);
+        // The launch no longer claims "spoofed" outright — the missile is
+        // merely going ballistic; the outcome comes a second later from
+        // the pop itself (endThreat's own line in stepThreat).
+        say('Decoy away. Missile going ballistic. ' + left);
     } else if (th && th.type === 'missile') {
         say('Decoy away. That missile was already ballistic. ' + left);
     } else if (th && th.type === 'laser') {
@@ -3546,7 +3733,15 @@ function stepThreat(dt) {
         th.coast += dt;
         if (th.coast > CFG.missileCoastS) {
             SIM.audio.noiseBurst(th.pos, 300, 0.35, 1200);
+            // SPEC 3.37 (ideas10.txt): the confirmation Brian asked for —
+            // a decoy-spoofed missile popping clear says so, at its own
+            // position, distinctly from chaff_burst's launch sound. A
+            // shield-dropped ballistic missile (guided=false via shieldKey,
+            // no th.spoofed) still pops silently here, unchanged.
+            var wasSpoofed = th.spoofed;
+            var pos = th.pos;
             endThreat();
+            if (wasSpoofed) { SIM.cues.play('decoy_took', { pos: pos }); say('Decoy took it.'); }
             return;
         }
     }
@@ -3555,7 +3750,12 @@ function stepThreat(dt) {
     if (len(sub(th.pos, ship.pos)) < CFG.missileHit * 1.5) {
         endThreat();
         if (shield.up) { absorbShield(CFG.enemyMissileDamage); say('Shields absorb the missile.'); }
-        else hullHit(CFG.enemyMissileDamage, t.name + ' missile', true);
+        // SPEC 3.37 (ideas10.txt): rare, but a spoofed missile's ballistic
+        // path can still clip the hull before it pops — silence there
+        // would read as "the decoy lied," so hullHit gets a prefix naming
+        // it, folded into its own single say() (never a second call).
+        else hullHit(CFG.enemyMissileDamage, t.name + ' missile', true,
+                      th.spoofed ? 'Spoofed missile clipped you.' : '');
     } else if (th.age > CFG.enemyMissileLifeS) {
         SIM.audio.noiseBurst(th.pos, 300, 0.35, 1200);
         endThreat();
@@ -3567,7 +3767,7 @@ function stepThreat(dt) {
 // so the raw value IS the percent. `isMissile` (SPEC 3.27) is true only for
 // an enemy missile actually landing on the hull — the one source that can
 // knock a subsystem offline; a beam or a collision never rolls for it.
-function hullHit(dmg, source, isMissile) {
+function hullHit(dmg, source, isMissile, prefix) {
     hull = Math.max(0, hull - dmg);
     SIM.cues.play('hull_hit');
     if (hull <= 0) { shipDestroyed(source); return; }
@@ -3581,7 +3781,10 @@ function hullHit(dmg, source, isMissile) {
         if (spilled > 0) { ore -= spilled; spillText = ' ' + spilled + ' ore spills from the hold.'; }
     }
     var knockText = isMissile ? knockoutSystem() : '';
-    say('Your hull ' + hull + '.' + spillText + knockText);
+    // SPEC 3.37 (ideas10.txt): an optional lead-in, folded into this same
+    // say() (never a second call) — used today only for a spoofed missile
+    // that still clipped the hull.
+    say((prefix ? prefix + ' ' : '') + 'Your hull ' + hull + '.' + spillText + knockText);
 }
 
 function shipDestroyed(source) {
@@ -3604,7 +3807,7 @@ function shipDestroyed(source) {
         var tail = tugged
             ? 'Tug dispatched from ' + tug.poiData.name + ', ' + Math.ceil(tug.total) + ' seconds' +
               (tug.total > CFG.tugBaseS ? ' — no trusted station nearby, this is the long way home' : '') +
-              '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait, once.'
+              '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait — pays again for another halving, as long as credits allow.'
             : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
         say('Hull breached by ' + source + '. Ship lost. ' + tail);
     }, 900);
@@ -3761,7 +3964,9 @@ function shieldReset() {
 // (usable, degraded) to 100 (fully back). Docking still repairs everything
 // instantly, unchanged — see repairAllSystems().
 var shipSystems = {};      // id -> health 0-100; absent (or 100) = fully OK
-var activeRepairId = null; // which system the crew is currently working (for the "crew starts" cue)
+var activeRepairId = null; // which system (or 'hull') the crew is currently working
+var repairRcsPaused = false; // SPEC 3.36: true while parked at the reaction-mass floor
+var repairRcsSpentSortie = 0; // SPEC 3.36: total reaction mass the crew has spent, this sortie — F2
 
 // Fixed knockout weights (Brian's list) for everything except laser slots,
 // which are added dynamically below — one entry per FITTED slot, weight 3
@@ -3781,8 +3986,10 @@ var SYSTEM_NAMES = {
 };
 // The crew's fixed work order (Brian's list) — independent of draw weight.
 // Every laser slot shares one priority tier; ties among them resolve by
-// slot index (lowest first).
-var REPAIR_PRIORITY = ['shields', 'thrust', 'sensor', 'laser', 'missiles', 'decoys', 'warp', 'cargo'];
+// slot index (lowest first). 'hull' (SPEC 3.36, ideas10.txt) is the crew's
+// lowest rung, not a shipSystems entry — the hull only ever becomes the
+// crew's job once every system above is whole.
+var REPAIR_PRIORITY = ['shields', 'thrust', 'sensor', 'laser', 'missiles', 'decoys', 'warp', 'cargo', 'hull'];
 
 function systemName(id) {
     var m = /^laser(\d+)$/.exec(id);
@@ -3848,32 +4055,65 @@ function knockoutSystem() {
 // climbing at a steady rate from 0 to 100 over repairHalfS*2 seconds (half
 // of that to reach the 50% "usable" mark). Runs from simTick on the same
 // gate as everything else — frozen under any overlay, like the rest of
-// the sim.
+// the sim. SPEC 3.36 (ideas10.txt) added two things on top, both true for
+// systems AND the hull alike: the hull becomes the crew's job once every
+// system is whole (REPAIR_PRIORITY's own lowest rung, at HALF the system
+// rate — Brian: "hull repairs do not happen at the same rate as other
+// modules/components"), and every point of repair costs reaction mass,
+// through spendRcs() so the usual 50/25% alerts and the battery flip fire
+// exactly as thrusting does — the crew simply stops, at a floor well
+// short of empty, rather than ever strand the ship unable to turn.
 function brokenSystemIds() {
     return Object.keys(shipSystems).filter(function (id) { return shipSystems[id] < 100; });
 }
 function updateRepairCrew(dt) {
     var broken = brokenSystemIds();
-    if (!broken.length) { activeRepairId = null; return; }
-    broken.sort(function (a, b) {
-        var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
-        return pa !== pb ? pa - pb : (a < b ? -1 : 1);
-    });
-    var id = broken[0];
-    if (id !== activeRepairId) {
-        activeRepairId = id;
-        SIM.audio.playAsset('repair_crew', 0.4);
+    var targetId = null;
+    if (broken.length) {
+        broken.sort(function (a, b) {
+            var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
+            return pa !== pb ? pa - pb : (a < b ? -1 : 1);
+        });
+        targetId = broken[0];
+    } else if (hull < CFG.shipHull) {
+        targetId = 'hull';
     }
-    var before = shipSystems[id];
-    var after = Math.min(100, before + (100 / (CFG.repairHalfS * 2)) * dt);
-    shipSystems[id] = after;
+    if (!targetId) { activeRepairId = null; repairRcsPaused = false; return; }
+
+    var basePerSecond = 100 / (CFG.repairHalfS * 2);
+    var perSecond = targetId === 'hull' ? basePerSecond * CFG.repairHullFactor : basePerSecond;
+    var amount = perSecond * dt;
+    var rcsCost = amount * CFG.repairRcsPerPoint;
+    if (rcs - rcsCost < CFG.repairRcsFloor) {
+        if (!repairRcsPaused) { repairRcsPaused = true; say('Damage control paused: reaction mass low.'); }
+        return;
+    }
+    repairRcsPaused = false;
+    spendRcs(rcsCost);
+    repairRcsSpentSortie += rcsCost;
+
+    if (targetId !== activeRepairId) {
+        activeRepairId = targetId;
+        SIM.audio.playAsset('repair_crew', 0.4);
+        if (targetId === 'hull') say('Damage control on the hull.');
+    }
+
+    if (targetId === 'hull') {
+        var beforeHull = hull;
+        hull = Math.min(CFG.shipHull, hull + amount);
+        if (beforeHull < CFG.shipHull && hull >= CFG.shipHull) say('Hull repaired.');
+        return;
+    }
+    var before = shipSystems[targetId];
+    var after = Math.min(100, before + amount);
+    shipSystems[targetId] = after;
     if (before < 50 && after >= 50) {
         SIM.cues.play('repair_half');
-        say(systemName(id) + ' at 50 percent, usable.');
+        say(systemName(targetId) + ' at 50 percent, usable.');
     } else if (after >= 100) {
-        delete shipSystems[id];
+        delete shipSystems[targetId];
         activeRepairId = null;
-        say(systemName(id) + ' repaired.');
+        say(systemName(targetId) + ' repaired.');
     }
 }
 
@@ -3882,6 +4122,8 @@ function updateRepairCrew(dt) {
 function repairAllSystems() {
     shipSystems = {};
     activeRepairId = null;
+    repairRcsPaused = false;
+    repairRcsSpentSortie = 0;
 }
 
 // ---- particulate debris -----------------------------------------------------
@@ -4294,6 +4536,9 @@ function statusReport() {
         len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
         line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
     }
+    if (mode !== 'sector' && autoTargetFitted()) {
+        line += autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge. ' : ' auto-target charges. ');
+    }
     line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
           : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
@@ -4395,6 +4640,7 @@ function runLogKey(lname) {
 function startDemo() {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    autoTargetCharges = CFG.autoTargetCharges;
     refillRcs(); collisionDamage = 0; repairAllSystems();
     sectorHome = null;
     demo = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
@@ -4494,7 +4740,10 @@ function buildShipLines() {
     function line(text) { lines.push({ text: text, heading: false }); }
 
     heading('Hull');
-    line('Hull ' + hull + ' percent.');
+    line('Hull ' + hull + ' percent.' + (activeRepairId === 'hull' ? ' Damage control on it.' : ''));
+    if (repairRcsSpentSortie > 0) {
+        line('Repairs have spent ' + repairRcsSpentSortie.toFixed(1) + ' reaction mass this sortie.');
+    }
     if (collisionDamage > 0) {
         line(Math.ceil(collisionDamage) + ' points of collision damage owed, billed at the next landing.');
     }
@@ -4586,6 +4835,15 @@ function buildShipLines() {
              (ownedModules().indexOf('tractor_1') < 0 ? ' Test fit.' : ''));
     }
 
+    if (autoTargetFitted()) {
+        heading('Auto-target');
+        var atTier = autoTargetTier();
+        line('Tier ' + atTier + ', ' + CFG.autoTargetWorstTiers[atTier - 1] + ' seconds worst case, holds ' +
+             CFG.autoTargetHoldS + ' seconds once aimed.' +
+             (ownedModules().indexOf('auto_target_1') < 0 ? ' Test fit.' : ''));
+        line(autoTargetCharges + (autoTargetCharges === 1 ? ' charge left.' : ' charges left.'));
+    }
+
     heading('Sensor');
     var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
     ZONES.forEach(function (z, i) {
@@ -4600,6 +4858,9 @@ function buildShipLines() {
                   : ownedModules().indexOf('repair_crew_1') >= 0 ? 1 : 0;
     line('Tier ' + crewTier + ', ' + CFG.repairHalfS + ' seconds to half, ' +
          (CFG.repairHalfS * 2) + ' to full.');
+    line('Once every system is whole, the hull too, at half that rate. ' +
+         'Every repair costs ' + CFG.repairRcsPerPoint + ' reaction mass a point, ' +
+         'pausing below ' + CFG.repairRcsFloor + '.');
 
     heading('Systems');
     var broken = brokenSystemIds();
@@ -4996,7 +5257,8 @@ function dockAtStation(poi, extra) {
     } else {
         hull = CFG.shipHull;
     }
-    missiles = CFG.missileMax; chaff = CFG.chaffMax; refillWarp(); refillRcs(); repairAllSystems();
+    missiles = CFG.missileMax; chaff = CFG.chaffMax; autoTargetCharges = CFG.autoTargetCharges;
+    refillWarp(); refillRcs(); repairAllSystems();
     var service = billLine +
                   (rearmed ? 'Missiles rearmed to ' + CFG.missileMax + '. ' : '') +
                   (restocked ? 'Decoys restocked to ' + CFG.chaffMax + '. ' : '') +
@@ -5112,7 +5374,8 @@ function startTug() {
     var pilotPos = (mode === 'sector') ? ship.pos : (sectorHome ? sectorHome.pos : ship.pos);
     if (demo) {
         var demoPoi = nearestStationTo(pilotPos);
-        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: demoPoi, paid: false };
+        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: demoPoi, paid: 0,
+                remindedFirst: false, reminded30: false };
         return;
     }
     // SPEC 3.23: replaces the old influence-halving model entirely — favor
@@ -5122,24 +5385,41 @@ function startTug() {
     // tugHomeFactor times the base.
     var trusted = nearestTrustedStationTo(pilotPos);
     if (trusted) {
-        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: trusted, paid: false };
+        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: trusted, paid: 0,
+                remindedFirst: false, reminded30: false };
         return;
     }
     var meridianEntry = QUADRANT.filter(function (q) { return q.name === 'Station Meridian'; })[0];
     var total = CFG.tugBaseS * CFG.tugHomeFactor;
-    tug = { total: total, remaining: total, poiData: { name: meridianEntry.name, pos: ringPos(meridianEntry) }, paid: false };
+    tug = { total: total, remaining: total, poiData: { name: meridianEntry.name, pos: ringPos(meridianEntry) },
+             paid: 0, remindedFirst: false, reminded30: false };
 }
 
+// SPEC 3.35 (ideas10.txt): the countdown also teaches — a lost pilot is
+// reminded, twice, that F2 reads the ship and F3 the hold, at the first
+// announcement (whatever it is) and again at CFG.tugReminderMarkS
+// (30s), never both in the same say() and never more than once each.
+var TUG_REMINDER = ' F2 reads your ship, F3 your hold.';
 function updateTug(dt) {
     var beforeStep = Math.floor(tug.remaining / 10);
     tug.remaining = Math.max(0, tug.remaining - dt);
     var afterStep = Math.floor(tug.remaining / 10);
     if (tug.remaining <= 0) { tugArrives(); return; }
-    if (afterStep < beforeStep) say('Tug in ' + Math.ceil(tug.remaining) + ' seconds.');
+    if (afterStep < beforeStep) {
+        var extra = '';
+        if (!tug.remindedFirst) { tug.remindedFirst = true; extra = TUG_REMINDER; }
+        else if (!tug.reminded30 && afterStep === Math.floor(CFG.tugReminderMarkS / 10)) {
+            tug.reminded30 = true;
+            extra = TUG_REMINDER;
+        }
+        say('Tug in ' + Math.ceil(tug.remaining) + ' seconds.' + extra);
+    }
 }
 
+// SPEC 3.35 (ideas10.txt): repeatable — every payment halves whatever's
+// left, as many times as credits allow (a fresh 100-credit pilot buys
+// exactly two: 90 -> 45 -> 22.5). Only "not enough credits" ever refuses.
 function payTugFee() {
-    if (tug.paid) { say('Already paid. Tug in ' + Math.ceil(tug.remaining) + ' seconds.'); return; }
     if (profile.credits < CFG.tugFeeCredits) {
         SIM.cues.play('refusal_wait');
         say('Need ' + CFG.tugFeeCredits + ' credits to rush the tug; you have ' + profile.credits + '.');
@@ -5147,9 +5427,10 @@ function payTugFee() {
     }
     profile.credits -= CFG.tugFeeCredits;
     tug.remaining /= 2;
-    tug.paid = true;
+    tug.paid++;
     saveProfile();
-    say('Paid ' + CFG.tugFeeCredits + ' credits. Tug in ' + Math.ceil(tug.remaining) + ' seconds.');
+    var offer = profile.credits >= CFG.tugFeeCredits ? ' Enter pays another ' + CFG.tugFeeCredits + '.' : '';
+    say('Paid ' + CFG.tugFeeCredits + ' credits. Tug in ' + Math.ceil(tug.remaining) + ' seconds.' + offer);
 }
 
 // Docked exactly like flying in and calling the station, minus the flying —
@@ -5506,13 +5787,13 @@ var COMM_ITEMS = [
 var TRANSPORTER_ITEMS = [
     { label: 'Rearm',
       desc: function () {
-          return (missiles < CFG.missileMax || chaff < CFG.chaffMax)
-              ? 'Restock missiles and decoys.' : 'Missiles and decoys already full.';
+          return (missiles < CFG.missileMax || chaff < CFG.chaffMax || autoTargetCharges < CFG.autoTargetCharges)
+              ? 'Restock missiles, decoys, and auto-target charges.' : 'Missiles, decoys, and auto-target already full.';
       },
       run: function () {
-          var did = missiles < CFG.missileMax || chaff < CFG.chaffMax;
-          missiles = CFG.missileMax; chaff = CFG.chaffMax;
-          say(did ? 'Missiles and decoys restocked.' : 'Already full.');
+          var did = missiles < CFG.missileMax || chaff < CFG.chaffMax || autoTargetCharges < CFG.autoTargetCharges;
+          missiles = CFG.missileMax; chaff = CFG.chaffMax; autoTargetCharges = CFG.autoTargetCharges;
+          say(did ? 'Missiles, decoys, and auto-target restocked.' : 'Already full.');
       } },
     { label: 'Sell ore',
       desc: function () {
@@ -6449,7 +6730,9 @@ function onKeyDown(e) {
         return;
     }
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
-    // 'w' and would otherwise just be a held thrust key.
+    // 'w' and would otherwise just be a held thrust key. SPEC 3.38 rebinds
+    // Shift+T specifically from cycle-back to auto-target; Shift+Tab keeps
+    // cycle-back alone.
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
         if (e.repeat) return;
         if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
@@ -6457,6 +6740,7 @@ function onKeyDown(e) {
         if (over()) { say('Enter restarts.'); return; }
         if (lname === 'w') toggleAutoThrust();
         else if (lname === 'r') radarPing();
+        else if (lname === 't') autoTargetKey();
         else cycleTarget(-1);
         return;
     }
@@ -6551,7 +6835,7 @@ function onKeyDown(e) {
                 // above instead, so `lost` alongside `sectorHome` no longer
                 // happens at this point.)
                 if (mode === 'mining' && !sectorHome) ore = 0;
-                if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; }
+                if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; autoTargetCharges = CFG.autoTargetCharges; }
                 if (lost || !sectorHome) { hull = CFG.shipHull; repairAllSystems(); }
                 newGame();
                 say(mode === 'mining' ? miningIntro() : combatIntro());
@@ -6651,6 +6935,9 @@ function simTick(dt) {
     if (keysDown.arrowup)    ship.pitch += CFG.turnRate / mass * dt;
     if (keysDown.arrowdown)  ship.pitch -= CFG.turnRate / mass * dt;
     ship.pitch = clamp(ship.pitch, -CFG.pitchLimit, CFG.pitchLimit);
+    // SPEC 3.38: after the manual keys, so a held arrow this same frame
+    // (checked inside updateAutoTarget) cancels it — the pilot always wins.
+    if (autoTarget) updateAutoTarget(dt);
 
     // Thrust, brake, damping, cap — with each maneuver's own thruster sound.
     // Reaction mass (SPEC 2.14): W, S, and the passive stabilizer damping
@@ -6833,6 +7120,10 @@ window.__sim = {
             tractor: { active: tractor.active, fitted: tractorFitted(),
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
                        dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null },
+            autoTarget: { active: !!autoTarget, holding: autoTarget ? autoTarget.holding : false,
+                          holdRemaining: autoTarget ? Math.round(autoTarget.holdRemaining * 10) / 10 : null,
+                          charges: autoTargetCharges, tier: autoTargetTier(),
+                          yaw: Math.round(deg(ship.yaw) * 10) / 10, pitch: Math.round(deg(ship.pitch) * 10) / 10 },
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), ports: (currentQuadrant() && currentQuadrant().ports) || {},
                                   version: profile.version, alloy: profile.resources.alloy,
@@ -6958,6 +7249,11 @@ window.__sim = {
         }
         if (o && o.pos !== undefined) ship.pos = v3(o.pos.x, o.pos.y, o.pos.z);
         if (o && o.vel !== undefined) ship.vel = v3(o.vel.x, o.vel.y, o.vel.z);
+        // SPEC 3.38 test hook: force the ship's own facing directly, in
+        // degrees — needed to engineer auto-target's own worst case
+        // (dead behind, max pitch) without hand-flying there.
+        if (o && o.yawDeg !== undefined) ship.yaw = o.yawDeg * Math.PI / 180;
+        if (o && o.pitchDeg !== undefined) ship.pitch = clamp(o.pitchDeg * Math.PI / 180, -CFG.pitchLimit, CFG.pitchLimit);
         if (o && o.collisionDamage !== undefined) collisionDamage = o.collisionDamage;
         // Live, never saved: a test sets beacons off without touching the profile.
         if (o && o.beacons !== undefined) beaconMode = o.beacons;
@@ -7167,6 +7463,7 @@ function resumeFromMenu() {
 function startMission(m) {
     menuOpen = false;
     ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    autoTargetCharges = CFG.autoTargetCharges;
     refillRcs(); collisionDamage = 0; repairAllSystems();
     newGame(m);
     if (m === 'sector') placeAtStationStart();
@@ -7332,6 +7629,20 @@ function init() {
     liveEl = document.getElementById('announce');
     statusEl = document.getElementById('status');
 
+    // SPEC 3.39 (ideas10.txt): the Press-Enter page was silent until Enter
+    // — say() already works here (liveEl just got assigned above; it's an
+    // aria-live div, not audio, so it needs no AudioContext), so speak it
+    // at load, then again if it's missed: once at beginRemindFirstMs, then
+    // every beginRemindEveryMs after that, both cleared the instant the
+    // begin gesture fires below.
+    var BEGIN_LINE = 'Headless Space Sim. Press Enter to begin. Wear headphones.';
+    var beginRemindInterval = null;
+    say(BEGIN_LINE);
+    var beginRemindTimeout = setTimeout(function () {
+        say(BEGIN_LINE);
+        beginRemindInterval = setInterval(function () { say(BEGIN_LINE); }, CFG.beginRemindEveryMs);
+    }, CFG.beginRemindFirstMs);
+
     // ?run=delivery in the URL skips the menu and jumps straight into the
     // timed delivery run after the Press-Enter gesture — a shareable link
     // for the demo, e.g. https://.../?run=delivery
@@ -7339,6 +7650,8 @@ function init() {
     var autoRun = params.get('run');
 
     initBtn.addEventListener('click', function () {
+        clearTimeout(beginRemindTimeout);
+        clearInterval(beginRemindInterval);
         SIM.audio.audioStart();                    // must live inside the user gesture
         applySoundLevels();
         initBtn.style.display = 'none';

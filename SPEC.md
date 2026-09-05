@@ -1935,10 +1935,11 @@ built: 3.33 favor second pass, DONE → 3.34 a full stop to dock, DONE →
 the lab second pass L.1b/L.4b/L.5b/L.8b, DONE → 3.32 reaction mass,
 DONE) → **ideas11, DONE** (Brian, 2026-09-05, from playing the build
 above: the home-station favor correction folded into 3.33, DONE → L.10
-"Be the Way" voices, DONE) → **ideas10.txt, next** (Brian, 2026-09-05,
-from flying: 3.39 the first screen speaks → 3.40 the lab links home →
-3.37 decoys confirmed and heard → 3.35 the tug second pass → 3.36 the
-crew works the hull → 3.38 auto-target) → **Brian flies everything since
+"Be the Way" voices, DONE) → **ideas10.txt, DONE** (Brian, 2026-09-05,
+from flying: 3.39 the first screen speaks, DONE → 3.40 the lab links
+home, DONE → 3.37 decoys confirmed and heard, DONE → 3.35 the tug second
+pass, DONE → 3.36 the crew works the hull, DONE → 3.38 auto-target,
+DONE) → **Brian flies everything since
 3.24** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
@@ -3843,7 +3844,7 @@ note there. Seven items, all small except the last, all before quadrant
 then the possible bug, then the tug, the hull, and the one real new
 system). Every number is a placeholder for Brian's ear.
 
-#### 3.39 The first screen speaks, and repeats (ideas10.txt)
+#### 3.39 The first screen speaks, and repeats (ideas10.txt) — DONE
 
 - The Press-Enter-to-Begin page is silent until Enter. Brian: announce
   it, and if the player misses it, again after 10 seconds and every
@@ -3860,7 +3861,24 @@ system). Every number is a placeholder for Brian's ear.
 - Test: load, hear the line at 0, 10, 30, 50 s; press Enter at 35 s and
   confirm nothing speaks at 50.
 
-#### 3.40 The lab links home (ideas10.txt)
+**DONE (Round 26, Sonnet).** Built exactly as specced: `say(BEGIN_LINE)`
+right after `liveEl` is assigned in `init()` (before the AudioContext
+exists — the aria-live div doesn't need one), then a `setTimeout` at
+`CFG.beginRemindFirstMs` (10,000) that re-speaks the line and starts a
+`setInterval` at `CFG.beginRemindEveryMs` (20,000); `initBtn`'s own click
+handler clears both at the top, before anything else runs. The repeat
+works for free off `say()`'s own existing hair-space mechanism — the
+identical string spoken again is heard as a new announcement, not
+silently dropped. Machine-tested at a local server: a fresh load reads
+the line immediately and it's still unchanged (byte-identical, no hair
+space) at 2.8s; forcing real time to the 10s mark (a single continuous
+`setTimeout`-based wait, since this needed genuine wall-clock time, not
+`__sim.step()`) showed the hair-space repeat had landed by 10.4s and not
+before; clicking Enter and then waiting 22 more real seconds confirmed
+neither timer ever fires again. Zero console errors. Not yet heard by
+Brian.
+
+#### 3.40 The lab links home (ideas10.txt) — DONE
 
 - `soundlab.html` is reached from the mission menu's Sound Lab item but
   has no way back except the browser's Back. Brian: links to the main
@@ -3875,7 +3893,17 @@ system). Every number is a placeholder for Brian's ear.
 - Test: Tab from the start gate reaches the link before the Start
   button; following it lands on the mission menu.
 
-#### 3.37 Decoys: confirmed working, and heard working (ideas10.txt)
+**DONE (Round 26, Sonnet).** Three plain `<a href="index.html">Back to
+the game</a>` links: on the start gate (before the Start audio button in
+DOM order, so Tab reaches it first — a screen-reader user can leave
+without ever starting audio), first in the Quick Navigation list, and
+once more at the very bottom of the page content. No custom key
+handling — native anchors, Tab and Enter already work. Machine-tested:
+`read_page` confirmed the start-gate link precedes the Start button in
+tab order; clicking it navigated to `index.html` and landed on the
+mission menu. Zero console errors.
+
+#### 3.37 Decoys: confirmed working, and heard working (ideas10.txt) — DONE
 
 - Brian: "I'm not certain that decoys are working, or at least need a
   separate announcement or sound that they worked." Two jobs, in order.
@@ -3903,7 +3931,48 @@ system). Every number is a placeholder for Brian's ear.
 - Test: the proof above; the two lines a second apart; a beam-only
   threat still gets today's "Decoys do nothing against a laser."
 
-#### 3.35 The tug, second pass: 100 credits, a second rush, and a wait that teaches (ideas10.txt)
+**DONE (Round 26, Sonnet).** The proof came first, and decoys were
+never broken: `fireChaff()`'s existing `th.guided = false; th.coast =
+0;` already sent a spoofed missile properly ballistic, and `stepThreat`'s
+existing `coast > CFG.missileCoastS` branch already popped it clear with
+no hull contact — this round added a `th.spoofed` flag (set only by
+`fireChaff`, never by the shield-drop branch that does the same guided/
+coast reset) so the pop can tell a decoy-spoofed miss from a shield-
+dropped one, a new `decoy_took` cue (two quick ascending notes at the
+missile's own position, on the world bus — deliberately not
+`chaff_burst`'s crackle, which stays the launch sound) played there with
+"Decoy took it.", and the launch line itself dropped its premature
+"Missile spoofed" for "Decoy away. Missile going ballistic." — the actual
+confirmation now comes a beat later, from the pop, timed by the missile's
+own real coast delay (no artificial timer needed; SPEC 2.15's "never two
+say() in one tick" rule is satisfied for free since launch and pop are
+already seconds apart). The rare clip case got a matching line:
+`hullHit()` gained an optional `prefix` parameter, folded into its
+existing single `say()`, used today only for "Spoofed missile clipped
+you." ahead of the hull number.
+Machine-tested at a local server end to end, against a REAL live guided
+missile (not simulated) — the harder part of this item, since the
+standalone Combat drill's ships hold fire until hit and this project's
+own mining lasers plus Rookie's ×2 ship multiplier one-shot most of the
+roster (confirmed the hard way: a full-aim burst killed a Raider, then a
+Cruiser, before the fix — aiming AWAY from the target instead turned out
+to skip `damageTarget` entirely, since `beamTick` only calls it when
+`dmg > 0`, so a dud shot doesn't provoke either). The method that
+actually worked: fire a full-aim burst at the Cruiser (guaranteed real
+damage, hence a real provoke) while repeatedly `poke({enemyHp: 999})`-ing
+it back up between ticks so it survives — Rookie's Cruiser is
+`missileOnly`, so once hostile its first attack is always a missile,
+never a coin flip. Confirmed: the guided threat appeared
+(`state().threat.guided === true`); D flipped it to `guided: false` and
+spoke "Decoy away. Missile going ballistic. 3 left."; stepping time past
+`missileCoastS` produced "Decoy took it." with the hull untouched at
+100; forcing a fresh spoofed missile's position onto the ship's own
+(`poke({pos: threat.pos})`) before the coast timer expired produced
+"Spoofed missile clipped you. Your hull 75." with the expected 25-point
+hit. Zero console errors. Not yet heard by Brian — the confirmation
+sound is new and unheard.
+
+#### 3.35 The tug, second pass: 100 credits, a second rush, and a wait that teaches (ideas10.txt) — DONE
 
 - **100 credits to start.** `defaultProfile().credits` 0 → `startCredits`
   100. New profiles only — no migration adds money to a save.
@@ -3928,7 +3997,36 @@ system). Every number is a placeholder for Brian's ear.
   Enter → "Need 50 credits"; the two reminder marks speak the clause
   once each; a drill death is unchanged.
 
-#### 3.36 The repair crew works the hull (ideas10.txt)
+**DONE (Round 26, Sonnet).** `CFG.startCredits` (100) replaces
+`defaultProfile()`'s hardcoded 0 — a save with real data still overwrites
+it via `loadProfile`'s own `Object.assign(profile, saved)`, so no
+migration adds money to an existing profile, only a genuinely fresh one
+gets 100. `tug.paid` is now a count, not a boolean; `payTugFee()` dropped
+its old "already paid" refusal entirely — only "not enough credits" ever
+refuses now — and offers "Enter pays another 50." in the same line
+whenever the remaining balance still covers it. `updateTug`'s own
+10-second countdown gained `TUG_REMINDER` (" F2 reads your ship, F3 your
+hold."), appended once at the FIRST boundary crossing after death
+(`tug.remindedFirst`) and once more at whichever crossing first lands at
+or under `CFG.tugReminderMarkS` (30s, `tug.reminded30`) — mutually
+exclusive, so a single announcement never carries the clause twice.
+Machine-tested at a local server via a real Contested Zone kill (not a
+drill — `tugCandidate()` needs `sectorHome`): a fresh profile read 100
+credits on F3 before the fight; after death, Enter → "Paid 50 credits.
+Tug in 45 seconds. Enter pays another 50." → Enter → "Paid 50 credits.
+Tug in 23 seconds." (no offer, 0 credits left) → Enter → "Need 50
+credits to rush the tug; you have 0."; a SECOND fresh death (no
+payments this time) confirmed both reminder marks firing exactly once
+each, at the first boundary and again at the 30s mark, via
+`__sim.step()`-driven ticks (one cosmetic wrinkle found along the way,
+not a bug: `shipDestroyed`'s own delayed 900ms "Hull breached..."
+message can transiently overwrite whatever the tug's own countdown just
+said, in the same visible `announce` div — the flags underneath are set
+correctly regardless of which text a screen reader happens to catch,
+and this race predates this round, unrelated to the repeatable fee).
+Zero console errors. Not yet heard or flown by Brian.
+
+#### 3.36 The repair crew works the hull (ideas10.txt) — DONE
 
 - Brian: "repair crews should work on the hull when it gets damaged, so
   that if a player takes damage but their shields recharge, they can
@@ -3982,7 +4080,38 @@ system). Every number is a placeholder for Brian's ear.
   0.2 a percent point and also pauses at the floor (3.27's crew, same
   rule); the modules change the rate and nothing else.
 
-#### 3.38 Auto-target — the stabilizers aim the ship (ideas10.txt)
+**DONE (Round 26, Sonnet).** `REPAIR_PRIORITY` gained `'hull'` as its
+lowest rung; `updateRepairCrew` now picks a `targetId` — the highest-
+priority broken system, or `'hull'` once none are broken and
+`hull < CFG.shipHull` — and, before doing ANY work, computes that
+frame's reaction-mass cost and checks it against `CFG.repairRcsFloor`
+(10): short of it, the crew freezes in place (hull OR system, whichever
+it was on) and speaks "Damage control paused: reaction mass low." once
+(`repairRcsPaused`, cleared the instant mass allows work again); Reserved
+mass gates BOTH the hull and every system's repair through the same
+`spendRcs()` call systems already had none of before this round, so the
+usual 50/25% alerts and the battery flip fire identically to thrusting.
+Hull's own rate is the system rate x `CFG.repairHullFactor` (0.5); a new
+`repairRcsSpentSortie` accumulator (reset in `repairAllSystems()`, same
+as `collisionDamage`) feeds a new F2 Hull line. Machine-tested at a
+local server, all via `__sim.step()` for determinism: hull poked to 80
+with nothing else broken rose to exactly 82.778 over 10 real-sim
+seconds (25/90 x 10, matching the spec's own formula bit for bit) while
+reaction mass fell by exactly 4.0 over the FULL climb from 80 to 100 (20
+points x 0.2/point — confirmed over a longer window after a shorter one
+showed only rounded integers and looked briefly like double the
+expected cost); "Hull repaired." fired once at 100; knocking out the
+sensor mid-repair froze the hull in place (a separate, real check —
+hull genuinely unmoved, not just under a rounding threshold) while the
+crew worked the sensor first, confirming the priority rule reaches the
+new rung too; forcing mass down near the floor produced the pause line
+and a genuinely frozen hull (both hull and mass unchanged over 5 more
+seconds), and restoring mass resumed work without any further prompt;
+F2's Hull heading read "Damage control on it." plus the cumulative mass
+line, and the Repair crew heading read its own new rate/cost/floor
+sentence. Zero console errors. Not yet heard or flown by Brian.
+
+#### 3.38 Auto-target — the stabilizers aim the ship (ideas10.txt) — DONE
 
 - Brian's problem, verbatim: "i just did a combat mission where i just
   could not get the cruiser targetted." The cruiser orbits; a blind
@@ -4011,7 +4140,7 @@ system). Every number is a placeholder for Brian's ear.
 - **The rate, from the worst case.** Brian: enemy directly behind and
   at max height, the fastest tier takes 2 seconds. Worst case = 180° of
   yaw plus `pitchLimit` (whatever the pitch clamp is) of pitch, moving
-  together → `autoTargetRate = max(180, pitchMax) / autoTargetWorstS`
+  together → `autoTargetRate = max(180, pitchLimit) / autoTargetWorstS`
   with `autoTargetWorstS` **2** for the fastest tier, **4** and **6**
   for the two slower ones (placeholders). Mass (1.7's `shipMass`) does
   NOT slow it — the tier is the number Brian tunes.
@@ -4034,6 +4163,55 @@ system). Every number is a placeholder for Brian's ear.
   mid-slew releases it and the charge is gone; three presses then a
   refusal; docking refills; the kill-buff roll adds one; Shift+Tab
   still cycles back and Shift+T no longer does.
+
+**DONE (Round 26, Sonnet).** Shift+T split out of the shared shift-chord
+block (which still handles Shift+W/Tab/R) into its own `autoTargetKey()`
+call; Shift+Tab keeps cycling back, untouched. `autoTargetTier()` reads
+ownership directly (`CFG.autoTargetTestFit`, then `auto_target_3/2/1` in
+`ownedModules()`) rather than through `moduleCfgOverlay()` — deliberately,
+since which tier is owned decides WHICH of three worst-case times
+applies, not a flat value to overwrite (the tractor beam's own pattern,
+reused). `autoTargetRateRadPerS() = max(π, CFG.pitchLimit) /
+CFG.autoTargetWorstTiers[tier-1]` — `π` (180°) always wins today since
+`pitchLimit` is 85°, matching the spec's own formula exactly.
+`updateAutoTarget(dt)`, called from `simTick` right after the manual
+arrow-key block, steers `ship.yaw`/`ship.pitch` toward the selected
+target's true bearing via a new `angleTowards`/`angleDiff` pair (shortest-
+path, wrapping correctly through ±180°) at that rate, flips `holding`
+true the moment `aim(t.pos).err` is within `CFG.autoTargetAimToleranceRad`
+(1°) — from then on the 5-second hold counts down while STILL steering
+every frame, so a moving target doesn't slip back out — and releases on
+either a held arrow key (checked first, before any steering, so the
+pilot's own press always wins that frame) or the hold reaching zero. A
+steady `autoTargetHum` (sine on the UI bus, ramped in/out) plays for the
+duration, alongside the existing stabilizer puffs. Three new MODULES
+(`auto_target_1/2/3`, 6/4/2 second tiers, each requiring the one below,
+`cfg: {}` — gating only, same as `tractor_1`), `autoTargetCharges`
+refilled at all five sites `missiles`/`chaff` already are, a fourth
+`rollKillBuff` roll (`killBuffAutoTargetChance` 0.25, +1 charge, gated on
+being fitted and not already at the cap), and an F2 "Auto-target" heading
+(conditional on `autoTargetFitted()`, matching the Tractor beam heading's
+own "no placeholder before the feature exists" rule) plus a line in `I`.
+A new `poke({yawDeg, pitchDeg})` test hook (this round's own addition, the
+tractor's `poke({targetPos, targetSize})` precedent) and a `state().
+autoTarget` block made the exact worst case reproducible without hand-
+flying there. Machine-tested at a local server against a REAL selected
+target (not a mock): facing it via `faceSelected()`, flipping yaw 180°
+and pitch to -85° (the engineered worst case — dead behind, max height),
+then Shift+T measured `holding` flipping true at EXACTLY 2,000ms via
+repeated small `__sim.step()` calls, matching Brian's own "2 seconds"
+requirement bit for bit; a fresh engage measured the mid-slew rate
+directly (45° covered in 0.5s = 90°/s, exactly `180°/2s`); the 5-second
+hold released on schedule with "Auto-target released."; an ArrowLeft
+press mid-slew canceled it at once (`active` false, charge still spent,
+manual turning resumed normally the same frame); three charges spent in
+a row correctly refused a fourth with "No auto-target charges. The
+station refills them."; F2's Auto-target heading read "Tier 3, 2 seconds
+worst case, holds 5 seconds once aimed. Test fit." and the live charge
+count. Zero console errors throughout. Every number — the three tier
+times, the hold, the charges, the module prices — is a placeholder for
+Brian to test and judge, per his own request that the fastest tier ship
+first specifically so he could. Not yet heard or flown by Brian.
 
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
@@ -4649,8 +4827,9 @@ the fastest (2 s worst case) first with a test fit, from a limited pool;
 the first screen speaks and repeats at 10 s then every 20 s; the lab
 links home.
 
-**DECIDE (open, from ideas10.txt)** — each built as Fable read it,
-flagged here for Brian to overrule:
+**DECIDE (open, from ideas10.txt)** — each built (by Sonnet, Round 26) as
+Fable read it below, flagged here for Brian to overrule once he's flown
+it — none of ideas10.txt has been heard yet:
 - **"Can shorten that 2x"** (3.35) is read as *twice*: two 50-credit
   payments, each halving what's left. If it meant "one payment, 2×
   shorter," today's once-only fee already does that and only the 100
@@ -4666,11 +4845,12 @@ flagged here for Brian to overrule:
 - **Hull repair** (3.36) — Brian agreed the five readings and adjusted
   this one: the hull repairs at **half** the system rate (~6 minutes to
   full at stock, `repairHullFactor` 0.5) and **spends reaction mass**
-  (`repairHullRcsPerPoint` 0.2, stopping at a 10-unit floor so the ship
-  can always still turn). Still no cap; collision damage the crew
-  repairs is still billed at the next landing. **Decided (Brian): all
-  repairs spend reaction mass** — 3.27's system repairs too, at the same
-  `repairRcsPerPoint` and the same 10-unit floor. Nothing open on 3.36.
+  (`repairRcsPerPoint` 0.2, stopping at a 10-unit floor so the ship can
+  always still turn). Still no cap; collision damage the crew repairs is
+  still billed at the next landing. **Decided (Brian): all repairs spend
+  reaction mass** — 3.27's system repairs too, at the same
+  `repairRcsPerPoint` and the same 10-unit floor. Built this way — see
+  the 3.36 DONE note. Nothing open on 3.36.
 - **Decoy confirmation comes at the pop, not the press** (3.37) — "Decoy
   took it." a second after the launch. And: it is possible decoys are
   simply broken; the build proves it first.
