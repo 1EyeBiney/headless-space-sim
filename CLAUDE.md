@@ -2519,3 +2519,20 @@ open in Part C: the galactic cursor should open on the quadrant you're
 in, not the unreachable centre; and one press should move one cell
 (no Shift step). Still open: which neighbour is Q2 (Fable: "1 right"),
 the majority rule, opponent count. Nothing built.
+
+**Round 29, fourth pass (Fable, docs only)**: Brian confirmed the
+galactic cursor's start as the **centre of the facing plane** ("1
+behind" — every corner of the near face is two presses away; right-then-
+down lands on Q2's corner, which is also the corner Fable proposed as
+Q2), and then made that cell **the one reachable non-corner in the
+cube, from Q2 only** — a protected place beside home with no route from
+home, "and we can do special things in there." Fable's geometry check:
+it works precisely because a face centre is two cells from every corner,
+so the route is a spur off the lattice, not an edge — Q2 gets the cube's
+only off-axis **fourth gate** (toward the face centre, "1 above, 1 left"
+in Q2's frame), the place has one gate back. Written into A.13, the 3.22
+addendum, and Part C, with three things open: what the place IS (Fable:
+the pilot's mid-game harbour — storage beyond the hold, a free yard;
+the cube's centre stays the endgame base), what opens the fourth gate
+(favor at Q2's station, or a quest), and whether rivals can ever enter
+(Fable: no). Nothing built.

@@ -313,6 +313,28 @@ stations. Every income source feeds credits or a resource.
   shared by the gates' placement, the galactic cursor's words, and the
   arrival point. L.9's lighthouse cone finally makes sense on a fixed
   gate — a beacon marking a route, sweeping.
+  **The one reachable non-corner: the near face's centre, from Q2 only
+  (Brian, 2026-09-05).** Of the 26 cells, exactly one that is not a
+  corner can be travelled to — the centre of the facing plane, "1
+  behind" — and only from Q2, never from home or any other corner. It
+  is a protected place: the only door is in Q2, so whoever holds Q2
+  holds the door, and it sits beside home without a route from home —
+  "this kind of protects it and the player's home quadrant, and we can
+  do special things in there." The geometry: a face centre is not
+  adjacent to any corner (two cells away, across the face), so this is a
+  **spur off the lattice, not an edge** — Q2 gets a **fourth gate**, the
+  cube's only off-axis one, on Q2's outer ring in the direction of the
+  face centre (up-and-left from Q2: "1 above, 1 left" in Q2's own frame),
+  its oddness on the map the tell that it leads somewhere special. The
+  place itself has one gate back, to Q2. Cursor rule amended: the six
+  face centres are view positions, EXCEPT this one, which is a
+  destination — Enter travels there only while the pilot is in Q2;
+  from anywhere else, "Reached only from [Q2's name]." Rival factions
+  never enter (the door is the pilot's — a favor or quest gate at Q2's
+  station, DECIDE), so it can be genuinely private. What it IS is open
+  (Part C): Fable's proposal is the pilot's mid-game harbour — storage
+  beyond the hold, a free yard, where saved things live — the base at
+  the cube's centre staying the endgame.
 
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
@@ -4746,8 +4768,13 @@ by its right-hand gate, arrive at Q2's left-hand gate with Q2's star
 ahead — the cube felt from inside. The fare is per edge, as before. The
 "one Jump Gate offering three destinations" shortcut is withdrawn: a
 menu teaches nothing, a gate you have to fly (or climb) to teaches the
-map. Nothing about the gate-opens-at-Known rule changes. Not yet
-scheduled — this is the shape 3.22 takes when it builds.
+map. Nothing about the gate-opens-at-Known rule changes. **Q2 alone has
+a fourth gate** (Brian, 2026-09-05): the cube's only off-axis one, on
+Q2's outer ring toward the near face's centre ("1 above, 1 left" in
+Q2's frame), leading to the one reachable non-corner cell — a protected
+place with a single gate back to Q2 (A.13). Its opening condition is a
+DECIDE (favor at Q2's station, or a quest). Not yet scheduled — this is
+the shape 3.22 takes when it builds.
 
 #### 3.15 Lazy-load audio — superseded by 2.19
 
@@ -5253,6 +5280,19 @@ resolve cleanly**, one push-back, and a handful of readings to confirm:
   second press to the far corner. No Shift step needed; Fable's earlier
   "one press a corner, Shift a midpoint" is withdrawn as the more
   complicated of the two. Off-route directions refuse ("No route.").
+- **Decided (Brian, 2026-09-05): the near face's centre is the one
+  reachable non-corner, from Q2 only** — a protected place beside home
+  with no route from home; Q2 gets the cube's only off-axis fourth gate
+  (A.13, 3.22 addendum). Fable's check: it works, because a face centre
+  is two cells from every corner, so the route is a spur, not an edge —
+  which is exactly what makes it gate-able from one quadrant alone. The
+  cursor's "face centres are view positions" rule gets this one
+  exception (Enter travels there only while in Q2). **Open**: what the
+  place IS (Fable: the pilot's mid-game harbour — storage beyond the
+  hold, a free yard, saved things — with the cube's centre staying the
+  endgame base); what opens Q2's fourth gate (favor tier at Q2's station,
+  or a quest); whether rivals can ever enter (Fable: no — the door is the
+  pilot's, which is what "protects home" means in play).
 - **Still open**: which neighbour is Q2 — Fable proposes "1 right" (the
   first natural move on the face you're looking at), Q3 "1 above", "1
   ahead" later; the majority rule for quadrant control; opponent count
