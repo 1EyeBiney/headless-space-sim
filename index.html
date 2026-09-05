@@ -526,12 +526,12 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 7;
+var PROFILE_VERSION = 8;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
-             sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
+             sound: { world: SOUND_LEVELS.length - 1, cockpit: SOUND_LEVELS.length - 1, effects: SOUND_LEVELS.length - 1 }, beacons: 'on',
              resources: { salvage: 0, alloy: 0 },
              // SPEC 3.26: levels are earned at the station, not cycled for
              // free — one owned level and one health per family.
@@ -577,6 +577,20 @@ function loadProfile() {
     profile.slots = profile.slots.slice(0, LASER_SLOTS).map(function (id) { return laserById(id) ? id : null; });
     while (profile.slots.length < LASER_SLOTS) profile.slots.push(null);
     laserSlot = (profile.laserSlot >= 0 && profile.laserSlot < LASER_SLOTS) ? profile.laserSlot | 0 : 0;
+    // v7 -> v8 (SPEC 3.45): five sound levels replace three — remap an
+    // old save's level indexes (0/1/2) onto their new equivalents
+    // (0/2/4) before the general validation below runs, so an old
+    // "full" (index 2) isn't silently reinterpreted as the new "quiet"
+    // (also index 2). Checked against the RAW saved JSON, not the
+    // already-merged profile (the same trap SPEC 2.18/3.26 exist to
+    // avoid) — `saved` is null for a genuinely fresh profile, so this
+    // never touches one.
+    if (loadedVersion < 8 && saved && saved.sound && typeof saved.sound === 'object') {
+        var oldToNewSound = { 0: 0, 1: 2, 2: 4 };
+        Object.keys(saved.sound).forEach(function (id) {
+            if (oldToNewSound[saved.sound[id]] !== undefined) profile.sound[id] = oldToNewSound[saved.sound[id]];
+        });
+    }
     // Sound options: one level index per category, unknown values become full.
     var snd = (profile.sound && typeof profile.sound === 'object') ? profile.sound : {};
     profile.sound = {};
@@ -816,10 +830,17 @@ var SLOT_SWITCH = [
 
 // Sound options (SPEC 1.12). Three levels rather than a percentage — a
 // percentage is a lot of arrow presses by ear. Speech is never touched.
+// SPEC 3.45 (ideas12.txt): five steps, not three — profile.sound stores
+// INDEXES into this array, so growing it needs the v7->v8 migration
+// below to remap an old three-step save onto the equivalent new step
+// (0->0 off, 1->2 quiet, 2->4 full) rather than silently reinterpreting
+// index 1 as "low" and index 2 as "medium".
 var SOUND_LEVELS = [
-    { name: 'off',   v: 0 },
-    { name: 'quiet', v: 0.35 },
-    { name: 'full',  v: 1 }
+    { name: 'off',    v: 0 },
+    { name: 'low',    v: 0.15 },
+    { name: 'quiet',  v: 0.35 },
+    { name: 'medium', v: 0.65 },
+    { name: 'full',   v: 1 }
 ];
 var SOUND_CATS = [
     { id: 'world',   label: 'World sounds',
@@ -1820,7 +1841,8 @@ var HELP_SECTIONS = [
         'S brakes to a stop.',
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
         'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
-        'I speaks your speed, the selected target, and how many targets remain.'
+        'I speaks your speed, the selected target, and how many targets remain.',
+        'Y speaks your resource totals — credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys — and works everywhere, including inside the station menu and its submenus.'
     ] },
     { heading: 'Targeting', items: [
         'Tab cycles through the targets, nearest first, and speaks a bearing. Shift Tab cycles back the other way.',
@@ -1925,7 +1947,7 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'System', items: [
         'B cycles the point-of-interest beacons: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship.',
-        'The Sound item on the mission menu sets a level, off, quiet, or full, for world sounds, cockpit instruments, and sound effects. Speech is never affected. Settings are saved.',
+        'The Sound item on the mission menu sets a level — off, low, quiet, medium, or full — for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line that cycles the same on/off/target-only choice as the B key. Speech is never affected. Settings are saved.',
         'Escape opens the mission menu over the live game: Resume goes back to the ship, or pick anything else to leave. Escape again also resumes.',
         'F12 turns on explore mode, where every key describes itself safely.',
         'F1 opens this help screen. Escape closes it.',
@@ -2017,6 +2039,7 @@ var KEY_DESCRIPTIONS = {
     t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T hands the stabilizers your selected target instead — they aim the ship at it for you, holding through the tracking, from a limited pool. Never fires, never damages.',
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
+    y: 'Speaks your resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys. Works anywhere, including inside the station and its submenus.',
     z: 'Tractor beam: pulls the selected rock or core toward you while mining. Z again releases it. Shift Z cycles the target zone size instead: wide, standard, or narrow.',
     e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
@@ -2713,12 +2736,12 @@ function releaseAutoTarget(silent) {
 }
 
 function autoTargetKey() {
-    if (mode === 'sector') { say('Nothing to aim at in open space.'); return; }
+    if (mode === 'sector') { SIM.cues.play('refusal_offline'); say('Nothing to aim at in open space.'); return; }
     // SPEC 3.41: the flight course is flown by hand — that's the point.
-    if (mode === 'course') { say('Fly the course yourself — auto-target is off here.'); return; }
+    if (mode === 'course') { SIM.cues.play('refusal_offline'); say('Fly the course yourself — auto-target is off here.'); return; }
     var t = targets[selected];
     if (!t || !t.alive) { say('No target selected.'); return; }
-    if (!autoTargetFitted()) { say('Auto-target not fitted.'); return; }
+    if (!autoTargetFitted()) { SIM.cues.play('refusal_offline'); say('Auto-target not fitted.'); return; }
     if (autoTarget) { say('Auto-target already engaged.'); return; }
     if (autoTargetCharges <= 0) {
         SIM.cues.play('refusal_dud');
@@ -3104,7 +3127,7 @@ function laserUnowned(L) {
     if (!L) return false;
     var owned = profile.laserLevels[L.family] || 1;
     if (L.version <= owned) return false;
-    SIM.cues.play('refusal_dud');
+    SIM.cues.play('refusal_offline');   // SPEC 3.50: not fitted
     say(capFirst(LASER_FAMILIES_BY_ID[L.family].label) + ' laser level ' + L.version + ' is not fitted. The shipyard sells it.');
     return true;
 }
@@ -3112,12 +3135,12 @@ function laserUnowned(L) {
 function selectSlot(i, reverse) {
     var L = profile ? laserById(profile.slots[i]) : null;
     if (beam && beam.tool === 'laser') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_wait');   // SPEC 3.50: busy, resolves shortly
         say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Switch after.');
         return;
     }
     if (i === laserSlot) {
-        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+        if (!L) { SIM.cues.play('refusal_offline'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
         if (laserUnowned(L)) return;
         L = cycleLaserVersion(i, reverse ? -1 : 1);
         saveProfile();
@@ -3127,7 +3150,7 @@ function selectSlot(i, reverse) {
     stopLaserSwitch();
     laserSlot = i;
     saveProfile();
-    if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+    if (!L) { SIM.cues.play('refusal_offline'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
     if (laserUnowned(L)) return;
     startSlotSwitch(i, L);
 }
@@ -3224,32 +3247,32 @@ function startBeam(tool) {
     if (beam) return;                              // already firing (audible)
     var L = null;
     if (tool === 'laser') {
-        if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
+        if (shieldsBusy()) { SIM.cues.play('refusal_offline'); say('Shields up. Weapons offline. G drops them.'); return; }
         if (laserHot()) {
             SIM.audio.sfxNoise({ dur: 0.3, vol: 0.15, filter: 'highpass', freq: 2500 });
             say('Laser overheated. ' + Math.ceil((laser.hotUntil - Date.now()) / 1000) + ' seconds.');
             return;
         }
         L = currentLaser();
-        if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(laserSlot) + '. Fit a laser at the station.'); return; }
+        if (!L) { SIM.cues.play('refusal_offline'); say(laserSlotText(laserSlot) + '. Fit a laser at the station.'); return; }
         if (systemState('laser' + laserSlot) === 'off') {
-            SIM.cues.play('refusal_dud');
+            SIM.cues.play('refusal_offline');
             say(systemName('laser' + laserSlot) + ' offline. Repair crew is on it.');
             return;
         }
         if (laserSwitch) {
-            SIM.cues.play('refusal_dud');
+            SIM.cues.play('refusal_wait');
             say('Switching lasers, ' + Math.ceil(laserSwitchLeft()) + ' seconds.');
             return;
         }
         var left = laserCooldownLeft(laserSlot);
         if (left > 0) {
-            SIM.cues.play('refusal_dud');              // recharging: a dud click,
+            SIM.cues.play('refusal_wait');              // SPEC 3.50: recharging — temporary
             say(capFirst(L.name) + ' recharging, ' + Math.ceil(left) + ' seconds.');
             return;                                    // never a silent nothing
         }
     } else if (Date.now() - lastLaserAt < CFG.toolCooldownMs) {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_wait');
         return;
     }
     if (L) wearLaser(L.family);   // SPEC 3.26: committed to firing — every burst wears, hit or miss
@@ -3492,14 +3515,14 @@ function dustTick() {
 
 function fireMissile() {
     if (missile) { say('Missile already away.'); return; }
-    if (shieldsBusy()) { SIM.cues.play('refusal_dud'); say('Shields up. Weapons offline. G drops them.'); return; }
+    if (shieldsBusy()) { SIM.cues.play('refusal_offline'); say('Shields up. Weapons offline. G drops them.'); return; }
     if (systemState('missiles') === 'off') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_offline');
         say('Missiles offline. Repair crew is on it.');
         return;
     }
     if (missiles <= 0) {
-        SIM.cues.play('refusal_wait');
+        SIM.cues.play('refusal_dud');   // SPEC 3.50: spent, matches "no decoys left"
         say('No missiles left.' + (sectorHome ? ' Station Meridian rearms.' : ''));
         return;
     }
@@ -3810,7 +3833,7 @@ function startEnemyMissile(t) {
 // still spends one (Brian: decided) — chaff is a reflex, not a menu.
 function fireChaff() {
     if (systemState('decoys') === 'off') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_offline');
         say('Decoys offline. Repair crew is on it.');
         return;
     }
@@ -4003,7 +4026,7 @@ function shieldsBusy() { return shield.up || shield.raising >= 0; }
 function shieldKey() {
     if (mode !== 'combat') { say('Shields are only needed in combat. Nothing here is shooting.'); return; }
     if (systemState('shields') === 'off') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_offline');
         say('Shields offline. Repair crew is on it.');
         return;
     }
@@ -4015,7 +4038,7 @@ function shieldKey() {
         return;
     }
     if (beam && beam.tool === 'laser') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_wait');
         say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Shields after.');
         return;
     }
@@ -4437,8 +4460,8 @@ function stopTractor(reason) {
 }
 function tractorKey() {
     if (tractor.active) { stopTractor('Tractor released.'); return; }
-    if (mode !== 'mining') { SIM.cues.play('refusal_dud'); say('The tractor beam only works while mining.'); return; }
-    if (!tractorFitted()) { SIM.cues.play('refusal_dud'); say('No tractor beam fitted. The shipyard sells it.'); return; }
+    if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The tractor beam only works while mining.'); return; }
+    if (!tractorFitted()) { SIM.cues.play('refusal_offline'); say('No tractor beam fitted. The shipyard sells it.'); return; }
     var t = targets[selected];
     if (!t || !t.alive || t.kind !== 'rock') { say('No rock selected. Tab cycles targets.'); return; }
     var dist = len(sub(t.pos, ship.pos));
@@ -4448,7 +4471,7 @@ function tractorKey() {
         return;
     }
     if (tractorPullRateFor(t) <= 0) {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_offline');   // SPEC 3.50: a hard capability mismatch, not a spent resource
         say('Too massive for this tractor.');
         return;
     }
@@ -4594,8 +4617,8 @@ function checkMiningEnd() {
 
 // E — the extractor. Only bites on a rock that has been mined to its core.
 function startExtract() {
-    if (mode !== 'mining') { say('The extractor is a mining tool.'); return; }
-    if (beam) { SIM.cues.play('refusal_dud'); return; }
+    if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The extractor is a mining tool.'); return; }
+    if (beam) { SIM.cues.play('refusal_wait'); return; }
     var t = targets[selected];
     if (!t || !t.alive || !t.resource) {
         say('The extractor only works on a rock mined down to its glowing core.');
@@ -4613,8 +4636,8 @@ function startExtract() {
 // V — the space vacuum. Filters loose particulates near the ship; no aim
 // needed. The consolation harvest when a rock got away.
 function startDustVac() {
-    if (mode !== 'mining') { say('The vacuum is a mining tool.'); return; }
-    if (beam) { SIM.cues.play('refusal_dud'); return; }
+    if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The vacuum is a mining tool.'); return; }
+    if (beam) { SIM.cues.play('refusal_wait'); return; }
     var any = debris.some(function (d) { return len(sub(d.pos, ship.pos)) < CFG.dustVacRange; });
     if (!any) {
         say(debrisTotal() > 0
@@ -4692,6 +4715,25 @@ function toggleAutoThrust() {
     autoThrust = !autoThrust;
     SIM.audio.blip(autoThrust ? 520 : 380, 90, 0.14, 0, 'triangle');
     say(autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.' : 'Auto-thrust off.');
+}
+
+// SPEC 3.51 (ideas12.txt): "Y to announce resource totals... hopefully
+// this can be used anywhere, as I was using the station and needed this
+// info." One line, credits first — F3 stays the browsable long form
+// naming what each resource is FOR; this is the number itself, from
+// anywhere a `y` pass-through reaches (every captured-input menu that
+// matters: station, Modules, Lasers, hail/transporter, Missions, the
+// map, F2/F3, the run log — plus the raw sim itself).
+function speakTotals() {
+    var line = 'Credits ' + (profile ? profile.credits : 0) + '. ' +
+               'Ore ' + ore + '. ' +
+               'Salvage ' + (profile ? profile.resources.salvage : 0) + '. ' +
+               'Alloy ' + (profile ? profile.resources.alloy : 0) + '. ' +
+               'Reaction mass ' + Math.round(rcsPct()) + ' percent. ' +
+               'Warp ' + warpPct() + ' percent. ' +
+               'Missiles ' + missiles + ', decoys ' + chaff + '.';
+    if (autoTargetFitted()) line += ' Auto-target charges ' + autoTargetCharges + '.';
+    say(line);
 }
 
 function statusReport() {
@@ -4818,6 +4860,8 @@ function runLogKey(lname) {
     } else if (lname === 'arrowup') {
         if (runlog.idx > 0) { runlog.idx--; say(items[runlog.idx]); }
         else { runlog.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+    } else if (lname === 'y') {
+        speakTotals();
     } else {
         say('Up and down arrows read the run log, Escape closes.');
     }
@@ -5143,6 +5187,11 @@ function shipScreenKey(lname, shift) {
         shipScreen.idx = 0; shipScreenSpeakLine();
     } else if (lname === 'end') {
         shipScreen.idx = n - 1; shipScreenSpeakLine();
+    } else if (lname === 'y') {
+        // SPEC 3.51: checked before the generic first-letter jump below —
+        // no heading starts with Y today, but this must never depend on
+        // that staying true.
+        speakTotals();
     } else if (typeof lname === 'string' && lname.length === 1 && /[a-z]/.test(lname)) {
         // First-letter jump to a heading. Several headings share an initial
         // (Hull/Shields/Systems/Sensor, Reaction mass/Repair crew, Missiles/
@@ -5210,6 +5259,8 @@ function resourceScreenKey(lname) {
     } else if (lname === 'arrowup') {
         if (resourceScreen.idx > 0) { resourceScreen.idx--; say(resourceScreen.lines[resourceScreen.idx]); }
         else { resourceScreen.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+    } else if (lname === 'y') {
+        speakTotals();
     } else {
         say('Up and down arrows read resources, Escape closes.');
     }
@@ -5345,6 +5396,8 @@ function mapKey(lname) {
                 startWarp();
             }
         }
+    } else if (lname === 'y') {
+        speakTotals();
     } else if (mode === 'sector' && typeof lname === 'string' && lname.length === 1 && /[a-z]/.test(lname)) {
         // SPEC 3.10: first-letter jump to a group heading.
         var gi = -1;
@@ -5611,7 +5664,7 @@ function updateTug(dt) {
 // exactly two: 90 -> 45 -> 22.5). Only "not enough credits" ever refuses.
 function payTugFee() {
     if (profile.credits < CFG.tugFeeCredits) {
-        SIM.cues.play('refusal_wait');
+        SIM.cues.play('refusal_dud');   // SPEC 3.50: matches "not enough credits" everywhere else in the shop
         say('Need ' + CFG.tugFeeCredits + ' credits to rush the tug; you have ' + profile.credits + '.');
         return;
     }
@@ -5825,6 +5878,7 @@ function moduleKey(lname) {
     else if (lname === 'arrowup') { menuClick(); moduleIdx = (moduleIdx - 1 + n) % n; say(moduleText(moduleIdx)); }
     else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') { buyModule(moduleIdx); }
     else if (lname === 'tab') { say(moduleText(moduleIdx)); }
+    else if (lname === 'y') { speakTotals(); }
     else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse modules, Enter fits one, Escape returns. ' + MODULES[moduleIdx].name + '.');
@@ -5925,6 +5979,7 @@ function laserShopKey(lname) {
         if (it.kind === 'buy') buyLaserLevel(it.family); else repairLaser(it.family);
     }
     else if (lname === 'tab') { say(laserShopText(laserShopIdx)); }
+    else if (lname === 'y') { speakTotals(); }
     else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse lasers, Enter buys or repairs, Escape returns. ' + laserShopText(laserShopIdx));
@@ -6148,6 +6203,8 @@ function missionsKey(lname) {
         startMissionRun(m.kind);
     } else if (lname === 'tab') {
         say(missionText(missionIdx));
+    } else if (lname === 'y') {
+        speakTotals();
     } else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse missions, Enter accepts, Escape returns. ' + itemLabel(list[missionIdx]) + '.');
@@ -6235,6 +6292,8 @@ function hailMenuKey(lname) {
         item.run();
     } else if (lname === 'tab') {
         say(hailItemText());
+    } else if (lname === 'y') {
+        speakTotals();
     } else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse, Enter selects, Escape closes. ' + itemLabel(items[hailMenu.idx]) + '.');
@@ -6490,6 +6549,8 @@ function stationMenuKey(lname) {
         item.run();
     } else if (lname === 'tab') {
         say(stationItemText());
+    } else if (lname === 'y') {
+        speakTotals();
     } else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse the station menu, Enter selects, Escape undocks. ' + itemLabel(STATION_ITEMS[stationIdx]) + '.');
@@ -6580,7 +6641,7 @@ function startWarp() {
     if (mode !== 'sector') { say('Hyperwarp needs open sector space.'); return; }
     if (warping) return;
     if (systemState('warp') === 'off') {
-        SIM.cues.play('refusal_dud');
+        SIM.cues.play('refusal_offline');
         say('Warp engine offline. Repair crew is on it.');
         return;
     }
@@ -6952,11 +7013,11 @@ function onKeyDown(e) {
 
     switch (lname) {
         case ' ':
-            if (weaponsCold()) say('Weapons are cold in open space. C calls a point of interest.');
+            if (weaponsCold()) { SIM.cues.play('refusal_offline'); say('Weapons are cold in open space. C calls a point of interest.'); }
             else if (!over()) startBeam();
             break;
         case 'f':
-            if (weaponsCold()) say('Weapons are cold in open space. C calls a point of interest.');
+            if (weaponsCold()) { SIM.cues.play('refusal_offline'); say('Weapons are cold in open space. C calls a point of interest.'); }
             else if (!over()) fireMissile();
             break;
         case '1': case '2': case '3': case '4': case '5': case '6':
@@ -6966,11 +7027,11 @@ function onKeyDown(e) {
             // SPEC 3.41: shields are cold on the flight course too — but
             // this leaves the sector's own G untouched (it has never
             // refused there, and this isn't the place to change that).
-            if (mode === 'course') say('Weapons are cold in open space. C calls a point of interest.');
+            if (mode === 'course') { SIM.cues.play('refusal_offline'); say('Weapons are cold in open space. C calls a point of interest.'); }
             else if (!over()) shieldKey();
             break;
         case 'd':
-            if (weaponsCold()) say('Nothing shoots at you in open space. Decoys are for encounters.');
+            if (weaponsCold()) { SIM.cues.play('refusal_offline'); say('Nothing shoots at you in open space. Decoys are for encounters.'); }
             else if (!over()) fireChaff();
             break;
         case 'b':      beaconKey(); break;
@@ -6990,6 +7051,7 @@ function onKeyDown(e) {
             else exitToMenu();
             break;
         case 'i':      statusReport(); break;
+        case 'y':      speakTotals(); break;
         case 't': {
             var sel = targets[selected];
             if (sel && sel.alive) say(bearingText(sel));
@@ -7602,7 +7664,7 @@ var MENU_ITEMS = [
           saveProfile();
       } },
     { label: 'Sound',
-      desc: 'Volume for world sounds, cockpit instruments, and sound effects. Beacons are on the B key.',
+      desc: 'Volume for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line — same choice as the B key.',
       run: function () { openSoundMenu(); } },
     { label: 'Run log',
       desc: function () {
@@ -7753,10 +7815,12 @@ function menuKey(lname, name) {
     }
 }
 
-// ---- Sound settings (SPEC 1.12) ---------------------------------------------
-// One line per category, Left/Right cycle Off / Quiet / Full and play a
-// short sound in that category at the new level, so the change is heard
-// as well as spoken. Reached from the mission menu; Escape returns to it.
+// ---- Sound settings (SPEC 1.12, five steps as of SPEC 3.45) -----------------
+// One line per category, Left/Right cycle Off / Low / Quiet / Medium / Full
+// and play a short sound in that category at the new level, so the change is
+// heard as well as spoken, plus one more line (Beacons) past the real
+// categories that cycles BEACON_MODES instead. Reached from the mission
+// menu; Escape returns to it.
 function openSoundMenu() {
     soundMenu.open = true;
     soundMenu.idx = 0;
@@ -7765,6 +7829,12 @@ function openSoundMenu() {
 }
 
 function soundLineText(i) {
+    // SPEC 3.45: the Beacons line lives one slot past the real categories —
+    // not a SOUND_CATS entry itself, since it cycles BEACON_MODES (3 states),
+    // not SOUND_LEVELS (5 steps), and applySoundLevels() never touches it.
+    if (i === SOUND_CATS.length) {
+        return beaconModeText() + ' Cycles the sector\'s four POI beacons: on, off, or only your selected nav target.';
+    }
     var c = SOUND_CATS[i];
     return c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '. ' + c.desc;
 }
@@ -7785,7 +7855,11 @@ function soundDemo(id) {
 }
 
 function soundKey(lname) {
-    var n = SOUND_CATS.length, c = SOUND_CATS[soundMenu.idx];
+    // SPEC 3.45: n includes the Beacons line appended after every real
+    // SOUND_CATS entry; onBeacons is true only on that last, special row.
+    var n = SOUND_CATS.length + 1;
+    var onBeacons = soundMenu.idx === SOUND_CATS.length;
+    var c = onBeacons ? null : SOUND_CATS[soundMenu.idx];
     if (lname === 'escape' || lname === 'x') {
         soundMenu.open = false;
         say('Sound closed. ' + menuItemText(menuIdx));
@@ -7795,17 +7869,27 @@ function soundKey(lname) {
     else if (lname === 'arrowup') { menuClick(); soundMenu.idx = (soundMenu.idx - 1 + n) % n; say(soundLineText(soundMenu.idx)); }
     else if (lname === 'arrowright' || lname === 'arrowleft') {
         var d = lname === 'arrowright' ? 1 : -1;
-        profile.sound[c.id] = (profile.sound[c.id] + d + SOUND_LEVELS.length) % SOUND_LEVELS.length;
-        applySoundLevels();
-        saveProfile();
-        say(c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '.');
-        setTimeout(function () { soundDemo(c.id); }, 250);
+        if (onBeacons) {
+            var bi = 0;
+            for (var k = 0; k < BEACON_MODES.length; k++) if (BEACON_MODES[k].id === beaconMode) bi = k;
+            beaconMode = BEACON_MODES[(bi + d + BEACON_MODES.length) % BEACON_MODES.length].id;
+            saveProfile();
+            SIM.audio.blip(beaconMode === 'on' ? 700 : beaconMode === 'target' ? 550 : 400, 90, 0.14, 0, 'triangle');
+            say(beaconModeText());
+        } else {
+            profile.sound[c.id] = (profile.sound[c.id] + d + SOUND_LEVELS.length) % SOUND_LEVELS.length;
+            applySoundLevels();
+            saveProfile();
+            say(c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '.');
+            setTimeout(function () { soundDemo(c.id); }, 250);
+        }
     }
     else if (lname === 'enter' || lname === 'tab') { say(soundLineText(soundMenu.idx)); }
     else if (lname === 'b') { beaconKey(); }
+    else if (lname === 'y') { speakTotals(); }
     else {
         SIM.audio.blip(220, 80, 0.1);
-        say('Up and down arrows browse the sound settings, left and right set a level, Escape returns. ' + c.label + '.');
+        say('Up and down arrows browse the sound settings, left and right set a level, Escape returns. ' + (onBeacons ? 'Beacons.' : c.label + '.'));
     }
 }
 

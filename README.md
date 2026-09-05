@@ -40,11 +40,13 @@ to your browser. Finish a run to add to it.
 
 ## Sound
 
-The Sound item on the menu sets a level — off, quiet, or full — for
-three kinds of sound: the world around you (engines, rocks, enemy fire,
-explosions, beacons), your cockpit instruments (the lock tick,
-thrusters, tools, the shield hum), and sound
-effects (clicks, chimes, warnings). Speech is never affected. In the
+The Sound item on the menu sets a level — off, low, quiet, medium, or
+full — for four kinds of sound: the world around you (engines, rocks,
+enemy fire, explosions, beacons), your cockpit instruments (the lock
+tick, thrusters, tools, the shield hum), sound effects (clicks, chimes,
+warnings), and music. The menu also has its own Beacons line, cycling
+the same on/off/target-only choice as the B key below. Speech is never
+affected. In the
 sector, B cycles the four point-of-interest beacons between on, off,
 and only your selected nav target, for stretches of open flying when
 you'd rather not hear them — Tab, T, the map, and the lock tick still
@@ -185,6 +187,7 @@ Right hand on the arrows, left hand on everything else.
 | Shift+Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
+| Y | Resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, decoys. Works everywhere, including inside the station and its submenus |
 | X | Leave the mission |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |

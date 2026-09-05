@@ -2074,10 +2074,11 @@ harbour cell, all direction; 3.41/3.42 proposed after the playtest) →
 course, DONE** (Round 31, Sonnet — built ahead of its own "after the
 playtest" note, at Brian's direct request) → **Brian flies everything
 since
-3.24, plus the course** → **ideas12.txt, next** (Brian, 2026-09-05, from
-flying: 3.50 the offline buzz → 3.51 Y speaks the totals → 3.45 five
-volume steps and the Beacons line → 3.49 the course second pass (the
-geometry push-back needs Brian's answer first) → 3.44 B is the tractor
+3.24, plus the course** → **ideas12.txt** (Brian, 2026-09-05, from
+flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals,
+DONE → 3.45 five volume steps and the Beacons line, DONE** (all three,
+Round 33, Sonnet) **→ next: 3.49** the course second pass (the
+geometry push-back answered, decided — see 3.49 itself) → 3.44 B is the tractor
 in tiers → 3.48 F2's equipped laser per slot → 3.46 four new laser
 families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
 stats page is a discussion, not scheduled) → **3.42 escort in
@@ -4609,7 +4610,7 @@ push-backs are in each item and gathered in Part C. Proposed order,
 cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L.5c;
 3.47 is a discussion, not a build, until Brian answers.
 
-#### 3.50 The offline buzz (ideas12.txt) — proposed
+#### 3.50 The offline buzz (ideas12.txt) — DONE
 
 - Brian: "a buzz indicator for when a user tries a system that is
   offline / not available yet." Today every refusal is one of two
@@ -4629,7 +4630,44 @@ cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L
 - Test: each refusal class plays its own cue; the sound lab lists the
   new one under UI.
 
-#### 3.51 Y speaks the totals (ideas12.txt) — proposed
+**DONE (Round 33, Sonnet).** `refusal_offline` landed in `audio_cues.js`
+right after `refusal_dud` in the `'ui'` category (a small composite —
+`sfxTone` has no filter option — an oscillator through a lowpass into a
+gain envelope, ~0.3 s, on the UI bus), auto-surfaced in `soundlab.html`'s
+discrete-cues list with no page edit needed, since that page generates
+its listing from `SIM.cues.categories()/list()`. ~20 call sites across
+`index.html` were reclassified against the one-line rule (**buzz = you
+can't here or it's broken; click = you can't yet**): every `systemState
+(...) === 'off'` refusal (laser slot, missiles, decoys, shields, warp),
+every "not fitted" refusal (tractor, an unowned laser level, an empty
+slot), and every wrong-mode refusal (weapons cold, the tractor's
+mining-only check, auto-target's mode/fitness checks, the extractor/
+vacuum's mining-tool check) moved to `refusal_offline` — several of
+these (weapons-cold, auto-target's checks, the mining-tool checks) had
+no cue at all before this round, silent on the audio layer even though
+`say()` already spoke the refusal. `refusal_dud` and `refusal_wait` kept
+their existing meaning (empty/spent vs. temporary-resolves-with-time)
+and picked up a few internal-consistency fixes along the way: "No
+missiles left" moved from `wait` to `dud` (it's spent, not temporary,
+matching the spec's own example list); a laser-burst-in-progress
+blocking shields moved from `dud` to `wait` (a burst finishing is
+exactly the "temporary" case); paying the tug fee with insufficient
+credits moved from `wait` to `dud`, matching every shop's own
+not-enough-credits convention (deliberately left untouched everywhere
+else — Modules/Lasers purchases were out of scope, already `dud`
+throughout). Two judgment calls made on cases the spec didn't literally
+enumerate, both flagged here rather than silently decided: the tractor's
+"too far" refusal stayed `dud` (ambiguous — arguably neither spent nor
+offline — lower priority than the clearer cases); the tractor's "too
+massive for this tractor" became `refusal_offline` (a hard capability
+mismatch, not a spent resource). Machine-tested at a local server: each
+of the three cues confirmed playing at its own reclassified call site
+(an offline laser slot, an empty slot, a cooling laser, a spent missile
+magazine, an offline tractor, a wrong-mode tractor call, a wrong-mode
+extractor call, the weapons-cold refusals) with no cue collisions and no
+console errors. Not yet heard by Brian.
+
+#### 3.51 Y speaks the totals (ideas12.txt) — DONE
 
 - Brian: "Y to announce resource totals, starting with credits,
   hopefully this can be used anywhere, as I was using the station and
@@ -4645,7 +4683,30 @@ cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L
 - Test: Y from the station menu, mid-Modules, mid-hail, and in flight
   all speak the same line; nothing else in those menus changes.
 
-#### 3.45 Five volume steps (ideas12.txt) — proposed
+**DONE (Round 33, Sonnet).** A new `speakTotals()` builds one combined
+line — credits, ore, salvage, alloy, reaction mass percent, warp
+percent, missiles, decoys, plus auto-target charges when fitted (the
+SPEC 2.15 rule: one `say()` call, never several back to back). Bound as
+`case 'y': speakTotals(); break;` in the raw sim's key switch, then as
+an `else if (lname === 'y') { speakTotals(); }` pass-through in every
+captured-input menu handler: the run log, F2 (ship screen), F3
+(resources), the map, Modules, the Lasers shop, Missions, the hail/
+transporter menu, the station menu, and — added in this same round,
+for consistency, since it closes an actual gap in "works everywhere" —
+the Sound menu too. Two handlers needed care: `shipScreenKey` (F2) and
+`mapKey` (Q) both have a generic first-letter-jump catch-all for any
+single lowercase letter, so the `y` check had to be inserted BEFORE
+those catch-alls or it would have been silently swallowed as a jump
+attempt. `KEY_DESCRIPTIONS.y`, the "Flying" help heading, and the
+README's key table all describe it. Machine-tested at a local server:
+Y confirmed speaking the identical line from the raw sim, the run log,
+F2, F3, the map, Modules, the Lasers shop, Missions, the hail menu, the
+station menu, and the Sound menu, each time confirmed NOT altering that
+menu's own cursor/selection state; the F2/Q catch-all interaction
+specifically re-tested to confirm `y` is never misread as a heading/
+first-letter jump. Zero console errors. Not yet heard by Brian.
+
+#### 3.45 Five volume steps (ideas12.txt) — DONE
 
 - Brian: "5 steps of sound volume controls in the sound menu." Today
   `SOUND_LEVELS` is three (off / quiet 0.35 / full 1).
@@ -4659,6 +4720,59 @@ cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L
 - Test: five steps each speak their name and play the category's demo
   at the new level; an old three-step save loads at the equivalent
   step; the Beacons line cycles and saves.
+
+**DONE (Round 33, Sonnet).** `SOUND_LEVELS` grew to five entries (off 0,
+low 0.15, quiet 0.35, medium 0.65, full 1); the Sound menu's existing
+Left/Right-cycles-a-level and per-step demo sound needed no change,
+since both already read through `SOUND_LEVELS` generically rather than
+hardcoding three steps. **Two real regressions caught before they
+shipped, both from the same root cause**: growing the array silently
+changes what index 2 MEANS (was "full", the old last index; is now
+"quiet") — so (1) `defaultProfile()`'s hardcoded `sound: { world: 2,
+cockpit: 2, effects: 2 }` would have booted every brand-new profile at
+"quiet" instead of "full" (fixed: the literal `2` is now
+`SOUND_LEVELS.length - 1`, so it tracks the array instead of assuming
+its size), and (2) an existing saved profile's own index 2 ("full"
+under the old scheme) would have silently been reinterpreted as
+"quiet" under the new one with no warning to the player. Fixed with a
+`PROFILE_VERSION` → 8 migration, checked against the RAW saved JSON
+(`saved.sound`), not the already-`Object.assign`-merged `profile`
+object — the same trap SPEC 2.18 and SPEC 3.26 exist to avoid, since a
+naive check against `profile.sound` would find plausible-looking
+values there regardless of whether a real old save actually had them.
+The remap (`{0:0, 1:2, 2:4}`) runs once, before the general
+"is this index in range" validation that was already there, so an old
+save's real levels land on their true equivalents and a value the old
+save never had still falls through to today's normal "default to
+full" behavior. **The Beacons line**: rather than adding a fake
+`SOUND_CATS` entry (which would wrongly imply it's driven by
+`SOUND_LEVELS`/`applySoundLevels`, when it actually cycles the
+3-state `BEACON_MODES` beacons already used), it's one extra row
+appended past the real categories (`n = SOUND_CATS.length + 1`,
+`soundMenu.idx === SOUND_CATS.length` marks it) with its own
+Left/Right handling and its own line text ("Beacons: on/off/target
+only. Cycles the sector's four POI beacons..."), landing on the exact
+same `beaconMode`/`profile.beacons` the standalone `B` key already
+uses — `B` itself is untouched here; that's 3.44's job, not yet built.
+Every stale "off, quiet, or full" / "Beacons are on the B key"
+reference in `HELP_SECTIONS`, the Sound menu's own item description,
+and README.md was found and updated to match. Machine-tested at a
+local server: a fresh profile confirmed defaulting to "full" (not
+"quiet") on world/cockpit/effects; all five steps browsed and cycled
+correctly in both directions with a wrap at each end, each one heard
+via its category's demo sound; the Beacons line browsed to, cycled
+through all three modes both directions, and confirmed saving to
+`profile.beacons`; a seeded pre-3.45 profile (`version: 7`, three-level
+indexes `{world:1, cockpit:2, effects:0}`, no `music` key at all)
+reloaded with `sound` correctly migrated to `{world:2, cockpit:4,
+effects:0, music:4}` — the missing `music` key defaulting to full
+exactly like a fresh profile, not remapped (nothing to remap); the
+persisted `localStorage` copy confirmed still holding the OLD indexes
+and `version: 7` until the next real save, then confirmed rewritten
+with the new indexes and `version: 8` on that save, matching every
+prior migration's own "profile.version never regresses, and isn't
+rewritten to disk until something actually saves" behavior. Zero
+console errors throughout. Not yet heard by Brian.
 
 #### 3.49 The flight course, second pass (ideas12.txt) — proposed, with a geometry push-back
 

@@ -259,6 +259,28 @@ SIM.cues = (function () {
                   } },
                 { id: 'refusal_dud', name: 'Refusal (short)', source: 'v11-extraction',
                   recipe: 'tone', args: { type: 'sine', f1: 200, dur: 0.06, vol: 0.08 } },
+                { id: 'refusal_offline', name: 'Refusal (Offline/Not Available)', source: 'spec-3.50',
+                  // SPEC 3.50 (ideas12.txt): a low buzz, clearly not a click —
+                  // "you can't here, or it's broken" (a systemState 'off',
+                  // something not fitted, or the wrong mode entirely) — as
+                  // opposed to refusal_dud (spent/empty: no charges left)
+                  // or refusal_wait (temporary: recharging, switching,
+                  // cooling, on cooldown). sfxTone has no filter option, so
+                  // this is a small composite rather than a recipe.
+                  fn: function () {
+                      var A = SIM.audio;
+                      if (!A.ctx) return;
+                      var t0 = A.ctx.currentTime;
+                      var g = A.ctx.createGain();
+                      g.gain.setValueAtTime(A.scaledVol(0.14), t0);
+                      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
+                      var lp = A.ctx.createBiquadFilter();
+                      lp.type = 'lowpass'; lp.frequency.value = 500;
+                      var osc = A.ctx.createOscillator();
+                      osc.type = 'square'; osc.frequency.value = 90;
+                      osc.connect(lp); lp.connect(g); g.connect(A.uiBus);
+                      osc.start(t0); osc.stop(t0 + 0.32);
+                  } },
                 { id: 'slot_select', name: 'Laser Slot Select', source: 'v12-lasers',
                   recipe: 'tone', args: { type: 'triangle', f1: 500, f2: 750, dur: 0.06, vol: 0.12 } },
                 { id: 'refusal_wait', name: 'Refusal (recharging/blocked)', source: 'v11-extraction',

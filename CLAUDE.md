@@ -2689,3 +2689,55 @@ Fable's check still holds at 500/250 (500·sin 25° ≈ 211 < 250, straight
 flight cleans a 25° turn), so 3.49 raises the gentle course's turns to
 35–45° — you must turn, you needn't be precise. Decided, written into
 3.49 and Part C.
+
+**Round 33 (Sonnet) built the first three ideas12.txt items — SPEC
+3.50, 3.51, and 3.45**, in that order, per the "cheapest first" build
+order Round 32 wrote. **3.50** (the offline buzz): a new `refusal_offline`
+cue (a short low buzz through a lowpass, `audio_cues.js`'s `ui`
+category) joins the existing `refusal_dud`/`refusal_wait` clicks, and
+~20 refusal call sites across `index.html` were sorted against one
+rule — buzz = can't here or it's broken, click = can't yet — several of
+which (weapons-cold, auto-target's mode/fitness checks, the extractor/
+vacuum's wrong-mode checks) had no cue at all before this round. See
+SPEC.md 3.50's own DONE paragraph for the full site-by-site breakdown
+and the handful of judgment calls flagged for Brian's ear (the
+tractor's "too far" left as `dud`, "too massive" moved to `offline`,
+"no missiles left" moved to `dud`, the tug fee's insufficient-credits
+check moved to `dud` for consistency with the shops). **3.51** (Y
+speaks the totals): a new `speakTotals()` gives one combined line —
+credits, ore, salvage, alloy, reaction mass, warp charge, missiles,
+decoys, plus auto-target charges when fitted — bound in the raw sim's
+key switch and pass-through in ten menu handlers (station, Modules,
+Lasers shop, hail/transporter, Missions, the map, F2, F3, the run log,
+and the Sound menu — the last one added this round for consistency,
+closing a gap the original 3.51 build order didn't call out). Two
+handlers (`shipScreenKey`, `mapKey`) needed the `y` check placed BEFORE
+their own generic first-letter-jump catch-all, or it would have been
+silently swallowed. **3.45** (five volume steps): `SOUND_LEVELS` grew
+from three entries to five (off/low/quiet/medium/full); the one real
+gotcha, caught before it shipped rather than after, is that growing the
+array silently changes what index 2 MEANS (was "full", now "quiet") —
+this would have broken BOTH a brand-new profile's default (fixed:
+`defaultProfile()`'s hardcoded `2` is now `SOUND_LEVELS.length - 1`)
+AND every existing saved profile's own volume setting (fixed: a
+`PROFILE_VERSION` → 8 migration remaps `{0:0, 1:2, 2:4}`, checked
+against the raw saved JSON rather than the already-merged `profile`
+object — the same SPEC 2.18/3.26 trap, applied again on purpose). The
+Beacons line specced for this item moved into the Sound menu as one
+extra row past the four real categories (not a real `SOUND_CATS` entry,
+since it cycles `BEACON_MODES`, not `SOUND_LEVELS`) — the standalone
+`B` key is untouched, still the only OTHER way to reach it until 3.44
+removes it. All three items machine-tested at a local server (every
+reclassified refusal cue confirmed at its call site; Y confirmed
+speaking identically from ten different menu contexts without
+disturbing their own cursor state; a fresh profile confirmed
+defaulting to full, not quiet; all five volume steps and the Beacons
+line browsed/cycled/saved correctly in both directions; a seeded
+pre-3.45 profile — three-level indexes, no `music` key at all — loaded
+migrated exactly as designed, confirmed both in-memory immediately and
+in the persisted `localStorage` copy only after the next real save),
+zero console errors throughout, none of it yet heard by Brian. Next:
+3.49 (the flight course second pass — spacing 500, radius 250, turns
+raised to 35–45° on the gentle course, pass/miss chimes, a made/missed
+tally, rank against best — all already decided, nothing left open),
+then 3.44, 3.48, 3.46, L.5c, all still ahead of 3.42 and quadrant 2.
