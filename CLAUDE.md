@@ -858,8 +858,13 @@ static once tiers exist.
   round touches (the strike tone, the wave-inbound line, the
   mission-complete fanfare) is new.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
-  `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)` — as of SPEC
-  1.14 a switch to ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2
+  `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)`
+  — **Round 18, SPEC 3.24 fix**: Shift+digit never actually worked from a
+  real keyboard before this round, since a real Shift+1 sends `e.key: '!'`
+  on a US layout, never matching the plain digit switch; a
+  `/^Digit([1-6])$/.exec(e.code)` check ahead of it now reads the digit
+  from the physical key instead, independent of shift state or layout —
+  as of SPEC 1.14 a switch to ANOTHER slot takes `SLOT_SWITCH[i].s` seconds, 1.4–3.2
   by slot, Brian's per-slot clip mapping 3/4/5/1/2/6; the slot's
   `laser_switch` recording plays on the UI bus time-stretched via
   `playbackRate = clip length / s` to fill exactly that window, Space is
@@ -1262,8 +1267,30 @@ one of nine systems offline at 40 %, a standard crew repairs in fixed
 priority with `repair_crew.wav` (a new untracked asset, needs an MP3
 sibling and a manifest key) and a chime at half, the module is the
 upgrade — and **3.28** a timed delivery contract inside the quadrant
-with its own best-time log, the fixed Delivery run untouched. Next:
-build 3.24 first (the two bugs), then 3.25 → 3.28, then 3.23.
+with its own best-time log, the fixed Delivery run untouched.
+
+Round 18 (Sonnet) built **SPEC 3.24** (the two bugs) — see the
+"Shift+1/2 and Sell ore" fix in the onKeyDown/sellOreAt area: a new
+Shift+digit check reads `e.code` (`/^Digit([1-6])$/`) ahead of the
+plain digit switch, since a real Shift+1 sends the shifted SYMBOL via
+`e.key` (`!`), never the digit — the original 2.12 tests only looked
+tested because they dispatched synthetic events with both `key: '1'`
+and `shiftKey: true` set together, which a real keyboard never does.
+`oreSellBlocked()` (`demo && !demo.delivered`) now gates both "Sell
+ore" entries (hail and landed — textually identical, one edit); the
+"Sector" menu description's stale "four points" line was also fixed
+in passing. Also added at Brian's request: a **Sound Lab** entry on
+the mission menu (`location.href = 'soundlab.html'`, a real navigation)
+since he has no other way to reach that page without `file://` support.
+Machine-tested at a local server with a REALISTIC Shift+digit dispatch
+(`e.key` set to the actual shifted symbol, not the digit — the mistake
+the original tests made), confirming both the cycle-in-place and
+switch-slot cases and the plain unshifted digits unaffected; the sell
+block confirmed refusing at hail and landed, ore untouched, then
+confirmed lifting once `demo.delivered` and confirmed never active in
+the open quadrant; the Sound Lab link confirmed navigating cleanly.
+Zero console errors. Not yet heard by Brian. Next: SPEC 3.25 (the
+escort second pass and kill buffs).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

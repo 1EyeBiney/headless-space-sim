@@ -1826,9 +1826,10 @@ push, re-test at Pages, close every tab. Every number is a placeholder
 in CFG or a data table for Brian's ear and hands.
 
 **Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
-2026-09-05, from flying 3.10: 3.24 the two bugs → 3.25 the escort second
-pass and kill buffs → 3.26 laser levels and wear → 3.27 system damage
-and the repair crew → 3.28 the quadrant's timed contract) → 3.23 favor,
+2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
+second pass and kill buffs, next → 3.26 laser levels and wear → 3.27
+system damage and the repair crew → 3.28 the quadrant's timed contract)
+→ 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
 ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
 3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
@@ -2042,25 +2043,64 @@ scope call made while building, not a silent drop.
   ever look wrong in play. Zero console errors throughout. Not yet
   heard by Brian.
 
-#### 3.24 Two bugs from play (ideas7, 2026-09-05) — build first
+#### 3.24 Two bugs from play (ideas7, 2026-09-05) — DONE
 
-- **Shift+1 and Shift+2 arrive as `!` and `@`.** `onKeyDown` matches
+- **Shift+1 and Shift+2 arrived as `!` and `@`.** `onKeyDown` matched
   the slot keys on `e.key`, which Shift turns into the symbol on a US
-  layout, so `selectSlot(i, reverse)` never fires with Shift held and
-  the "cycle back" half of SPEC 2.12 has never actually worked from a
-  real keyboard (the tests dispatched synthetic events with `key: '1'`
-  and `shiftKey: true`, which is not what a keyboard sends). Fix: when
-  `e.shiftKey` and `e.code` is `Digit1`–`Digit6`, take the digit from
-  `e.code`. Same for any other Shift chord that reads a symbol key.
+  layout, so `selectSlot(i, reverse)` never fired with Shift held and
+  the "cycle back" half of SPEC 2.12 had never actually worked from a
+  real keyboard (the ORIGINAL tests that shipped 2.12 dispatched
+  synthetic events with `key: '1'` and `shiftKey: true` together, which
+  is not what a real keyboard sends — that's why it looked tested and
+  wasn't). Fixed: a new check ahead of the existing Shift chords (Shift+
+  W/T/Tab/R) reads `e.code` directly when `e.shiftKey` is set —
+  `/^Digit([1-6])$/.exec(e.code)` — independent of the shift-layer
+  symbol or keyboard layout, and calls `selectSlot(digit-1, true)`
+  before the plain digit switch ever sees it. The unshifted digits (`1`
+  through `6`) were never affected — `e.key` already returns the plain
+  digit there — and are confirmed unchanged.
 - **Selling ore busted the delivery run.** Brian sold his 15,000 from
   the hail menu at range; the handover never happened and the run's
-  clock ran on. Decided: **while a delivery is pending** (`demo &&
-  !demo.delivered`), Sell ore is refused everywhere — hail, transporter
-  (once 3.23 exists), the landed station menu — with the line "That ore
-  is the delivery. Dock at Station Meridian to hand it over." The dock
-  hands it over the moment the hold meets the goal, as it does now; a
-  hold short of the goal is not sellable either, so a pilot cannot
-  sell 14,000 and restart. The open quadrant (no `demo`) is untouched.
+  clock ran on. Fixed with a new `oreSellBlocked()` (`demo &&
+  !demo.delivered`), checked by BOTH "Sell ore" entries' `ready` (the
+  hail menu's and the landed station menu's — they were textually
+  identical, one `replace_all` edit) and `desc` (so browsing to the item
+  previews the block, not a stale sell price): "That ore is the
+  delivery. Dock at Station Meridian to hand it over." `dockAtStation`'s
+  own automatic handover is untouched (still fires the instant the hold
+  meets the goal); a hold short of the goal was already unsellable
+  (`ore <= 0` isn't the gate here — the goal-short case just never had
+  enough to matter) — restated as: the new check runs BEFORE the
+  existing `ore <= 0` check, so it's the first and only reason for a
+  refusal while a delivery is owed. The open quadrant (no `demo`) is
+  untouched, confirmed by selling ore normally there in testing.
+- **Also fixed in passing**: the "Sector" mission-menu item's own
+  description still said "four points of interest" — stale since 3.10
+  replaced the open campaign's sector with the quadrant. Reworded to
+  name what's actually there.
+- **Also added, at Brian's request** (not itself a bug, folded into this
+  round since it's a one-line addition): a **Sound Lab** entry at the
+  end of the mission menu — he can't reach `soundlab.html` directly (no
+  `file://` support since SPEC 2.19) so a link from the one page he can
+  already reach is the way in. `run: function () { location.href =
+  'soundlab.html'; }` — a real navigation, not an overlay; Back returns.
+
+Machine-tested at a local server: a realistic Shift+1/Shift+2 dispatch
+(`e.key` set to the actual shifted symbol `!`/`@`, `e.code` set to
+`Digit1`/`Digit2`, matching what a real browser sends) correctly cycled
+the current slot backward and switched to a different slot respectively,
+confirmed by the spoken slot/version and `__sim.state().laser`; the
+plain unshifted `1` key confirmed still switching/cycling forward
+correctly (regression); selling ore from the hail menu during a pending
+delivery was refused with the correct line and the ore count unchanged,
+the same refusal confirmed on the landed station menu's "Sell ore" too;
+docking still auto-delivered and completed the run normally; selling
+ore normally AFTER delivery (`demo.delivered` true) confirmed working
+again; the open quadrant's own Sell ore confirmed unaffected throughout;
+the Sound Lab menu item confirmed reachable and correctly navigating
+(tab title changed to "Headless Space Sim — Sound Lab") with zero
+console errors on the destination page. Zero console errors throughout.
+Not yet heard or flown by Brian.
 
 #### 3.25 Escort, second pass, and kill buffs (ideas7)
 

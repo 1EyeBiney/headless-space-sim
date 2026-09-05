@@ -4031,10 +4031,15 @@ function tugArrives() {
 var STATION_ITEMS = [
     { label: 'Sell ore',
       desc: function () {
+          if (oreSellBlocked()) return 'Blocked — that ore is the delivery.';
           return ore > 0 ? 'Sell ' + ore + ' ore for ' + Math.floor(ore / CFG.oreCreditRate) + ' credits.'
                           : 'No ore in the hold.';
       },
       ready: function () {
+          if (oreSellBlocked()) {
+              say('That ore is the delivery. Dock at Station Meridian to hand it over.');
+              return false;
+          }
           if (ore <= 0) { say('No ore to sell.'); return false; }
           return true;
       },
@@ -4070,6 +4075,17 @@ var STATION_ITEMS = [
     { label: 'Undock', desc: 'Back out to clear of the station.',
       run: function () { undock(); } }
 ];
+
+// SPEC 3.24: while the delivery run's own quota is still owed, Sell ore is
+// refused everywhere (hail, transporter-range once 3.23 exists, landed) —
+// Brian sold his 15,000 from the hail menu once and the handover never
+// happened, the clock running on with nothing delivered. dockAtStation's
+// own automatic handover (ore >= demoOreGoal) is untouched — this only
+// gates the manual Sell action. A hold short of the goal can't be sold
+// either, so there's no "sell most of it, then restart" escape hatch.
+// (3.28 will extend this the same way for the quadrant's own timed
+// contract once it exists.)
+function oreSellBlocked() { return !!(demo && !demo.delivered); }
 
 function sellOreAt(poi) {
     var earned = Math.floor(ore / CFG.oreCreditRate);
@@ -4163,10 +4179,15 @@ var HAIL_ITEMS = [
       } },
     { label: 'Sell ore',
       desc: function () {
+          if (oreSellBlocked()) return 'Blocked — that ore is the delivery.';
           return ore > 0 ? 'Sell ' + ore + ' ore for ' + Math.floor(ore / CFG.oreCreditRate) + ' credits.'
                           : 'No ore in the hold.';
       },
       ready: function () {
+          if (oreSellBlocked()) {
+              say('That ore is the delivery. Dock at Station Meridian to hand it over.');
+              return false;
+          }
           if (ore <= 0) { say('No ore to sell.'); return false; }
           return true;
       },
@@ -4805,6 +4826,21 @@ function onKeyDown(e) {
         return;
     }
 
+    // Shift+1..6 (SPEC 3.24 fix): unlike Shift+W/T/Tab/R below, a shifted
+    // DIGIT does not fold back to the same character — a US layout sends
+    // '!'/'@'/'#'/'$'/'%'/'^' via e.key, which never matched the plain
+    // '1'-'6' switch cases, so cycling a slot backward has never worked
+    // from a real keyboard (only the synthetic test events that set
+    // e.key: '1' alongside shiftKey: true). e.code names the physical key
+    // regardless of shift state or layout, so read the digit from there.
+    if (e.shiftKey) {
+        var digitMatch = /^Digit([1-6])$/.exec(e.code || '');
+        if (digitMatch) {
+            if (e.repeat) return;
+            selectSlot(parseInt(digitMatch[1], 10) - 1, true);
+            return;
+        }
+    }
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
     // 'w' and would otherwise just be a held thrust key.
     if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
@@ -5311,7 +5347,7 @@ var MENU_ITEMS = [
             ' ore, and deliver it to Station Meridian.',
       run: function () { startDemo(); } },
     { label: 'Sector',
-      desc: 'Open space with four points of interest. Free flight, no clock.',
+      desc: 'Open space in a quadrant: two stations, two planets, a jump gate, the star, a combat zone, and asteroid fields. Free flight, no clock.',
       run: function () { startMission('sector'); } },
     { label: 'Combat training',
       desc: function () {
@@ -5346,7 +5382,16 @@ var MENU_ITEMS = [
               ? 'Your best delivery run times, best ' + profile.runs.length + ' of up to 10.'
               : 'No runs recorded yet.';
       },
-      run: function () { openRunLog(); } }
+      run: function () { openRunLog(); } },
+    // A separate standalone page (CLAUDE.md: never part of the game's own
+    // key-trap shell), reached from here by Brian's own request — he can't
+    // open it directly (no file:// support since SPEC 2.19) so a link from
+    // the one page he can already reach is the way in. A real navigation
+    // (not an overlay): Enter leaves index.html for soundlab.html, same
+    // origin, Back returns.
+    { label: 'Sound Lab',
+      desc: 'A separate page for auditioning every game sound, cue, and the vortex orbit demo. Leaves this page — Back returns.',
+      run: function () { location.href = 'soundlab.html'; } }
 ];
 // Resume (SPEC 1.18): appended after MENU_ITEMS, never spliced in, so every
 // other item keeps its own index whether or not Resume is showing — a
