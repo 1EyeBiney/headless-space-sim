@@ -91,8 +91,12 @@ var CFG_DEFAULTS = {
 
     // Death by tug (SPEC 2.16): a lost ship in the sector campaign or the
     // delivery run waits for pickup instead of Enter-restarting in place.
-    tugBaseS: 90,             // base wait, halved by influence or the credit fee (each independently)
-    tugInfluenceFactor: 0.5,  // multiplier once Station Meridian remembers you
+    // SPEC 3.23: the influence-halving is gone — the tug now goes to the
+    // nearest station that actually trusts the pilot, at the base wait; if
+    // none in the quadrant does, it's a long ride home to Meridian at
+    // tugHomeFactor times the base (see startTug).
+    tugBaseS: 90,             // base wait to a trusted station, or halved by the credit fee
+    tugHomeFactor: 2,         // no trusted station anywhere: the long way home to Meridian
     tugFeeCredits: 50,        // Enter pays this once to halve whatever's left
 
     refDistance: 50, maxDistance: 2000, rolloff: 1,
@@ -145,15 +149,22 @@ var CFG_DEFAULTS = {
     dustVacTickMs: 600,
 
     // sector (open space between encounters)
-    poiInteract: 500,        // call (C) range for a point of interest
-    // Station (SPEC 1.19): no flown corridor — C at range does one of two
-    // things. Supersedes the 1.6 docking-corridor mechanic entirely.
-    stationCommRange: 500,   // C this close: a hail (status, no docking)
-    stationDockRange: 150,   // C this close: docks instantly
-    // ideas6: both ranges stay as they are (upgrades will extend them
-    // later); crossing into either now sounds a cue and says so. Undocking
-    // puts the ship well outside comm range, facing away, so the pilot has
-    // to thrust clear of the no-warp zone (warpInhibitDist) before jumping.
+    poiInteract: 500,        // call (C) range for a point of interest (combat/mining zones; unaffected by 3.23)
+    // Station (SPEC 1.19, ranges widened by SPEC 3.23): C at range does one
+    // of three things now instead of two — comms (talk), transporter (hand
+    // over cargo, no landing), or docking (land) — gated by favor tier, not
+    // just distance (see favorTierAtLeast). Supersedes the 1.6 docking-
+    // corridor mechanic entirely; planets aren't real ports yet (3.19), so
+    // these three ranges apply to stations only for now.
+    stationCommRange: 2000,        // C this close: a hail — talk, missions, no cargo moves
+    stationTransporterRange: 600,  // C this close, Known favor or better: rearm/sell/buy, no landing
+    stationDockRange: 150,         // C this close, Trusted favor or better: docks instantly
+    // Upgrades extend all three (comm_array/transporter_booster/
+    // docking_computer modules, plus Allied's own +25%, SPEC 3.23);
+    // crossing any of the three inward/outward sounds a cue and says so.
+    // Undocking puts the ship well outside comm range, facing away, so the
+    // pilot has to thrust clear of the no-warp zone (warpInhibitDist)
+    // before jumping.
     undockDist: 1000,
     stationAmbientVol: 0.35, // the docked interior loop (music bus)
     // Lock tones by target kind (ideas6): a ship gets the solid tone; a
@@ -166,7 +177,31 @@ var CFG_DEFAULTS = {
     tickLockedMs: 220,
     // Economy (SPEC 1.7): placeholder prices, all in CFG so Brian can retune.
     oreCreditRate: 10,        // 1 credit per this many ore
-    influenceThreshold: 3,    // "good to see you again, pilot" past this many good deeds
+
+    // Favor and the three ranges (SPEC 3.23, Brian's station game): a
+    // per-port standing meter, replacing SPEC 1.7's flat influence count
+    // (folded in at 10 points each on migration, then retired). Control
+    // (the pilot's contested SHARE of a station, Invest, the tithe,
+    // quadrant-wide comms at full control) is deliberately NOT built this
+    // round — every one of those depends on a per-station "wants" table
+    // that doesn't exist until 3.11, and building the meter with no way to
+    // ever raise it would just be dead code. Only stations run favor;
+    // planets aren't real ports until 3.19.
+    favorKnown: 10,    // the transporter (hand cargo over, no landing) opens
+    favorTrusted: 40,  // docking (land) opens; Station Meridian starts here
+    favorAllied: 70,   // 10% better prices both ways once 3.20 exists; Invest, once 3.11 exists
+    favorMission: 8,          // a mission (escort/defend/the timed contract) completed for that port
+    favorFail: 10,            // a mission ABANDONED (X mid-run) while the friendly was still alive
+    favorFriendlyLost: 25,    // the port's own escort freighter or miner destroyed — the bigger loss
+    favorDeliveryHandover: 10, // the FIXED delivery run's own handover at Meridian (the one favor
+                               // change that fires even though "the fixed sector doesn't run favor")
+    // "selling what it wants" needs 3.11's per-station wants table — until
+    // then every sale counts, at these per-category rates (unchanged from
+    // the spec's own numbers; hydrogen/biomass aren't real resources yet).
+    favorPerWantUnit: { ore: 200, salvage: 4, alloy: 4 },
+    favorDecayPerHour: 1,   // per play-hour of absence from a port (no hail/sale/mission there)
+    favorFloorTiers: 1,     // decay never drops a port below (peak tier reached) minus this many tiers
+    alliedRangeBonus: 0.25, // +25% to all three ranges, but only AT a station that's actually Allied
 
     // Escort and defend missions (SPEC 2.17), offered from a station's hail
     // menu. Raiders spawn hostile from the start (they're already attacking
@@ -403,14 +438,15 @@ var profile = null;
 // chaff/runs only); 2 = everything since (modules, sound, beacons, laser
 // slots, resources); 3 = SPEC 3.10's game clock, mission cooldowns, and
 // the quadrant save; 4 = SPEC 3.26's earned laser levels; 5 = SPEC 3.28's
-// timed contract log and cooldown slot. Bump this whenever a field is
+// timed contract log and cooldown slot; 6 = SPEC 3.23's per-port favor,
+// replacing the flat influence count. Bump this whenever a field is
 // added or reshaped so loadProfile has one clear place to migrate from,
 // instead of a save silently missing a field forever. `saveProfile` never
 // writes a LOWER number than what was loaded, so a save from a newer build
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 5;
+var PROFILE_VERSION = 6;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
@@ -453,7 +489,6 @@ function loadProfile() {
     // them a version number; nothing about their behavior changes.
     if (!Array.isArray(profile.runs)) profile.runs = [];
     if (!Array.isArray(profile.upgrades)) profile.upgrades = [];
-    if (!profile.stations || typeof profile.stations !== 'object') profile.stations = {};
     // Laser slots: exactly LASER_SLOTS entries, unknown ids become empty.
     if (!Array.isArray(profile.slots)) profile.slots = STARTING_SLOTS.slice();
     profile.slots = profile.slots.slice(0, LASER_SLOTS).map(function (id) { return laserById(id) ? id : null; });
@@ -482,6 +517,36 @@ function loadProfile() {
     // v4 -> v5 (SPEC 3.28): the timed contract's own run log — a plain
     // backfill, same shape as `runs`' own guard above.
     if (!Array.isArray(profile.contractRuns)) profile.contractRuns = [];
+    // v5 -> v6 (SPEC 3.23): favor replaces the flat influence count, per
+    // port, per quadrant (profile.quadrants[q].ports[name].favor). Folds
+    // an old profile.stations[name].influence in at 10 points each (the
+    // spec's own conversion) into whichever quadrant is current today
+    // (always 'home' in practice — there's only ever been one). Station
+    // Meridian always starts Trusted regardless of any of this —
+    // ensurePort's own default for its name — so a save with no stations
+    // data at all still gets that right, and a genuinely fresh profile is
+    // left with NO quadrant record at all, same as always: the shell below
+    // is only created when there's real data to put in it, so
+    // ensureQuadrantHome's "first ever Sector visit" check (on `.zone`,
+    // not the record's mere existence) still works, and every other place
+    // that tests `profile.quadrants[id]` for plain truthiness (a real bug
+    // this exact migration surfaced in testing — see SPEC.md 3.23) doesn't
+    // see a hollow shell it wasn't expecting.
+    if (profile.stations && typeof profile.stations === 'object' && Object.keys(profile.stations).length) {
+        if (!profile.quadrants[profile.quadrantId]) {
+            profile.quadrants[profile.quadrantId] = { zone: null, fields: [], fieldSeq: 0, ports: {} };
+        }
+        var migrateQ = profile.quadrants[profile.quadrantId];
+        Object.keys(profile.stations).forEach(function (name) {
+            var oldInfluence = profile.stations[name] && profile.stations[name].influence;
+            if (typeof oldInfluence !== 'number' || oldInfluence <= 0) return;
+            var port = ensurePort(migrateQ, name);
+            var favor = Math.min(100, oldInfluence * 10);
+            if (favor > port.favor) port.favor = favor;
+            if (favor > port.peakFavor) port.peakFavor = favor;
+        });
+    }
+    delete profile.stations;
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -709,7 +774,19 @@ var MODULES = [
     // are the CFG defaults); a later tier would move heavier rocks.
     { id: 'tractor_1', name: 'tractor beam', cost: 600, mass: 10, alloy: 2,
       desc: 'Pulls a targeted small rock or core toward you instead of flying to it.',
-      cfg: {} }
+      cfg: {} },
+    // SPEC 3.23: range-growth modules — each a flat +50% (docking_computer
+    // doubles, matching the spec's own wording), stacking with whatever an
+    // Allied station adds on top of THAT (see stationRangeFor).
+    { id: 'comm_array', name: 'comm array', cost: 350, mass: 6,
+      desc: 'Half again the range at which a station answers a hail.',
+      cfg: { stationCommRange: 3000 } },
+    { id: 'transporter_booster', name: 'transporter booster', cost: 400, mass: 8,
+      desc: 'Half again the range at which the transporter reaches a station.',
+      cfg: { stationTransporterRange: 900 } },
+    { id: 'docking_computer', name: 'docking computer', cost: 450, mass: 10,
+      desc: 'Doubles the range at which a station will dock you.',
+      cfg: { stationDockRange: 300 } }
 ];
 
 function moduleById(id) {
@@ -979,7 +1056,11 @@ function missionEnd(success) {
         var frac = mission.friendly.hp / mission.friendly.maxHp;
         var reward = Math.round(CFG.missionCredits * frac);
         profile.credits += reward;
-        bumpInfluence({ name: 'Station Meridian' }, 1);
+        // SPEC 3.23: favor at whichever station actually offered this
+        // mission — was hardcoded to Station Meridian regardless (a
+        // pre-existing bug this migration fixes in passing: a mission
+        // taken at Station Two always credited Meridian's standing).
+        gainFavor({ name: mission.poiName }, CFG.favorMission);
         saveProfile();
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
@@ -987,6 +1068,12 @@ function missionEnd(success) {
                 ' percent. ' + reward + ' credits earned. X returns to the sector.');
         }, 900);
     } else {
+        // SPEC 3.23: missionEnd(false) only ever fires from missionStrike's
+        // own f.hp<=0 branch — the friendly the port protects has just been
+        // destroyed, the larger of the two favor losses the spec names
+        // (favorFriendlyLost, not the plain favorFail an abandoned-but-
+        // still-alive mission costs — see clearMission for that one).
+        loseFavor({ name: mission.poiName }, CFG.favorFriendlyLost);
         setTimeout(function () {
             say('Mission failed. No reward. X returns to the sector.');
         }, 900);
@@ -1192,13 +1279,20 @@ function spawnField(pilotPos) {
 // zone/fields spawn near — there's no real ship position yet in the sector
 // frame at this point, and starting near home matches placeAtStationStart's
 // own idea (new pilots begin just outside Meridian).
+// SPEC 3.23: guarded on `.zone` rather than the record's mere existence —
+// loadProfile's own v5->v6 migration now pre-creates a bare quadrant shell
+// (zone: null, fields: [], ports: {...migrated favor}) purely to hold
+// favor data folded in from an old save, for a profile that's never
+// actually visited the Sector; a real first visit still needs to spawn
+// the zone/fields here rather than finding them already "done".
 function ensureQuadrantHome() {
-    if (profile.quadrants.home) return;
+    if (!profile.quadrants.home) profile.quadrants.home = { zone: null, fields: [], fieldSeq: 0, ports: {} };
+    var home = profile.quadrants.home;
+    if (!home.ports) home.ports = {};
+    if (home.zone) return;
     profile.quadrantId = 'home';
     var meridian = QUADRANT.filter(function (q) { return q.name === 'Station Meridian'; })[0];
     var originPos = ringPos(meridian);
-    var home = { zone: null, fields: [], fieldSeq: 0 };
-    profile.quadrants.home = home;
     home.zone = spawnZone(originPos);
     for (var i = 0; i < CFG.quadrantFieldCount; i++) home.fields.push(spawnField(originPos));
     saveProfile();
@@ -1348,7 +1442,9 @@ var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
 var laser = { misses: [], hotUntil: 0 };   // overheat bookkeeping (wall clock)
 var warpCharge = 0;      // warp tank, in distance units (CFG.warpTankMax when full)
 var docked = null;       // { poi, approachDir } once docked; ship held, station menu active
-var hailMenu = { open: false, idx: 0, poi: null, submenu: null };   // the hail-range menu, SPEC 2.14; submenu: null | 'missions'
+// the hail-range menu (SPEC 2.14, split into two tiers by SPEC 3.23):
+// tier: 'comm' | 'transporter'; submenu: null | 'missions'.
+var hailMenu = { open: false, idx: 0, poi: null, tier: 'comm', submenu: null };
 var missionIdx = 0;      // cursor in the Missions submenu (SPEC 2.17)
 var rcs = 0;              // reaction mass, set from CFG.rcsMax
 var rcsBattery = false;   // true once rcs has hit 0 this sortie, until refilled
@@ -1555,8 +1651,9 @@ var HELP_SECTIONS = [
         'You start just outside Station Meridian with a full tank. It reaches the Contested Zone; the legs after that run it dry a little short, so expect to fly the last stretch into the asteroid field and back to the station.',
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
-        function () { return 'The station works by range instead: C within ' + CFG.stationCommRange + ' hails it for a status report, and C within ' + CFG.stationDockRange + ' docks at once — no corridor to fly.'; },
-        function () { return 'The hail (in comm range but not close enough to dock) is a real menu too: rearm, sell ore, buy reaction mass, take a mission, or close. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
+        function () { return 'The station works by range and standing: C within ' + CFG.stationCommRange + ' hails it for a talk, C within ' + CFG.stationTransporterRange + ' reaches the transporter once the station knows you, and C within ' + CFG.stationDockRange + ' docks once it trusts you — no corridor to fly.'; },
+        'Favor is a station\'s own standing toward you: Unknown, Known, Trusted, or Allied, spoken every time you hail. Earned by finishing a mission there or selling what it wants; lost by a failed mission or letting its own ship die; it decays slowly if you stay away, never past one tier below the best you ever reached. Station Meridian starts Trusted — it\'s home.',
+        function () { return 'The comms hail (talk only) offers missions and a status report; the transporter, closer in and gated on Known standing, is where rearm, sell, and buy actually happen. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
         function () { return 'Station Meridian also offers a timed delivery contract: clear the current Contested Zone, mine ' + CFG.demoOreGoal + ' ore at any field, and dock here with it — the ore\'s own price plus ' + CFG.contractCredits + ' credits, and its own best-time log, separate from the fixed Delivery run. Selling ore is blocked while one is open.'; },
         'Docked, the station menu opens, your hull, missiles, decoys, and warp tank are full, the beacons outside go quiet, and the ship is held until you undock — which puts you ' + CFG.undockDist + ' out, facing away, with the no-warp zone still to thrust clear of.',
         'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
@@ -1665,7 +1762,7 @@ var KEY_DESCRIPTIONS = {
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
-    c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ' and docks within ' + CFG.stationDockRange + '.'; },
+    c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ', reaches its transporter within ' + CFG.stationTransporterRange + ' once it knows you, and docks within ' + CFG.stationDockRange + ' once it trusts you.'; },
     enter: function () { return 'At the mission menu, selects the highlighted item. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run.'; },
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
@@ -2369,7 +2466,12 @@ function destroyTarget(t, extra) {
     if (left === 0) {
         won = true;
         shieldReset();
-        if (sectorHome) bumpInfluence({ name: 'Station Meridian' }, 1);
+        // SPEC 3.23: the old influence system gave a small bump here for
+        // any sector-entered zone clear; favor's own spec'd source list
+        // doesn't include this (missions, selling what's wanted, and the
+        // delivery handover are the only three), so it's retired rather
+        // than migrated — a zone clear pays in salvage and kill buffs, not
+        // standing.
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
             var tail;
@@ -3434,7 +3536,7 @@ function shipDestroyed(source) {
     setTimeout(function () {
         var tail = tugged
             ? 'Tug dispatched from ' + tug.poiData.name + ', ' + Math.ceil(tug.total) + ' seconds' +
-              (tug.total < CFG.tugBaseS ? ' — they remember you there' : '') +
+              (tug.total > CFG.tugBaseS ? ' — no trusted station nearby, this is the long way home' : '') +
               '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait, once.'
             : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
         say('Hull breached by ' + source + '. Ship lost. ' + tail);
@@ -4118,6 +4220,13 @@ function statusReport() {
     }
     if (mode === 'sector') line += 'Ore hold ' + ore + '. Warp charge ' + warpPct() + ' percent. ' +
         'Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery' : '') + '. ';
+    // SPEC 3.23: the selected station's own standing, once close enough to
+    // hail it — not spoken for the demo's own fixed sector, which never
+    // runs favor at all.
+    if (mode === 'sector' && !demo && t && t.poiType === 'station' &&
+        len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
+        line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
+    }
     line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
           : mode === 'sector' ? aliveTargets().length + ' points of interest. '
           : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
@@ -4455,6 +4564,15 @@ function buildShipLines() {
     }
     line('Total mass ' + shipMass().toFixed(2) + '.');
 
+    // SPEC 3.23: the three station ranges — base CFG values (already
+    // reflecting any owned comm_array/transporter_booster/
+    // docking_computer, via moduleCfgOverlay) plus a reminder that an
+    // Allied station adds its own +25% on top, station by station.
+    heading('Station access');
+    line('Comms ' + Math.round(CFG.stationCommRange) + ', transporter ' +
+         Math.round(CFG.stationTransporterRange) + ', docking ' + Math.round(CFG.stationDockRange) + '.');
+    line('An Allied station adds ' + Math.round(CFG.alliedRangeBonus * 100) + ' percent more to all three, there only.');
+
     return lines;
 }
 
@@ -4652,10 +4770,18 @@ function closeMap(spoken) {
 // Inside an encounter the map can't give live bearings (the encounter is its
 // own little space), so lines read as chart entries: sector-frame distance
 // from the point you are at.
+// SPEC 3.23: "the map line does too" — a station's line in the open
+// quadrant's map names its current tier. Not spoken for the demo's own
+// fixed sector, which never runs favor.
+function stationTierNote(item) {
+    if (demo || item.poiType !== 'station') return '';
+    return ' ' + capFirst(favorTier(favorOf(item.name))) + '.';
+}
 function mapLineText(item) {
     if (item.heading) return item.heading;
     if (mode === 'sector') {
-        return bearingText(item) + ' ' + capFirst(warpReachText(len(sub(item.pos, ship.pos)))) + '.' + fieldTypeNote(item);
+        return bearingText(item) + ' ' + capFirst(warpReachText(len(sub(item.pos, ship.pos)))) + '.' +
+               stationTierNote(item) + fieldTypeNote(item);
     }
     if (sectorHome && item.name === sectorHome.poiName) {
         return item.name + ', ' + item.desc + '. Your current location.';
@@ -4803,13 +4929,20 @@ function dockAtStation(poi, extra) {
                   (refueled ? 'Warp tank filled. ' : '') +
                   (massRefueled ? 'Reaction mass filled. ' : '') +
                   (systemsFixed ? 'Systems repaired. ' : '');
-    var greeting = (autoThrust ? 'Auto-thrust off. ' : '') + influenceGreeting(poi);
+    // SPEC 3.23: no mood line here any more — docking always means the
+    // pilot already cleared Trusted (favorTierAtLeast gated the call that
+    // got here), so restating it would just repeat what the hail already
+    // said on the way in.
+    var greeting = (autoThrust ? 'Auto-thrust off. ' : '');
     autoThrust = false;
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
         var delivered = ore;
         demo.delivered = true;
         ore = 0;
-        bumpInfluence(poi, 2);
+        // SPEC 3.23: the one favor change the fixed sector's own demo DOES
+        // make — writeFavor bypasses the "no favor in demo" rule on
+        // purpose here, matching the spec's own explicit callout.
+        writeFavor(poi.name, CFG.favorDeliveryHandover);
         var isBest = recordRun(demo.elapsed);
         var bestLine = isBest === true ? 'New personal best!'
                       : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
@@ -4829,7 +4962,7 @@ function dockAtStation(poi, extra) {
         ore = 0;
         var payout = Math.floor(cDelivered / CFG.oreCreditRate) + CFG.contractCredits;
         profile.credits += payout;
-        bumpInfluence(poi, 2);
+        gainFavor(poi, CFG.favorMission);   // SPEC 3.23: treated as "a mission completed for that port"
         var cIsBest = recordContractRun(contract.elapsed);
         var cBestLine = cIsBest === true ? 'New personal best!'
                        : cIsBest === false ? 'Best is ' + fmtTime(profile.contractRuns[0].seconds) + '.'
@@ -4875,6 +5008,21 @@ function overHeldText() {
     return 'Encounter over. Enter plays again, X ' + (sectorHome ? 'returns to the sector.' : 'for the mission menu.');
 }
 
+// SPEC 3.23: like nearestStationTo, but only among stations that would
+// actually let the pilot dock right now (Trusted favor or better —
+// Controlled would also qualify once control exists, but it doesn't yet,
+// so Trusted is the whole test).
+function nearestTrustedStationTo(pos) {
+    var best = null, bestD = Infinity;
+    QUADRANT.forEach(function (q) {
+        if (q.poiType !== 'station') return;
+        if (favorTierRank(favorTier(favorOf(q.name))) < favorTierRank('trusted')) return;
+        var d = len(sub(ringPos(q), pos));
+        if (d < bestD) { bestD = d; best = { name: q.name, pos: ringPos(q) }; }
+    });
+    return best;
+}
+
 function startTug() {
     // SPEC 3.10: more than one station can exist now — go to whichever is
     // nearest the pilot's SECTOR-frame position at the moment of death
@@ -4883,14 +5031,24 @@ function startTug() {
     // sector still only ever has Station Meridian (nearestStationTo's own
     // demo branch), unchanged.
     var pilotPos = (mode === 'sector') ? ship.pos : (sectorHome ? sectorHome.pos : ship.pos);
-    var poiData = nearestStationTo(pilotPos);
-    // Read influence BEFORE anything this death might bump — same ordering
-    // rule as influenceGreeting, so the halved wait reflects standing
-    // earned before now, not credit for the wreck currently happening.
-    var s = profile.stations[poiData.name];
-    var influenced = s && s.influence >= CFG.influenceThreshold;
-    var total = CFG.tugBaseS * (influenced ? CFG.tugInfluenceFactor : 1);
-    tug = { total: total, remaining: total, poiData: poiData, paid: false };
+    if (demo) {
+        var demoPoi = nearestStationTo(pilotPos);
+        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: demoPoi, paid: false };
+        return;
+    }
+    // SPEC 3.23: replaces the old influence-halving model entirely — favor
+    // now decides WHERE the tug goes, not how fast. The nearest station
+    // that actually trusts the pilot, at the base wait; if none in the
+    // quadrant does, the long ride home to Meridian by name, at
+    // tugHomeFactor times the base.
+    var trusted = nearestTrustedStationTo(pilotPos);
+    if (trusted) {
+        tug = { total: CFG.tugBaseS, remaining: CFG.tugBaseS, poiData: trusted, paid: false };
+        return;
+    }
+    var meridianEntry = QUADRANT.filter(function (q) { return q.name === 'Station Meridian'; })[0];
+    var total = CFG.tugBaseS * CFG.tugHomeFactor;
+    tug = { total: total, remaining: total, poiData: { name: meridianEntry.name, pos: ringPos(meridianEntry) }, paid: false };
 }
 
 function updateTug(dt) {
@@ -5001,13 +5159,22 @@ var STATION_ITEMS = [
 // contract once it exists.)
 function oreSellBlocked() { return !!((demo && !demo.delivered) || (contract && !contract.delivered)); }
 
+// SPEC 3.23: every sale nudges favor at the station — favorPerWantUnit's
+// per-category rate, the number the spec gives for "selling what it
+// wants". There's no per-station wants list yet (that's 3.11), so every
+// sale counts as if it were wanted for now — flagged in SPEC.md. Folded
+// into the SAME say() as the credit total (the SPEC 2.15 rule), never a
+// separate call.
 function sellOreAt(poi) {
+    var sold = ore;
     var earned = Math.floor(ore / CFG.oreCreditRate);
     ore = 0;
     profile.credits += earned;
-    bumpInfluence(poi, 1);
+    var favorGain = Math.floor(sold / CFG.favorPerWantUnit.ore);
+    if (favorGain > 0) gainFavor(poi, favorGain);
     saveProfile();
-    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
+    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.' +
+        (favorGain > 0 ? ' +' + favorGain + ' favor.' : ''));
 }
 function sellOre() { sellOreAt(docked.poi); }
 
@@ -5018,9 +5185,11 @@ function sellResource(key, pricePerUnit, poi) {
     var earned = n * pricePerUnit;
     profile.resources[key] = 0;
     profile.credits += earned;
-    bumpInfluence(poi, 1);
+    var favorGain = Math.floor(n / CFG.favorPerWantUnit[key]);
+    if (favorGain > 0) gainFavor(poi, favorGain);
     saveProfile();
-    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.');
+    say('Sold for ' + earned + ' credits. Balance ' + profile.credits + '.' +
+        (favorGain > 0 ? ' +' + favorGain + ' favor.' : ''));
 }
 
 // ---- Modules submenu --------------------------------------------------------
@@ -5179,20 +5348,28 @@ function laserShopKey(lname) {
     }
 }
 
-// A hail (SPEC 2.14): within comm range but not close enough to dock. A
-// real browsable menu now, not just a status line — rearm, sell ore, and
-// buy reaction mass all work from here (ideas5: "hailing range can reload
-// ships and sell ore but not refit or equip modules"). Repair, modules,
-// and lasers still need an actual landing. influenceGreeting already reads
-// as "Station Meridian control: good to see you again, pilot. " when
-// earned, so this only adds the station-name prefix when there is no
-// greeting to supply it.
-function hailGreeting(poi) {
-    var greeting = influenceGreeting(poi);
-    return greeting || (poi.name + ' control: ');
-}
+// SPEC 3.23: the comms-range menu — talk only, nothing changes hands.
+// Reachable at any favor tier, from as far as stationCommRange.
+var COMM_ITEMS = [
+    { label: 'Missions',
+      desc: function () {
+          return activeMissions().every(function (m) { return !missionAvailable(m.kind); })
+              ? 'Nothing available right now.'
+              : (hailMenu.poi.name === 'Station Meridian'
+                  ? 'Escort or defend work, or a timed delivery contract, offered from here.'
+                  : 'Escort or defend work, offered from here.');
+      },
+      run: function () { hailMenu.submenu = 'missions'; missionIdx = 0; say(missionsMenuIntro()); } },
+    { label: 'Close', desc: 'Break off the hail.',
+      run: function () { closeHailMenu(); } }
+];
 
-var HAIL_ITEMS = [
+// SPEC 3.23: the transporter-range menu — hand cargo over, no landing.
+// Needs Known favor or better (callPoi gates reaching this at all); the
+// same actions stay reachable from the docked station menu too (SPEC.md
+// 3.23 flags this explicitly: built as an ADDITIONAL, closer-in access
+// tier, not a relocation — landing never loses anything it has today).
+var TRANSPORTER_ITEMS = [
     { label: 'Rearm',
       desc: function () {
           return (missiles < CFG.missileMax || chaff < CFG.chaffMax)
@@ -5218,6 +5395,28 @@ var HAIL_ITEMS = [
           return true;
       },
       run: function () { sellOreAt(hailMenu.poi); } },
+    { label: 'Sell salvage',
+      desc: function () {
+          var n = profile.resources.salvage;
+          return n > 0 ? 'Sell ' + n + ' salvage for ' + (n * CFG.salvageCredit) + ' credits.'
+                       : 'No salvage in the hold.';
+      },
+      ready: function () {
+          if (profile.resources.salvage <= 0) { say('No salvage to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellResource('salvage', CFG.salvageCredit, hailMenu.poi); } },
+    { label: 'Sell alloy',
+      desc: function () {
+          var n = profile.resources.alloy;
+          return n > 0 ? 'Sell ' + n + ' alloy for ' + (n * CFG.alloyCredit) + ' credits.'
+                       : 'No alloy in the hold.';
+      },
+      ready: function () {
+          if (profile.resources.alloy <= 0) { say('No alloy to sell.'); return false; }
+          return true;
+      },
+      run: function () { sellResource('alloy', CFG.alloyCredit, hailMenu.poi); } },
     { label: 'Buy reaction mass',
       desc: function () {
           if (rcs >= CFG.rcsMax) return 'Reaction mass tank already full.';
@@ -5241,21 +5440,15 @@ var HAIL_ITEMS = [
                              : units > 0 ? units + ' units bought. Tank at ' + Math.round(rcsPct()) + ' percent. ' + profile.credits + ' credits left.'
                                          : 'Not enough credits for any.');
       } },
-    { label: 'Missions',
-      desc: function () {
-          return activeMissions().every(function (m) { return !missionAvailable(m.kind); })
-              ? 'Nothing available right now.'
-              : (hailMenu.poi.name === 'Station Meridian'
-                  ? 'Escort or defend work, or a timed delivery contract, offered from here.'
-                  : 'Escort or defend work, offered from here.');
-      },
-      run: function () { hailMenu.submenu = 'missions'; missionIdx = 0; say(missionsMenuIntro()); } },
     { label: 'Close', desc: 'Break off the hail.',
       run: function () { closeHailMenu(); } }
 ];
 
+// Which item list hailMenuKey/hailItemText are currently browsing.
+function activeHailItems() { return hailMenu.tier === 'transporter' ? TRANSPORTER_ITEMS : COMM_ITEMS; }
+
 // ---- Missions submenu (SPEC 2.17) ------------------------------------------
-// Same nested-submenu shape as the station menu's Modules list: HAIL_ITEMS'
+// Same nested-submenu shape as the station menu's Modules list: COMM_ITEMS'
 // own "Missions" entry sets hailMenu.submenu, and hailMenuKey dispatches
 // here first while it's set, same as stationMenuKey does for Modules.
 // Labels are functions (SPEC 3.10): the delivery run's fixed sector always
@@ -5379,7 +5572,7 @@ function startMissionRun(kind) {
     hailMenu.submenu = null;
     sectorHome = snapshotSector(poi);
     var spec = {
-        kind: kind, elapsed: 0, wavesSent: 0, ended: false,
+        kind: kind, elapsed: 0, wavesSent: 0, ended: false, poiName: poi.name,
         nextStrikeIn: CFG.missionStrikeGapMinS + Math.random() * (CFG.missionStrikeGapMaxS - CFG.missionStrikeGapMinS),
         waveTimes: kind === 'escort' ? CFG.missionEscortWaveTimes.slice() : CFG.missionDefendWaveTimes.slice()
     };
@@ -5388,19 +5581,28 @@ function startMissionRun(kind) {
 }
 
 function hailItemText() {
-    var it = HAIL_ITEMS[hailMenu.idx];
+    var it = activeHailItems()[hailMenu.idx];
     return itemLabel(it) + '. ' + itemDesc(it);
 }
 
-function openHailMenu(poi) {
+// SPEC 3.23: tier is 'comm' (talk — Missions, Close) or 'transporter'
+// (hand cargo over — Rearm/Sell/Buy, Close); callPoi decides which by
+// range and favor before calling this. The greeting always states the
+// port's current mood; the comm tier also names the two closer ranges so
+// a pilot knows how much nearer to get for more.
+function openHailMenu(poi, tier) {
     hailMenu.open = true;
     hailMenu.idx = 0;
     hailMenu.poi = poi;
+    hailMenu.tier = tier || 'comm';
+    hailMenu.submenu = null;
     keysDown = {};
     thrusterSync(null);
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
-    say(hailGreeting(poi) + 'Come within ' + CFG.stationDockRange + ' to dock for repairs and modules. ' +
-        'Use up and down arrows to navigate and Enter to select. ' + hailItemText());
+    var intro = hailMenu.tier === 'transporter' ? 'Transporter online. '
+              : 'Come within ' + Math.round(stationRangeFor('transporter', poi.name)) + ' for the transporter, ' +
+                Math.round(stationRangeFor('dock', poi.name)) + ' to dock. ';
+    say(hailGreeting(poi) + intro + 'Use up and down arrows to navigate and Enter to select. ' + hailItemText());
 }
 
 function closeHailMenu() {
@@ -5412,12 +5614,12 @@ function closeHailMenu() {
 
 function hailMenuKey(lname) {
     if (hailMenu.submenu === 'missions') { missionsKey(lname); return; }
-    var n = HAIL_ITEMS.length;
+    var items = activeHailItems(), n = items.length;
     if (lname === 'escape' || lname === 'x') { closeHailMenu(); return; }
     if (lname === 'arrowdown') { menuClick(); hailMenu.idx = (hailMenu.idx + 1) % n; say(hailItemText()); }
     else if (lname === 'arrowup') { menuClick(); hailMenu.idx = (hailMenu.idx - 1 + n) % n; say(hailItemText()); }
     else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
-        var item = HAIL_ITEMS[hailMenu.idx];
+        var item = items[hailMenu.idx];
         if (item.ready && !item.ready()) return;
         menuSelectSound();
         item.run();
@@ -5425,7 +5627,7 @@ function hailMenuKey(lname) {
         say(hailItemText());
     } else {
         SIM.audio.blip(220, 80, 0.1);
-        say('Up and down arrows browse, Enter selects, Escape closes. ' + itemLabel(HAIL_ITEMS[hailMenu.idx]) + '.');
+        say('Up and down arrows browse, Enter selects, Escape closes. ' + itemLabel(items[hailMenu.idx]) + '.');
     }
 }
 
@@ -5437,19 +5639,119 @@ function stationItemText() {
     return itemLabel(it) + '. ' + itemDesc(it);
 }
 
-// Influence (SPEC 1.7/A.6): a small per-station counter raised by delivery,
-// selling, and clearing a combat zone entered from the sector. No consumer
-// yet beyond a friendlier greeting past a threshold — a price break is a
-// natural follow-up once there is more than one station to compare.
-function bumpInfluence(poi, amt) {
-    if (!poi || !profile) return;
-    if (!profile.stations[poi.name]) profile.stations[poi.name] = { influence: 0 };
-    profile.stations[poi.name].influence += amt;
+// ---- favor and the three ranges (SPEC 3.23) --------------------------------
+// Replaces SPEC 1.7's flat per-station influence counter with a real
+// 0-100 standing meter, per port, per quadrant — profile.quadrants[q].
+// ports[name] = { favor, peakFavor, lastVisitHour }. Tiers gate what a
+// station lets the pilot do (see favorTierAtLeast/callPoi); Control
+// (Invest, the tithe, unions, quadrant-wide comms) is NOT built this
+// round — see the CFG comment above favorKnown for why.
+var FAVOR_TIERS = ['unknown', 'known', 'trusted', 'allied'];
+var FAVOR_TIER_WORDS = {
+    unknown: "You're unknown to us.", known: 'We know you.',
+    trusted: 'We trust you.', allied: "You're one of ours."
+};
+function favorTierMin(tier) {
+    return tier === 'allied' ? CFG.favorAllied : tier === 'trusted' ? CFG.favorTrusted :
+           tier === 'known' ? CFG.favorKnown : 0;
+}
+function favorTier(favor) {
+    return favor >= CFG.favorAllied ? 'allied' : favor >= CFG.favorTrusted ? 'trusted' :
+           favor >= CFG.favorKnown ? 'known' : 'unknown';
+}
+function favorTierRank(tier) { return FAVOR_TIERS.indexOf(tier); }
+
+// Lazily creates a port's record the first time anything touches it —
+// Station Meridian alone starts at Trusted (it's home); every other port
+// starts Unknown. Safe to call with a bare quadrant shell that has no
+// `ports` yet (loadProfile's own v5->v6 migration relies on that).
+function ensurePort(q, name) {
+    if (!q.ports) q.ports = {};
+    if (!q.ports[name]) {
+        var start = name === 'Station Meridian' ? CFG.favorTrusted : 0;
+        q.ports[name] = { favor: start, peakFavor: start, lastVisitHour: profile.clock / 3600 };
+    }
+    return q.ports[name];
+}
+
+// Favor decays toward (peak tier reached, minus favorFloorTiers)'s own
+// floor at favorDecayPerHour per play-hour of absence — applied lazily
+// whenever a port is touched (read OR written) rather than on a per-frame
+// ticker, then stamps a fresh lastVisitHour so the same stretch of
+// absence is never charged twice.
+// BUG FOUND IN TESTING: the floor must only ever stop DECAY from pushing
+// a value down past it — it must never RAISE a value already below the
+// floor for some other reason (a mission failure's real loseFavor loss
+// can legitimately land under it). The first draft applied the floor as
+// a blanket Math.max(floor, decayed) regardless, so a hard loss straight
+// after a high-favor stretch got silently un-done back up to the floor
+// the very next time the port was touched — confirmed via a direct
+// repro (5 favor in, delta +10, came out +15 instead of +10, because
+// reconcileFavor itself snapped 5 up to 10 before the +10 was even
+// added). Fixed by only invoking the floor when favor started at or
+// above it.
+function reconcileFavor(port) {
+    var nowHour = profile.clock / 3600;
+    var elapsed = Math.max(0, nowHour - port.lastVisitHour);
+    if (elapsed > 0) {
+        var floorRank = Math.max(0, favorTierRank(favorTier(port.peakFavor)) - CFG.favorFloorTiers);
+        var floor = favorTierMin(FAVOR_TIERS[floorRank]);
+        var decayed = port.favor - CFG.favorDecayPerHour * elapsed;
+        port.favor = Math.max(0, port.favor > floor ? Math.max(floor, decayed) : decayed);
+    }
+    port.lastVisitHour = nowHour;
+    return port.favor;
+}
+
+// The current effective favor at a port — 0 (or Trusted for Meridian) if
+// the pilot has never touched this quadrant's ports at all yet (no live
+// mutation here, just a read-only default so display code never needs to
+// special-case "no quadrant yet").
+function favorOf(name) {
+    var q = currentQuadrant();
+    if (!q) return name === 'Station Meridian' ? CFG.favorTrusted : 0;
+    return reconcileFavor(ensurePort(q, name));
+}
+
+// The one real mutator both gainFavor/loseFavor go through, and the sole
+// path that bypasses the "fixed sector doesn't run favor" rule — used
+// only by the delivery run's own handover exception (dockAtStation),
+// which the spec calls out by name as feeding real quadrant standing
+// even though the demo's own sector otherwise never touches favor.
+function writeFavor(name, delta) {
+    ensureQuadrantHome();
+    var port = ensurePort(currentQuadrant(), name);
+    reconcileFavor(port);
+    port.favor = clamp(port.favor + delta, 0, 100);
+    if (port.favor > port.peakFavor) port.peakFavor = port.favor;
     saveProfile();
 }
-function influenceGreeting(poi) {
-    var s = profile && profile.stations[poi.name];
-    return (s && s.influence >= CFG.influenceThreshold) ? poi.name + ' control: good to see you again, pilot. ' : '';
+function gainFavor(poi, amt) { if (!demo && poi) writeFavor(poi.name, amt); }
+function loseFavor(poi, amt) { if (!demo && poi) writeFavor(poi.name, -amt); }
+
+// True immediately in the delivery run's own fixed sector — its Meridian
+// isn't favor-gated at all, matching every service it already offers
+// unconditionally today.
+function favorTierAtLeast(poi, minTier) {
+    if (demo) return true;
+    return favorTierRank(favorTier(favorOf(poi.name))) >= favorTierRank(minTier);
+}
+
+function hailGreeting(poi) {
+    if (demo) return poi.name + ' control: ';
+    return poi.name + ' control. ' + FAVOR_TIER_WORDS[favorTier(favorOf(poi.name))] + ' ';
+}
+
+// The three ranges, per station: CFG's own value already reflects any
+// owned range module (comm_array/transporter_booster/docking_computer,
+// via moduleCfgOverlay); an Allied station adds its own +25% on top of
+// THAT, so the bonus only applies where the pilot has actually earned it,
+// not everywhere. kind: 'comm' | 'transporter' | 'dock'.
+function stationRangeFor(kind, poiName) {
+    var base = kind === 'dock' ? CFG.stationDockRange :
+               kind === 'transporter' ? CFG.stationTransporterRange : CFG.stationCommRange;
+    if (demo) return base;
+    return favorTier(favorOf(poiName)) === 'allied' ? base * (1 + CFG.alliedRangeBonus) : base;
 }
 
 // ideas6: undocking drops the ship undockDist (1000) out along the arrival
@@ -5477,34 +5779,43 @@ function undock() {
         CFG.warpInhibitDist + ' of the station — thrust clear first.');
 }
 
-// ---- station range cues (ideas6) -------------------------------------------
-// Two audible lines around every station: comm range (C hails) and dock
-// range (C docks). Crossing inward sounds a rising cue and says which; a
-// crossing outward sounds a falling one. Stateless per frame — the band is
-// compared before/after, like the warp-core alerts — with the first frame
-// after a roster build just recording where the ship already is.
-function stationRangeBand(d) {
-    return d <= CFG.stationDockRange ? 2 : d <= CFG.stationCommRange ? 1 : 0;
+// ---- station range cues (ideas6, three bands as of SPEC 3.23) --------------
+// Three audible lines around every station: comms (C hails, talk only),
+// transporter (C hands cargo over, no landing), dock (C lands). Crossing
+// inward sounds a rising cue and says which; a crossing outward sounds a
+// falling one. Stateless per frame — the band is compared before/after,
+// like the warp-core alerts — with the first frame after a roster build
+// just recording where the ship already is. This is purely about
+// PHYSICAL range, same as before 3.23 — favor gates what actually happens
+// when C is pressed inside a band (see callPoi), not whether the cue fires.
+function stationRangeBand(d, poiName) {
+    return d <= stationRangeFor('dock', poiName) ? 3 : d <= stationRangeFor('transporter', poiName) ? 2 :
+           d <= stationRangeFor('comm', poiName) ? 1 : 0;
 }
 function updateStationRanges() {
     targets.forEach(function (t) {
         if (!t.alive || t.kind !== 'poi' || t.poiType !== 'station') return;
-        var band = stationRangeBand(len(sub(t.pos, ship.pos)));
+        var band = stationRangeBand(len(sub(t.pos, ship.pos)), t.name);
         if (t.rangeBand === undefined) { t.rangeBand = band; return; }
         if (band === t.rangeBand) return;
         var was = t.rangeBand;
         t.rangeBand = band;
         if (band > was) {
-            if (band === 2) {
+            if (band === 3) {
                 SIM.cues.play('dock_range');
                 say('Docking range. C docks at ' + t.name + '.');
+            } else if (band === 2) {
+                SIM.cues.play('transporter_range');
+                say('Transporter range. C hails the transporter at ' + t.name + '.');
             } else {
                 SIM.cues.play('comm_range');
-                say('Comms range. C hails ' + t.name + '; within ' + CFG.stationDockRange + ' it docks.');
+                say('Comms range. C hails ' + t.name + '.');
             }
         } else {
             SIM.cues.play('range_lost');
-            say(band === 1 ? 'Out of docking range. Still in comms range.' : 'Out of comms range.');
+            say(band === 2 ? 'Out of docking range. Still in transporter range.'
+              : band === 1 ? 'Out of transporter range. Still in comms range.'
+                            : 'Out of comms range.');
         }
     });
 }
@@ -5725,7 +6036,7 @@ function callPoi() {
     var t = targets[selected];
     if (!t) { say('No point of interest selected. Tab cycles them.'); return; }
     var d = len(sub(t.pos, ship.pos));
-    var range = t.poiType === 'station' ? CFG.stationCommRange : CFG.poiInteract;
+    var range = t.poiType === 'station' ? stationRangeFor('comm', t.name) : CFG.poiInteract;
     if (d > range) {
         say('Too far to call ' + t.name + '. Get within ' + range +
             '. Distance ' + round10(d) + '.');
@@ -5746,8 +6057,23 @@ function callPoi() {
         say(t.name + ' control: mining rights confirmed. ' + miningIntro() + fieldTypeNote(t));
     } else if (t.poiType === 'station') {
         if (docked) { say('Already docked. Escape or X undocks.'); return; }
-        if (d <= CFG.stationDockRange) dockAtStation(t);
-        else openHailMenu(t);
+        // SPEC 3.23: three ranges now, gated by favor tier, not just
+        // distance — the innermost range a pilot has physically reached
+        // wins, but reaching it doesn't grant it: falling short of the
+        // tier it needs just drops to the next range out instead (a
+        // refusal for docking specifically, since spec gives that one its
+        // own worked wording; a silent drop to comms for the transporter,
+        // since being in transporter range but unwelcome there is really
+        // just "still at comms" from the station's point of view).
+        if (d <= stationRangeFor('dock', t.name)) {
+            if (favorTierAtLeast(t, 'trusted')) { dockAtStation(t); return; }
+            say(t.name + ' control: docking denied. Earn our trust first — ' +
+                capFirst(favorTier(favorOf(t.name))) + ' favor, ' + Math.round(favorOf(t.name)) +
+                ' of ' + CFG.favorTrusted + ' needed.');
+            return;
+        }
+        if (d <= stationRangeFor('transporter', t.name) && favorTierAtLeast(t, 'known')) { openHailMenu(t, 'transporter'); return; }
+        openHailMenu(t, 'comm');
     } else if (t.poiType === 'gate') {
         // SPEC 3.10: sealed until SPEC 3.22 gives it a real transit — no
         // favor/hydrogen check yet, just the placeholder 2.6 text.
@@ -6280,7 +6606,7 @@ window.__sim = {
             missionCooldown: { escort: Math.round(Math.max(0, profile.missionCooldownUntil.escort - profile.clock)),
                                defend: Math.round(Math.max(0, profile.missionCooldownUntil.defend - profile.clock)),
                                contract: Math.round(Math.max(0, profile.missionCooldownUntil.contract - profile.clock)) },
-            quadrant: (!demo && profile.quadrants[profile.quadrantId]) ? (function () {
+            quadrant: (!demo && profile.quadrants[profile.quadrantId] && profile.quadrants[profile.quadrantId].zone) ? (function () {
                 var q = profile.quadrants[profile.quadrantId];
                 return { zone: { name: q.zone.name, pos: q.zone.pos },
                          fields: q.fields.map(function (f) {
@@ -6313,7 +6639,7 @@ window.__sim = {
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
                        dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null },
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
-                                  mass: shipMass(), stations: profile.stations,
+                                  mass: shipMass(), ports: (currentQuadrant() && currentQuadrant().ports) || {},
                                   version: profile.version, alloy: profile.resources.alloy,
                                   laserLevels: Object.assign({}, profile.laserLevels),
                                   laserHealth: Object.assign({}, profile.laserHealth) } : null,
@@ -6412,11 +6738,29 @@ window.__sim = {
         // Live, never saved: a test sets beacons off without touching the profile.
         if (o && o.beacons !== undefined) beaconMode = o.beacons;
         if (o && o.sound && profile) { Object.assign(profile.sound, o.sound); applySoundLevels(); }
+        // SPEC 3.23: force a port straight to a given favor (bypassing the
+        // sell/mission grind to test tier gating directly), and/or its
+        // clock so decay can be tested without waiting real play-hours.
+        if (o && o.favor) {
+            ensureQuadrantHome();
+            var fport = ensurePort(currentQuadrant(), o.favor.name);
+            if (o.favor.value !== undefined) { fport.favor = o.favor.value; fport.peakFavor = Math.max(fport.peakFavor, o.favor.value); }
+            if (o.favor.lastVisitHour !== undefined) fport.lastVisitHour = o.favor.lastVisitHour;
+        }
     }
 };
 
 // ============================== 11. SHELL ===================================
 function clearMission() {
+    // SPEC 3.23: an escort/defend mission abandoned mid-run (X, or picking
+    // something else from the Escape menu) while the friendly was still
+    // alive — every abandonment path funnels through here before `mission`
+    // is wiped below, so this is the one place that needs the check. The
+    // friendly actually dying is the bigger loss, handled in missionEnd
+    // instead (favorFriendlyLost); the timed contract has no equivalent
+    // penalty for walking away from it early, deliberately — it's a
+    // self-paced errand, not a mission with something at stake.
+    if (mission && !mission.ended) loseFavor({ name: mission.poiName }, CFG.favorFail);
     targets.forEach(stopVoice);
     killMissile();
     stopTractor();

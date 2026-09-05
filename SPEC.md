@@ -1861,9 +1861,8 @@ brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
 page, DONE → 3.30 the tractor beam, DONE — **Phase 3L and its three
 game items are all complete**)
 → 3.28 the quadrant's timed contract, DONE
-→ 3.23 favor,
-control, and the three ranges (touches docking, so it goes in before the
-ports multiply), next → 3.18 containers and hydrogen → 3.11 ports and F4 →
+→ 3.23 favor and the three ranges, PARTIALLY DONE (Control/Invest/the
+tithe/unions deferred to 3.11, next) → 3.18 containers and hydrogen → 3.11 ports and F4 →
 3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
 3.20 hauling and biomass → 3.21 threat escalation → 3.13 salvage gates
 and the drone swarm → 3.22 the gate and the frontier quadrant. Then
@@ -3166,6 +3165,164 @@ in this file. Not yet heard or flown by Brian.
   and never below the floor; Invest moves control and the unions creep
   it back on a stepped clock; a tug from a quadrant with no trusting
   port doubles the wait and lands at Meridian.
+
+**3.23 — PARTIALLY DONE (Round 23, Sonnet).** Favor and the three ranges
+are built and machine-tested; **Control (Invest, the tithe, unions,
+quadrant-wide comms) is deliberately NOT built this round** — every one
+of those depends on a per-station "wants" table that doesn't exist until
+3.11, and shipping a Control meter with no way to ever raise it would
+just be dead, untestable code. Scope actually delivered:
+
+- **Favor**: `profile.quadrants[q].ports[name] = { favor, peakFavor,
+  lastVisitHour }`, replacing the flat `profile.stations[name].influence`
+  (`bumpInfluence`/`influenceGreeting` retired outright, not kept as
+  unused legacy). Tiers exactly as spec'd (`favorKnown` 10, `favorTrusted`
+  40, `favorAllied` 70); `hailGreeting(poi)` now speaks the real tier word
+  ("Station Two control. You're unknown to us.") in place of the old
+  "good to see you again" threshold line. Gains: `favorMission` (8) on
+  any mission completed for that port — including, per this round's own
+  reading, the quadrant's own SPEC 3.28 timed contract, treated as "a
+  mission completed for Station Meridian" since the spec text doesn't
+  separately address it; selling ore/salvage/alloy at `favorPerWantUnit`
+  (200/4/4), folded into the same `say()` as the credit total ("+1
+  favor."); `favorDeliveryHandover` (10) on the FIXED delivery run's own
+  handover at Meridian — the one favor change that fires even though "the
+  fixed sector doesn't run favor," exactly as the spec calls out by name,
+  via a `writeFavor()` that bypasses every OTHER call's demo guard on
+  purpose. Losses: `favorFriendlyLost` (25) when an escort/defend
+  mission's own friendly is destroyed (`missionEnd(false)`, which as
+  built only ever fires that way); `favorFail` (10) for a mission
+  ABANDONED while the friendly was still alive, caught in `clearMission()`
+  itself (`if (mission && !mission.ended)`) since every abandonment path —
+  X, or picking something else from the Escape menu — funnels through
+  there before `mission` is wiped; deliberately NOT applied to an
+  abandoned SPEC 3.28 contract, which has nothing at stake the way a
+  mission's friendly does. Decay: `favorDecayPerHour` (1) per play-hour
+  of absence, floored at `favorFloorTiers` (1) tier below the best ever
+  reached at that port — computed lazily on every touch
+  (`reconcileFavor`), not a per-frame ticker. **A real, pre-existing bug
+  fixed in passing**: mission favor was hardcoded to credit Station
+  Meridian regardless of which station actually offered the mission — a
+  mission taken at Station Two always fed Meridian's old influence count.
+  Fixed by stamping `poiName` onto the mission spec at accept time and
+  crediting/debiting that station specifically.
+- **The three ranges**, stations only (planets aren't real ports until
+  3.19): `stationCommRange` 500→2000, new `stationTransporterRange` 600,
+  `stationDockRange` unchanged at 150. `callPoi()`'s station branch now
+  picks the innermost range the pilot has physically reached, gated by
+  favor: docking (Trusted) gets its own worked refusal line when favor
+  falls short ("docking denied. Earn our trust first — Unknown favor, 0
+  of 40 needed." — the spec's own example named a wanted resource
+  instead, which doesn't exist yet, so the favor number stands in);
+  falling short of Known at transporter range silently drops to the
+  comms menu instead, since being close but unwelcome there is really
+  just "still at comms" from the station's own point of view. The hail
+  menu splits into `COMM_ITEMS` (Missions, Close — reachable at any
+  tier) and `TRANSPORTER_ITEMS` (Rearm, Sell ore/salvage/alloy, Buy
+  reaction mass, Close — gated on Known). **Built as an ADDITIONAL,
+  closer-in access tier, not a relocation**: every transporter action
+  stays reachable from the docked station menu exactly as before, so
+  landing never loses anything it had — a deliberate, flagged scope
+  choice, since the spec's own "transporter, no landing" framing could
+  also read as moving these out of the docked menu entirely. A new
+  `transporter_range` audio cue (a rising pair with a shimmer, per spec)
+  joins the existing `comm_range`/`dock_range`/`range_lost` crossing
+  cues, `updateStationRanges` now tracking three bands instead of two.
+- **Range growth**: three new MODULES (`comm_array` +50%, `transporter_
+  booster` +50%, `docking_computer` doubles — matching the spec's own
+  wording), applied through the existing `moduleCfgOverlay()` mechanism
+  with zero new plumbing; a new `stationRangeFor(kind, poiName)` layers
+  an Allied station's own +25% (`alliedRangeBonus`) on top of whatever
+  the ship's modules already give, per station, since only stations the
+  pilot has actually earned Allied standing at should get it.
+- **The tug** (SPEC 2.16) reworked per spec: `nearestTrustedStationTo()`
+  replaces "just the nearest station" with "the nearest station that
+  actually trusts the pilot," at the base wait; if none in the quadrant
+  qualifies, a new `tugHomeFactor` (2) doubles the wait for the long ride
+  home to Meridian by name. Replaces the old influence-halving model
+  entirely (`tugInfluenceFactor` retired).
+- **F2** gained a "Station access" heading (the three base ranges plus
+  the Allied-bonus reminder); **I** speaks the selected station's tier
+  once in comm range; the quadrant map's per-station line does too
+  (`stationTierNote`). **F4 pricing is NOT built** — that's 3.11's own
+  item, not duplicated here.
+- **Migration**: `PROFILE_VERSION` → 6. An old save's flat
+  `profile.stations[name].influence` folds into the new per-quadrant
+  `ports` structure at ×10 (the spec's own conversion), only when there's
+  real data to migrate — `ensureQuadrantHome()`'s own "first ever Sector
+  visit" guard had to move from checking the quadrant record's mere
+  existence to checking its `.zone` specifically, since the migration can
+  now pre-create a bare shell (zone: null) purely to hold folded-in
+  favor for a profile that's never actually visited the Sector.
+- **Two real bugs found in testing, both fixed before shipping**:
+  1. The migration's original unconditional shell-creation crashed
+     `__sim.state()`'s own quadrant accessor (`q.zone.name` on a null
+     zone) for a genuinely fresh profile — caught immediately on the
+     first clean boot test. Fixed by only creating the shell when
+     `profile.stations` actually has data to fold in, and hardening the
+     accessor's own guard to check `.zone` too, as defense in depth.
+  2. **The load-bearing one**: `reconcileFavor`'s decay-floor logic
+     applied `Math.max(floor, decayed)` unconditionally, which doesn't
+     just stop decay from crossing the floor going down — it SNAPS ANY
+     value already below the floor UP to it, the instant the port is
+     next touched, regardless of why it was below (a poked test value,
+     or, in real play, a genuine `favorFriendlyLost` loss landing under
+     a floor set by an earlier, higher peak). Concretely: favor at 5
+     with a peak-derived floor of 10, then a +10 gain, came out to +15
+     rather than +10 — the floor-clamp silently added 5 of its own
+     before the real gain was even applied. Found via a direct,
+     reproducible repro (confirmed with `console.log` instrumentation
+     showing the value jump between "before" and "after reconcile," i.e.
+     before the actual delta was ever added), root-caused by static
+     reading once the repro was solid, and independently confirmed fixed
+     via a standalone Node.js simulation of the corrected logic (four
+     cases: the exact repro, ordinary long-run decay correctly flooring
+     at 10, a real loss correctly draining past the floor toward 0
+     rather than being un-done, and decay from just under peak still
+     flooring correctly) — cheaper and more trustworthy than continuing
+     to fight the browser test harness for this one. Fixed by only
+     invoking the floor when favor started AT OR ABOVE it; a value
+     already below decays (or sits) freely.
+- **A genuine testing-methodology snag, not a game bug**: partway
+  through this round, repeated "fresh profile" checks in the sandboxed
+  browser pane kept showing old data (a station's favor from many steps
+  earlier) despite `localStorage.clear()` confirmed empty immediately
+  before boot — closing tabs and fully restarting the local static
+  server didn't reliably clear it either. Every conclusion in this
+  round's own testing was still verified correctly despite this, because
+  every check compared "before" against "after" WITHIN one continuous,
+  uninterrupted script rather than trusting a "fresh reload" to establish
+  a clean baseline — a discipline worth keeping for any future round that
+  hits the same flakiness.
+- **Deliberate simplification, flagged for Brian's call**: mining in the
+  open quadrant is NOT hard-blocked before the Contested Zone is
+  cleared, unlike the fixed delivery run's own gate — only the FINAL
+  step of anything gated on favor (docking, the transporter) is
+  order-sensitive; free-flight mining stays exactly as open as it always
+  was. Also worth Brian's ear: Station Meridian starts EXACTLY at
+  `favorTrusted` (40), its own tier boundary with zero buffer — any
+  decay at all (even a few idle minutes without a sale or mission there)
+  drops it into Known until touched again, observed directly in testing.
+  A slightly higher starting value (50, say) would give it real headroom
+  as "home" instead of teetering on the line.
+- Not built: Control/Invest/the tithe/unions/quadrant-wide comms (blocked
+  on 3.11's wants table, see above); F4 pricing (3.11's own item); a
+  wants-based favor bonus (every sale counts toward favor for now, not
+  just what a station specifically wants, since no such list exists).
+  Machine-tested at a local server and confirmed on a fresh profile:
+  Station Two starts Unknown and refuses transporter/docking by name;
+  two escort missions there correctly cross Known (8+8=16); selling ore
+  speaks the right favor gain; Trusted unlocks docking; an Allied
+  station's ranges measured exactly 1.25× base; buying `comm_array`
+  measured `stationCommRange` at exactly 3000; the tug picks a nearby
+  Trusted station at the base wait and doubles the wait home to Meridian
+  when none qualifies; the v5→v6 migration folds an old influence save
+  in correctly (confirmed against a seeded profile); the demo's own
+  Meridian stays completely unconditional regardless of the open
+  quadrant's favor state; F2's new heading and the escort mission
+  regression both confirmed unaffected. Zero console errors throughout.
+  Every favor/range number is a placeholder for Brian's ear. Not yet
+  heard or flown by Brian.
 
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 

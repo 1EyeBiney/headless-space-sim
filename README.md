@@ -62,25 +62,29 @@ The shareable challenge. The clock starts at once.
 3. Dock at Station Meridian to deliver the ore. Your run time is spoken on
    delivery.
 
-Calling the station works by range: within 500 it hails you back with a
-small menu — rearm, sell ore, buy reaction mass, take a mission — and
-within 150 it docks you outright. Fly it in by ear — the lock tick and R
-(range, closing or opening) are your instruments. Docking repairs your
-hull, rearms your eight missiles, restocks decoys, refills the warp tank,
-and tops off your reaction mass. You hear a cue and a word as you cross
-into comms range and again into docking range; docked, the beacons
-outside go quiet and the station's own interior takes over. Undocking
-puts you 1000 out, facing away — the drive won't spool within 1500 of
-the station, so thrust clear before jumping. Losing your ship no longer
+Calling the station works by range: within 2000 it hails you back with a
+small menu (missions and a status report), within 600 it also reaches
+the transporter (rearm, sell ore, buy reaction mass), and within 150 it
+docks you outright — the delivery run's own Station Meridian always
+welcomes you at every range, no standing required. Fly it in by ear —
+the lock tick and R (range, closing or opening) are your instruments.
+Docking repairs your hull, rearms your eight missiles, restocks decoys,
+refills the warp tank, and tops off your reaction mass. You hear a cue
+and a word as you cross into each range; docked, the beacons outside go
+quiet and the station's own interior takes over. Undocking puts you
+1000 out, facing away — the drive won't spool within 1500 of the
+station, so thrust clear before jumping. Losing your ship no longer
 fails the run outright — a tug is dispatched instead, on the clock, and
 the run's timer keeps running while you wait.
 
 Once docked, a station menu opens: **Sell ore** (and salvage, and alloy)
 trades your cargo for credits, and **Modules** spends them on permanent
 upgrades — a faster shield, a bigger shield pool, a larger missile
-magazine, a bigger warp tank, faster core cooling. Every module adds a
-little mass, and mass is the tradeoff: no friction in space, so a heavier
-ship just turns and thrusts a little slower. **Lasers** is where you buy
+magazine, a bigger warp tank, faster core cooling, and three that stretch
+your reach with stations: a comm array, a transporter booster, and a
+docking computer. Every module adds a little mass, and mass is the
+tradeoff: no friction in space, so a heavier ship just turns and thrusts
+a little slower. **Lasers** is where you buy
 a higher level for either family with credits and alloy, and repair one
 that's worn down — firing any laser wears it a little, hit or miss, and
 enough wear drops it back a level until you pay to fix it. Escape undocks.
@@ -100,6 +104,18 @@ mine 15,000 ore at any field, and dock back at Meridian with it — paid at
 the ore's usual price plus a bonus, on its own clock, with its own
 best-time log in the run log. Selling ore is blocked while one is open,
 same as it is during the fixed delivery run above.
+
+Out in the open Sector, every station also has its own **standing**
+toward you — Unknown, Known, Trusted, or Allied — spoken every time you
+hail it. Known opens the transporter (rearm, sell, buy reaction mass);
+Trusted opens docking; Allied stretches all three ranges another
+quarter. Standing rises by finishing a mission there or selling what you
+have, and falls if a mission fails or its own ship is lost, drifting
+back down slowly if you stay away too long — though never further than
+one step below the best you've ever reached there. Station Meridian
+starts Trusted; every other station starts a stranger. A tug always
+finds you the nearest station that actually trusts you, at the usual
+wait — or, failing that, the long way home to Meridian.
 
 Thrust and braking both draw on a reaction mass tank, and so do the
 automatic stabilizers that quietly cancel your drift whenever you coast —
@@ -136,7 +152,7 @@ Right hand on the arrows, left hand on everything else.
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
 | 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse); pressing the slot's key again cycles among the levels you own, Shift+ the key cycles back. Higher levels are bought at the station with credits and alloy, and wear down with use until the shipyard repairs them. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
-| F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (level, health, damage, matchups, every slot), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, broken systems, cargo, modules. H jumps between headings, a letter jumps to one, arrows read line by line |
+| F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (level, health, damage, matchups, every slot), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, tractor beam, sensor, repair crew, broken systems, cargo, modules, station access (your comm/transporter/docking ranges). H jumps between headings, a letter jumps to one, arrows read line by line |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
@@ -148,7 +164,7 @@ Right hand on the arrows, left hand on everything else.
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Tractor beam (mining): pulls the selected rock or core toward you instead of flying to it. Z again releases it. Barely moves a medium rock, does nothing to large or huge ones |
 | Shift+Z | Target zone size: wide, standard, narrow |
-| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails the station within 500, docks within 150 |
+| Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
 | X | Leave the mission |
 | F1 | Help, read line by line with the arrows |

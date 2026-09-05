@@ -159,15 +159,24 @@ SIM.cues = (function () {
                       A.sfxNoise({ dur: 0.8, vol: 0.4, filter: 'lowpass', freq: 900 });
                       A.sfxTone({ type: 'sine', f1: 1400, f2: 90, dur: 0.9, vol: 0.2 });
                   } },
-                // Station range crossings (ideas6): one rising pair on
-                // entering comm range, a rising triple on entering dock
-                // range, a falling pair on leaving either. Placeholders
+                // Station range crossings (ideas6, a third band added by
+                // SPEC 3.23): one rising pair on entering comm range, a
+                // rising pair with a shimmer under it on entering
+                // transporter range, a rising triple on entering dock
+                // range, a falling pair/triple on leaving. Placeholders
                 // until Brian hears them — the ranges themselves stay put.
                 { id: 'comm_range', name: 'Comms Range Reached', source: 'ideas6',
                   fn: function () {
                       var A = SIM.audio;
                       A.sfxTone({ type: 'sine', f1: 520, dur: 0.12, vol: 0.16 });
                       A.sfxTone({ type: 'sine', f1: 780, dur: 0.18, vol: 0.16, at: 0.14 });
+                  } },
+                { id: 'transporter_range', name: 'Transporter Range Reached', source: 'SPEC 3.23',
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 600, dur: 0.13, vol: 0.16 });
+                      A.sfxTone({ type: 'sine', f1: 900, dur: 0.19, vol: 0.16, at: 0.13 });
+                      A.sfxSweep({ type: 'sine', f1: 1400, f2: 2200, f3: 1400, dur: 0.32, vol: 0.05, at: 0.05 });
                   } },
                 { id: 'dock_range', name: 'Docking Range Reached', source: 'ideas6',
                   fn: function () {
