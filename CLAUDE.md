@@ -252,9 +252,13 @@ static once tiers exist.
   supersedes this): a tug is dispatched instead, on the clock, which
   keeps running through the wait — see "Death by tug" in the Combat
   section above.
-- **Sector**: real flyable space, 4 POI audio beacons (Contested Zone war-drum
+- **Sector (the delivery run's own fixed layout, SPEC 3.10 note)**: `SECTOR_POIS`
+  — real flyable space, 4 POI audio beacons (Contested Zone war-drum
   throb / Asteroid Field Kappa rumble / Station Meridian blinking 660 tone /
-  Planet Auren 45 Hz drone). Long-range beacon panners (ref 800, rolloff 1.2,
+  Planet Auren 45 Hz drone). Untouched by 3.10 below — `demo` truthy is the
+  one fork that still routes here; everything else in this bullet (warp,
+  docking, the map, beacon behavior) is written against these four points
+  and stays exactly as tested. Long-range beacon panners (ref 800, rolloff 1.2,
   gain ×2) + distance-haze lowpass in `updateTargeting`. `Q` map overlay,
   `H` hyperwarp (drops 600 out; interact range 500; refuses
   within `warpInhibitDist` 1500 of ANY point of interest via `nearbyPoi()`,
@@ -335,6 +339,63 @@ static once tiers exist.
   docks by range, no corridor to fly (see below) / planet placeholder
   hail. Weapons/tools cold in open space. Ore, hull, and missile
   count persist across a sector run (menu starts reset them).
+  **The quadrant (Round 17, SPEC 3.10) replaces this for the OPEN
+  campaign** — the Sector menu item builds from `QUADRANT` (six fixed
+  rows: the star at ring 0, Station Meridian ring 3500, Planet A ring
+  6000, Station Two ring 9500, Planet B ring 11000, the Jump Gate ring
+  14000, all placeholder names) instead of `SECTOR_POIS`, forked with
+  one line in `makeSectorRoster()` (`if (demo) ... else
+  makeQuadrantRoster()`). Positions are never stored: `ringPos(entry)`
+  computes `polar(ring, phaseDeg + degPerHour × profile.clock/3600)`
+  fresh on every call, so the save is just rates and phases. The combat
+  zone and 1-2 asteroid fields (`CFG.quadrantFieldCount`) are the
+  MOVING parts, spawned by `findSpawnPos` (near the pilot first, near
+  ANY point in the quadrant if that fails 50 times) and saved in
+  `profile.quadrants.home` (`{ zone, fields, fieldSeq }`, no separate
+  save function — `saveProfile()`'s existing wholesale
+  `JSON.stringify(profile)` already covers it, called from
+  `returnToSector()` and a new 30 s quiet timer in open flight).
+  `returnToSector()` gained the actual respawn logic: a cleared zone or
+  a field whose `budget` (drained by `depleteCurrentField`, hooked into
+  both `vacTick` and `dustTick`) hit zero is replaced BEFORE the sector
+  roster rebuilds, so the fresh roster never shows the stale one, and
+  the exit `say()` folds the sighting into the same call (the SPEC 2.15
+  double-say lesson, applied again). Fields are typed (`ice`/`iron`/
+  `mixed`, `FIELD_TYPE_WEIGHTS`), biasing `makeMiningRoster`'s rock draw
+  via a new optional `fieldType` argument — called with none (Kappa, the
+  standalone drill) it's byte-for-byte unchanged. The map groups by kind
+  in sector mode (`mapBuildItems`: Stations/Planets/Asteroid fields/
+  Contested zone/Gate/Star headings, first-letter jump to one) — applies
+  to the delivery run's map too, harmless with four points. Beacon "on"
+  mode gained a `CFG.beaconAudibleDist` 8000 cutoff, but ONLY for the
+  quadrant (`if (demo) return true;` keeps the tested delivery-run
+  beacon behavior untouched). **Two real multi-station bugs fixed in
+  passing**: `startTug()` scanned `SECTOR_POIS` for "the" station
+  (would have crashed with two stations and no `SECTOR_POIS` backing
+  the open campaign) — now `nearestStationTo(pilotPos)`; and
+  `placeAtStationStart()` picked "whichever station iterates last"
+  (would silently start new pilots at Station Two) — now matches
+  Station Meridian by name. SPEC 2.17's mission labels also stopped
+  hardcoding "Planet Auren"/"Field Kappa" — `missionDestinationPlanet`/
+  `missionDestinationField` name the nearest real quadrant point
+  instead. `PROFILE_VERSION` → 3 (`clock`, `missionCooldownUntil`,
+  `quadrants`, `quadrantId`); SPEC 2.17's session-only `simClock` is now
+  `profile.clock`, no session mirror left anywhere. **A real bug found
+  while testing**: `ensureQuadrantHome()` assigned
+  `profile.quadrants.home` before populating its `zone` field, and
+  `spawnField`'s own avoid-list lookup read `q.zone.pos` in that exact
+  window on the very first Sector visit — crashed every fresh profile;
+  fixed with a null guard in `existingQuadrantPositions()`. Caught (and
+  double-checked) only because a stale console error persisted across a
+  same-tab reload and had to be told apart from the real one via a
+  genuinely fresh tab — the same testing gotcha this project has hit
+  before. Machine-tested thoroughly (spawn placement, drift, typed
+  mining, depletion + respawn with a real bearing, zone clear + respawn,
+  the beacon cutoff, a v2→v3 migration, the two-station tug and mission
+  fixes, the delivery run and both standalone drills confirmed
+  unaffected), zero console errors; not yet heard or flown by Brian. Not
+  built here: `serves`/`wants` on `QUADRANT` rows, unions, favor/
+  control, threat — all later Phase 3 items layer onto this.
 - **Escape / mission menu (Round 13, SPEC 1.18)**: Escape no longer
   toggles a separate `paused` flag (removed entirely — grepped clean).
   From any live mission it calls `openMissionMenuOverlay()`: sets
@@ -1165,9 +1226,27 @@ galactic map opens only at the gate *after* the Frontier. Those became
 3.23 (favor/control/ranges, built right after 3.10 since it touches
 docking) and 3.22 (the gate and the Frontier, last), with 3.11/3.19/3.20
 reworked around wants and biomass. Stop for Brian's ears after 3.10,
-3.23, and 3.20. Nothing in Phase 3 is built; the names are placeholders
-he will replace; "more mechanics in quadrant 2" is his to define before
-3.22. The vortex demo stays lab-only until he has heard it.
+3.23, and 3.20. The names are placeholders he will replace; "more
+mechanics in quadrant 2" is his to define before 3.22. The vortex demo
+stays lab-only until he has heard it.
+
+Round 17 (Sonnet) built **SPEC 3.10** — the quadrant itself: positions,
+spawning, drift, the persisted game clock, and the save (no `serves`/
+`wants`, unions, favor/control, or threat yet — those are 3.23/3.21's).
+See the "The quadrant" bullet in the Sector section above for the full
+shape. Machine-tested at a local server across every piece (spawn
+placement and drift, typed mining, depletion + respawn with a real
+bearing, the combat zone's own clear + respawn, the beacon distance
+cutoff versus the delivery run's unaffected beacons, a v2→v3 profile
+migration, the tug and mission-label fixes the second station exposed,
+and both the delivery run and the standalone training drills confirmed
+byte-for-byte unaffected), zero console errors. One real bug was found
+and fixed during testing (`ensureQuadrantHome`'s ordering crashed the
+very first Sector visit — see the bullet for the fix). Commits are
+LOCAL ONLY for this round — Brian asked to hold `git push` until he's
+tested the current build himself; nothing from Round 17 is on Pages
+yet. Not yet heard or flown by Brian. Next: SPEC 3.23 (favor, control,
+the three ranges), still pending the push.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

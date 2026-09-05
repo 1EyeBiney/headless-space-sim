@@ -162,7 +162,7 @@ var CFG_DEFAULTS = {
     // the friendly) but only actually fight the PLAYER once provoked — see
     // `t.provoked` in TARGETING/WEAPONS.
     missionCredits: 300,       // reward on success; failure pays nothing
-    missionCooldownS: 600,    // per mission kind, per station, in session game time (simClock)
+    missionCooldownS: 600,    // per mission kind, per station, in persisted game time (profile.clock)
     missionEscortHull: 200,
     missionMinerHull: 150,
     missionEscortSpeed: 40,   // u/s, the freighter's own drift toward the planet
@@ -174,6 +174,29 @@ var CFG_DEFAULTS = {
     missionStrikeGapMinS: 6,  // how often an unprovoked raider hits the friendly
     missionStrikeGapMaxS: 10,
     missionStrikeDmg: 15,
+
+    // The quadrant (SPEC 3.10): the open campaign's sector is no longer
+    // four fixed points. QUADRANT (below) holds the star/stations/planets/
+    // gate; the combat zone and asteroid fields are the moving parts,
+    // spawned by these rules and saved in profile.quadrants. The delivery
+    // run's SECTOR_POIS is untouched — none of this applies to it (demo
+    // truthy skips every quadrant code path).
+    quadrantRadius: 16000,      // nothing spawns or orbits past this from the star
+    spawnMinFromPilot: 5000,    // a replacement zone/field spawns this far from the pilot...
+    spawnMaxFromPilot: 11000,   // ...to this far — one clean jump, since leaving any
+                                 // encounter refills the tank
+    spawnMinGap: 4000,          // ...and at least this far from every other point
+    spawnMaxFromStation: 11000, // ...and within this of at least one station
+    quadrantFieldCount: 2,      // asteroid fields kept alive at once (spec: "1 to 3,
+                                 // never zero" — built as a fixed count, replaced 1-for-1)
+    cloudDriftPerS: 5,          // a field's drift speed along its spawn ring (prograde)
+    cloudOreBudget: 40000,      // total ore before a field is worked out and replaced
+    quadrantSaveEveryS: 30,     // quiet autosave cadence in open sector flight
+    beaconAudibleDist: 8000,    // SPEC 3.10: the open quadrant's "on" beacons are audible
+                                 // within this, or the selected target at any distance —
+                                 // the delivery run's fixed sector stays always-audible,
+                                 // unchanged, since it only ever has four points
+
     warpDropout: 600,        // hyperwarp exits this far out — final approach is flown
     warpMinDist: 1200,       // closer than this: just fly it
     // Warp drama (SPEC 1.17): a jump takes real time and flies the ship
@@ -316,20 +339,29 @@ var PROFILE_KEY = 'hss_profile';
 var profile = null;
 // SPEC 2.18: 1 = the original Round 10-11 shape (tier/credits/upgrades/
 // chaff/runs only); 2 = everything since (modules, sound, beacons, laser
-// slots, resources). Bump this whenever a field is added or reshaped so
+// slots, resources); 3 = SPEC 3.10's game clock, mission cooldowns, and
+// the quadrant save. Bump this whenever a field is added or reshaped so
 // loadProfile has one clear place to migrate from, instead of a save
 // silently missing a field forever. `saveProfile` never writes a LOWER
 // number than what was loaded, so a save from a newer build than this
 // code (an unlikely rollback scenario) keeps its own version stamp —
 // Object.assign already preserves any fields this code doesn't know
 // about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 2;
+var PROFILE_VERSION = 3;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
-             resources: { salvage: 0, alloy: 0 } };
+             resources: { salvage: 0, alloy: 0 },
+             // SPEC 3.10: the session game clock (was simClock, SPEC 2.17,
+             // session-only) and the mission cooldowns it now backs — both
+             // persist so a reload doesn't silently make everything
+             // available again. quadrants/quadrantId are the moving
+             // world's save; quadrantId always 'home' until SPEC 3.22's
+             // Frontier exists.
+             clock: 0, missionCooldownUntil: { escort: 0, defend: 0 },
+             quadrants: {}, quadrantId: 'home' };
 }
 
 function loadProfile() {
@@ -366,6 +398,15 @@ function loadProfile() {
     if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0 };
     if (typeof profile.resources.salvage !== 'number') profile.resources.salvage = 0;
     if (typeof profile.resources.alloy !== 'number') profile.resources.alloy = 0;
+    // v2 -> v3 (SPEC 3.10): the game clock and mission cooldowns move from
+    // session-only variables into the profile; the quadrant save is new.
+    if (typeof profile.clock !== 'number' || profile.clock < 0) profile.clock = 0;
+    if (!profile.missionCooldownUntil || typeof profile.missionCooldownUntil !== 'object') profile.missionCooldownUntil = {};
+    ['escort', 'defend'].forEach(function (k) {
+        if (typeof profile.missionCooldownUntil[k] !== 'number') profile.missionCooldownUntil[k] = 0;
+    });
+    if (!profile.quadrants || typeof profile.quadrants !== 'object') profile.quadrants = {};
+    if (typeof profile.quadrantId !== 'string') profile.quadrantId = 'home';
     // Never write a version lower than what was actually loaded.
     profile.version = Math.max(loadedVersion, PROFILE_VERSION);
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
@@ -812,6 +853,239 @@ var SECTOR_POIS = [
       desc: 'planet',        pos: v3(-5000, 1500, 9000) }
 ];
 
+// ---- the quadrant (SPEC 3.10) -----------------------------------------------
+// QUADRANT replaces SECTOR_POIS for the OPEN campaign (the Sector menu item
+// and everything reached from it) — SECTOR_POIS above is untouched and stays
+// exactly what the delivery run uses (its legs are hand-tuned, A.10).
+// Fixed points only: the combat zone and the asteroid fields are the moving
+// parts, spawned by the rules below and saved in profile.quadrants, never
+// listed here. Names are Brian's own placeholders (Part C, Phase 3
+// questions) — rename any time; nothing else keys off the exact string
+// except Station Meridian, already known by name from the delivery run.
+// ring 0 = the star, at the origin. degPerHour 0 = holds station (both
+// stations, the gate); planets creep at 6 deg/hour — a full orbit in 60
+// play-hours, enough to drift over weeks, never enough to lose one in a
+// session. Position is computed from the clock every frame (ringPos, below)
+// — never integrated — so the save is nothing but these rates and phases.
+var QUADRANT = [
+    { name: 'The Star',         poiType: 'star',    desc: 'the star',
+      ring: 0,     degPerHour: 0, phaseDeg: 0 },
+    { name: 'Station Meridian', poiType: 'station', desc: 'space station',
+      ring: 3500,  degPerHour: 0, phaseDeg: 0 },
+    { name: 'Planet A',         poiType: 'planet',  desc: 'planet',
+      ring: 6000,  degPerHour: 6, phaseDeg: 90 },
+    { name: 'Station Two',      poiType: 'station', desc: 'space station',
+      ring: 9500,  degPerHour: 0, phaseDeg: 180 },
+    { name: 'Planet B',         poiType: 'planet',  desc: 'planet',
+      ring: 11000, degPerHour: 6, phaseDeg: 270 },
+    { name: 'Jump Gate',        poiType: 'gate',    desc: 'jump gate',
+      ring: 14000, degPerHour: 0, phaseDeg: 45 }
+];
+
+// A field's type shapes its rock draw (makeMiningRoster) and is spoken at
+// the sighting/hail; 'mixed' matches today's even spread. Weights and the
+// per-type rock bias are both placeholders for Brian's ear.
+var FIELD_TYPES = ['ice', 'iron', 'mixed'];
+var FIELD_TYPE_WEIGHTS = [0.3, 0.3, 0.4];
+var FIELD_TYPE_ROCK_WEIGHTS = {   // [Ice, Iron, Stone] draw weights, matching ROCK_TYPES order
+    ice:   [0.6, 0.2, 0.2],
+    iron:  [0.2, 0.6, 0.2],
+    mixed: [0.34, 0.33, 0.33]
+};
+// Spawned fields walk this list from the top, Brian's own pick ("from
+// Rho" — Kappa is the delivery run's own field, spelled for by name).
+// Past the list a cycle number is appended so names never collide.
+var GREEK_FIELD_NAMES = ['Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega'];
+
+function pickWeighted(items, weights) {
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < items.length; i++) {
+        acc += weights[i];
+        if (r < acc) return items[i];
+    }
+    return items[items.length - 1];
+}
+
+// The one place any orbiting thing (a QUADRANT planet, or a saved field —
+// same ring/phaseDeg/degPerHour shape) turns into a world position, always
+// from the persisted clock, never integrated frame to frame.
+function ringPos(entry) {
+    if (!entry.ring) return v3(0, 0, 0);
+    var rad = (entry.phaseDeg + entry.degPerHour * (profile.clock / 3600)) * Math.PI / 180;
+    return v3(Math.cos(rad) * entry.ring, 0, Math.sin(rad) * entry.ring);
+}
+
+function currentQuadrant() { return profile.quadrants[profile.quadrantId]; }
+
+// Spawn placement (A.10 instance rules): near the pilot, clear of every
+// other point, near a station, inside the quadrant. 50 tries on the pilot
+// band; if none validate, 50 more anywhere in the quadrant (the rest of the
+// rules still apply) before simply giving up and returning something inside
+// the radius — a pilot band that can never be satisfied (a very crowded
+// quadrant) still gets a field/zone rather than none at all.
+function findSpawnPos(pilotPos, avoidPositions) {
+    function candidate(nearPilot) {
+        var ang = Math.random() * Math.PI * 2;
+        if (nearPilot) {
+            var d = CFG.spawnMinFromPilot + Math.random() * (CFG.spawnMaxFromPilot - CFG.spawnMinFromPilot);
+            return add(pilotPos, v3(Math.cos(ang) * d, 0, Math.sin(ang) * d));
+        }
+        var r = Math.random() * CFG.quadrantRadius;
+        return v3(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+    }
+    function valid(pos) {
+        if (len(pos) > CFG.quadrantRadius) return false;
+        for (var i = 0; i < avoidPositions.length; i++) {
+            if (len(sub(pos, avoidPositions[i])) < CFG.spawnMinGap) return false;
+        }
+        var nearStation = false;
+        QUADRANT.forEach(function (q) {
+            if (q.poiType === 'station' && len(sub(pos, ringPos(q))) <= CFG.spawnMaxFromStation) nearStation = true;
+        });
+        return nearStation;
+    }
+    var i;
+    for (i = 0; i < 50; i++) { var p = candidate(true); if (valid(p)) return p; }
+    for (i = 0; i < 50; i++) { var p2 = candidate(false); if (valid(p2)) return p2; }
+    return candidate(false);
+}
+
+// Every fixed QUADRANT point plus the quadrant's own live zone and fields —
+// what a spawn must stay spawnMinGap clear of.
+function existingQuadrantPositions() {
+    var pts = QUADRANT.map(ringPos);
+    var q = currentQuadrant();
+    // Guarded (not just `if (q)`): ensureQuadrantHome creates the shell
+    // and assigns profile.quadrants.home BEFORE the zone itself exists, so
+    // spawnZone's own call into here (via findSpawnPos) can land in the
+    // instant between those two steps, with q real but q.zone still null.
+    if (q && q.zone) pts.push(v3(q.zone.pos.x, q.zone.pos.y, q.zone.pos.z));
+    if (q) q.fields.forEach(function (f) { pts.push(ringPos(f)); });
+    return pts;
+}
+
+function spawnZone(pilotPos) {
+    var pos = findSpawnPos(pilotPos, existingQuadrantPositions());
+    return { name: 'Contested Zone', pos: { x: pos.x, y: pos.y, z: pos.z } };
+}
+
+// A field drifts prograde along the ring it spawned on (A.10:
+// cloudDriftPerS, a LINEAR speed, converted to degrees/hour for the same
+// ringPos formula planets use — about 300 a minute, a third of an orbit an
+// hour on the inner rings, exactly as spec'd).
+function spawnField(pilotPos) {
+    var q = currentQuadrant();
+    var pos = findSpawnPos(pilotPos, existingQuadrantPositions());
+    var ring = Math.max(1, len(pos));
+    var phaseDeg = Math.atan2(pos.z, pos.x) * 180 / Math.PI;
+    var degPerHour = (CFG.cloudDriftPerS / ring) * (180 / Math.PI) * 3600;
+    var seq = q.fieldSeq || 0;
+    q.fieldSeq = seq + 1;
+    var cycle = Math.floor(seq / GREEK_FIELD_NAMES.length);
+    var name = 'Asteroid Field ' + GREEK_FIELD_NAMES[seq % GREEK_FIELD_NAMES.length] +
+               (cycle > 0 ? ' ' + (cycle + 1) : '');
+    return { name: name, type: pickWeighted(FIELD_TYPES, FIELD_TYPE_WEIGHTS),
+             ring: ring, phaseDeg: phaseDeg, degPerHour: degPerHour, budget: CFG.cloudOreBudget };
+}
+
+// First-ever Sector visit for this profile: create the home quadrant, using
+// Station Meridian's own position as the "pilot position" the first
+// zone/fields spawn near — there's no real ship position yet in the sector
+// frame at this point, and starting near home matches placeAtStationStart's
+// own idea (new pilots begin just outside Meridian).
+function ensureQuadrantHome() {
+    if (profile.quadrants.home) return;
+    profile.quadrantId = 'home';
+    var meridian = QUADRANT.filter(function (q) { return q.name === 'Station Meridian'; })[0];
+    var originPos = ringPos(meridian);
+    var home = { zone: null, fields: [], fieldSeq: 0 };
+    profile.quadrants.home = home;
+    home.zone = spawnZone(originPos);
+    for (var i = 0; i < CFG.quadrantFieldCount; i++) home.fields.push(spawnField(originPos));
+    saveProfile();
+}
+
+// The quadrant's points as plain data (no audio nodes) — used both to build
+// the live sector-mode roster (makeQuadrantRoster adds voices on top) and to
+// list "depart to X" points from inside an encounter, where spinning up a
+// fresh voice per point just to populate a map line would be wasted nodes.
+function quadrantPoiList() {
+    ensureQuadrantHome();
+    var q = currentQuadrant();
+    var list = QUADRANT.map(function (entry) {
+        return { kind: 'poi', name: entry.name, poiType: entry.poiType, desc: entry.desc,
+                  pos: ringPos(entry), alive: true };
+    });
+    list.push({ kind: 'poi', name: q.zone.name, poiType: 'combat', desc: 'combat area',
+                pos: v3(q.zone.pos.x, q.zone.pos.y, q.zone.pos.z), alive: true });
+    q.fields.forEach(function (f) {
+        list.push({ kind: 'poi', name: f.name, poiType: 'mining', desc: 'mining area',
+                    pos: ringPos(f), alive: true, fieldType: f.type, fieldBudget: f.budget });
+    });
+    return list;
+}
+
+function makeQuadrantRoster() {
+    var list = quadrantPoiList();
+    list.forEach(function (t) { buildPoiVoice(t); });
+    return list;
+}
+
+// The nearest real planet/field, for mission flavor text (SPEC 2.17's
+// escort/defend labels) — the delivery run keeps naming its own Planet
+// Auren / Field Kappa; the open quadrant never advertises a place that
+// isn't actually there.
+function missionDestinationPlanet() {
+    if (demo) return 'Planet Auren';
+    var best = null, bestD = Infinity;
+    QUADRANT.forEach(function (q) {
+        if (q.poiType !== 'planet') return;
+        var d = len(sub(ringPos(q), ship.pos));
+        if (d < bestD) { bestD = d; best = q.name; }
+    });
+    return best || 'the nearest planet';
+}
+function missionDestinationField() {
+    if (demo) return 'Field Kappa';
+    var q = currentQuadrant();
+    return (q && q.fields.length) ? q.fields[0].name : 'the nearest field';
+}
+
+// The station nearest a given position, for the tug (SPEC 2.16) now that
+// there can be more than one — the delivery run's fixed sector still only
+// ever has Station Meridian, so it stays the answer there unconditionally.
+function nearestStationTo(pos) {
+    if (demo) {
+        var s = null;
+        SECTOR_POIS.forEach(function (p) { if (p.poiType === 'station') s = p; });
+        return s ? { name: s.name, pos: v3(s.pos.x, s.pos.y, s.pos.z) } : null;
+    }
+    var best = null, bestD = Infinity;
+    QUADRANT.forEach(function (q) {
+        if (q.poiType !== 'station') return;
+        var d = len(sub(ringPos(q), pos));
+        if (d < bestD) { bestD = d; best = { name: q.name, pos: ringPos(q) }; }
+    });
+    return best;
+}
+
+// A field's fullness in words — never the raw budget number, matching every
+// other hidden-threshold readout in this codebase.
+function fieldFullnessWord(budget) {
+    var pct = Math.max(0, budget) / CFG.cloudOreBudget;
+    return pct > 0.6 ? 'plenty' : pct > 0.25 ? 'thinning' : 'nearly worked out';
+}
+function fieldKindWord(type) { return type === 'mixed' ? 'mixed deposit' : type + '-rich'; }
+function fieldTypeNote(t) {
+    if (!t.fieldType) return '';
+    return ' ' + capFirst(fieldKindWord(t.fieldType)) + ', ' + fieldFullnessWord(t.fieldBudget) + '.';
+}
+
+function findTargetByName(name) {
+    for (var i = 0; i < targets.length; i++) if (targets[i].name === name) return targets[i];
+    return null;
+}
+
 // ============================== 2. STATE ====================================
 var mode = null;         // 'combat' | 'mining' | 'sector' | null (menu decides)
 var menuOpen = false;
@@ -845,10 +1119,13 @@ var tug = null;          // SPEC 2.16: { total, remaining, poiData, paid } while
 var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, waveTimes,
                           // raiderSeq, nextStrikeIn, ended, success } while an escort/
                           // defend mission is live (mode stays 'combat' throughout)
-var simClock = 0;        // session game-time clock (SPEC 2.17): counts whenever the
-                          // sim is live and not under an overlay, independent of the
-                          // delivery run's own `demo.elapsed` — backs mission cooldowns
-var missionCooldownUntil = { escort: 0, defend: 0 };  // simClock timestamps
+// The game clock (SPEC 2.17, persisted as of SPEC 3.10 — see profile.clock):
+// counts whenever the sim is live and not under an overlay, independent of
+// the delivery run's own `demo.elapsed`. Backs mission cooldowns and, as of
+// 3.10, the quadrant's orbits, drift, and spawns. Read via profile.clock
+// directly (no session mirror) so a reload never desyncs the two.
+var quadrantAutosaveIn = 0;  // SPEC 3.10: counts down to the next quiet autosave
+                              // in open sector flight (CFG.quadrantSaveEveryS)
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
@@ -1314,13 +1591,18 @@ function spawnRock(type, size, pos, vel) {
     return t;
 }
 
-function makeMiningRoster() {
+// fieldType (SPEC 3.10, optional): a QUADRANT field's type biases the rock
+// draw (FIELD_TYPE_ROCK_WEIGHTS) instead of the plain even split. Kappa's
+// own call (no argument — the delivery run, or the standalone drill) is
+// byte-for-byte what it always was, first-rock-always-Ice quirk included.
+function makeMiningRoster(fieldType) {
     rockSeq = 0;
     var rocks = [];
     var plan = [0, 1, 1, 2];   // one huge, two large, one medium
     plan.forEach(function (size, i) {
-        var type = ROCK_TYPES[Math.floor(Math.random() * ROCK_TYPES.length)];
-        if (i === 0) type = ROCK_TYPES[i % ROCK_TYPES.length];
+        var type = fieldType ? pickWeighted(ROCK_TYPES, FIELD_TYPE_ROCK_WEIGHTS[fieldType])
+                              : ROCK_TYPES[Math.floor(Math.random() * ROCK_TYPES.length)];
+        if (i === 0 && !fieldType) type = ROCK_TYPES[i % ROCK_TYPES.length];
         var ang = Math.random() * Math.PI * 2;
         var r = 250 + Math.random() * 200;
         var pos = v3(Math.cos(ang) * r, -120 + Math.random() * 240, Math.sin(ang) * r);
@@ -1386,6 +1668,16 @@ function buildPoiVoice(t) {
         // Friendly rhythmic nav beacon: clean tone gated on and off.
         osc('sine', 660).connect(gain);
         tremolo(1.8, G, 'square');
+    } else if (t.poiType === 'gate') {
+        // SPEC 3.10: deep cyclic hum with a periodic discharge (2.6's own
+        // description) — placeholder until Brian's ear picks something else.
+        osc('sawtooth', 55).connect(gain);
+        tremolo(0.15, G * 0.4);
+    } else if (t.poiType === 'star') {
+        // The compass point: a very low, steady drone with a slow flicker —
+        // audible everywhere via the same long beaconMax every POI shares.
+        osc('sine', 30).connect(gain);
+        tremolo(0.2, G * 0.3);
     } else {
         // Planet: vast, slow atmospheric drone with a lazy shimmer.
         osc('sine', 45).connect(gain);
@@ -1401,9 +1693,14 @@ function buildPoiVoice(t) {
 // the map, a mission start) takes effect without any call site knowing.
 function beaconAudible(t) {
     if (docked) return false;   // ideas6: inside the station, the beacons are outside
-    if (beaconMode === 'on') return true;
     if (beaconMode === 'target') return targets[selected] === t;
-    return false;
+    if (beaconMode !== 'on') return false;
+    // SPEC 3.10: the delivery run's fixed four-point sector stays
+    // always-audible when "on" — unchanged, already tested. The open
+    // quadrant's ten points get a distance cutoff instead (the selected
+    // target is always audible regardless), so "on" isn't a beacon soup.
+    if (demo) return true;
+    return targets[selected] === t || len(sub(t.pos, ship.pos)) <= CFG.beaconAudibleDist;
 }
 
 // Push every beacon's mute to beaconAudible() right now. updateTargeting
@@ -1444,12 +1741,17 @@ function makeSectorRoster() {
     // docking, so it's fetched here (cached/coalesced — cheap to repeat on
     // every sector re-entry) rather than in the boot preload set.
     if (SIM.audio.ctx) SIM.audio.load('station_interior1').catch(function () {});
-    return SECTOR_POIS.map(function (p) {
-        var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
-                  pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
-        buildPoiVoice(t);
-        return t;
-    });
+    // SPEC 3.10: the delivery run keeps its fixed four-point sector
+    // (SECTOR_POIS, untouched); the open campaign gets the moving quadrant.
+    if (demo) {
+        return SECTOR_POIS.map(function (p) {
+            var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
+                      pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
+            buildPoiVoice(t);
+            return t;
+        });
+    }
+    return makeQuadrantRoster();
 }
 
 // ---- maneuvering thrusters --------------------------------------------------
@@ -2186,6 +2488,17 @@ function beamTick() {
 
 // One extractor tick: recheck the hold conditions, then pull ore. The
 // carrier pitch sinks as the core empties, narrating progress.
+// SPEC 3.10: every ore gain against a QUADRANT field (never Kappa or the
+// standalone drill, both fieldless) counts against its budget. Not saved
+// here — mid-encounter never saves (returnToSector's own transition save
+// picks up the new total the moment this visit ends).
+function depleteCurrentField(amount) {
+    if (demo || mode !== 'mining' || !sectorHome) return;
+    var q = currentQuadrant();
+    var f = q && q.fields.filter(function (x) { return x.name === sectorHome.poiName; })[0];
+    if (f) f.budget -= amount;
+}
+
 function vacTick() {
     var t = targets[selected];
     if (!t || !t.alive || !t.resource) { stopBeam(true); say('Extraction interrupted.'); return; }
@@ -2199,6 +2512,7 @@ function vacTick() {
     t.oreLeft -= amount;
     ore += amount;
     oreGained();
+    depleteCurrentField(amount);
     // Gentle tractor pull so the core drifts toward the ship, not away.
     pushRock(t, scale(norm(sub(ship.pos, t.pos)), 2));
     if (beam.nodes) SIM.audio.ramp(beam.nodes.o.frequency, 100 + 120 * (t.oreLeft / t.type.ore), 0.2);
@@ -2249,6 +2563,7 @@ function dustTick() {
     f.amount -= amount;
     ore += amount;
     oreGained();
+    depleteCurrentField(amount);
     updateDustVolume(f);
     if (f.amount <= 0) removeDust(f);
     say(String(amount));
@@ -3227,9 +3542,13 @@ function startDemo() {
 // New pilots begin just outside Station Meridian, facing the Contested Zone,
 // with a full tank — the demo route (SPEC 1.10) starts here.
 function placeAtStationStart() {
+    // SPEC 3.10: more than one station can exist in `targets` now (the
+    // open quadrant), so this can't just take "whichever station turns up
+    // last" — new pilots start at home, Station Meridian by name, same as
+    // the delivery run always has.
     var s = null, c = null;
     targets.forEach(function (t) {
-        if (t.poiType === 'station') s = t;
+        if (t.poiType === 'station' && (!s || t.name === 'Station Meridian')) s = t;
         if (t.poiType === 'combat') c = t;
     });
     if (!s || !c) return;
@@ -3412,14 +3731,49 @@ function openMap() {
     if (beam) stopBeam(true);
     map.open = true;
     map.idx = -1;
-    map.items = mode === 'sector' ? aliveTargets() : SECTOR_POIS;
+    // SPEC 3.10: sector mode groups by kind (mapBuildItems adds heading
+    // rows); inside an encounter the map is still a flat "depart to X"
+    // chart, sourced from whichever sector is actually live — the
+    // delivery run's fixed SECTOR_POIS, or the open quadrant's own points
+    // (quadrantPoiList — no audio nodes, just for listing).
+    var pointCount;
+    if (mode === 'sector') {
+        map.items = mapBuildItems();
+        pointCount = aliveTargets().length;
+    } else {
+        map.items = demo ? SECTOR_POIS : quadrantPoiList();
+        pointCount = map.items.length;
+    }
     keysDown = {};
     thrusterSync(null);
     updateStabilizers(0);
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
-    say('Quadrant map. ' + map.items.length + ' points of interest. Up and down browse, ' +
+    say('Quadrant map. ' + pointCount + ' points of interest. Up and down browse, ' +
         (mode === 'sector' ? 'Enter sets the nav target' : 'Enter departs for that point') +
         ', Escape closes.');
+}
+
+// Grouped by kind (SPEC 3.10, Brian): a heading line per non-empty group,
+// nearest first within it, first-letter jump to a group (S/P/A/C/G — the
+// star has no letter of its own, every other initial being already taken).
+var MAP_GROUPS = [
+    { letter: 's', label: 'Stations',        filter: function (t) { return t.poiType === 'station'; } },
+    { letter: 'p', label: 'Planets',         filter: function (t) { return t.poiType === 'planet'; } },
+    { letter: 'a', label: 'Asteroid fields', filter: function (t) { return t.poiType === 'mining'; } },
+    { letter: 'c', label: 'Contested zone',  filter: function (t) { return t.poiType === 'combat'; } },
+    { letter: 'g', label: 'Gate',            filter: function (t) { return t.poiType === 'gate'; } },
+    { letter: null, label: 'Star',           filter: function (t) { return t.poiType === 'star'; } }
+];
+function mapBuildItems() {
+    var items = [];
+    MAP_GROUPS.forEach(function (g) {
+        var matches = aliveTargets().filter(g.filter);
+        if (!matches.length) return;
+        matches.sort(function (x, y) { return len(sub(x.pos, ship.pos)) - len(sub(y.pos, ship.pos)); });
+        items.push({ heading: g.label + ', ' + matches.length + '.', letter: g.letter });
+        matches.forEach(function (t) { items.push(t); });
+    });
+    return items;
 }
 
 function closeMap(spoken) {
@@ -3432,14 +3786,15 @@ function closeMap(spoken) {
 // own little space), so lines read as chart entries: sector-frame distance
 // from the point you are at.
 function mapLineText(item) {
+    if (item.heading) return item.heading;
     if (mode === 'sector') {
-        return bearingText(item) + ' ' + capFirst(warpReachText(len(sub(item.pos, ship.pos)))) + '.';
+        return bearingText(item) + ' ' + capFirst(warpReachText(len(sub(item.pos, ship.pos)))) + '.' + fieldTypeNote(item);
     }
     if (sectorHome && item.name === sectorHome.poiName) {
         return item.name + ', ' + item.desc + '. Your current location.';
     }
     var d = sectorHome ? round10(len(sub(item.pos, sectorHome.pos))) : 0;
-    return item.name + ', ' + item.desc + '. Distance ' + d + ' from here.';
+    return item.name + ', ' + item.desc + '. Distance ' + d + ' from here.' + fieldTypeNote(item);
 }
 
 function mapKey(lname) {
@@ -3453,6 +3808,7 @@ function mapKey(lname) {
     } else if (lname === 'enter') {
         if (map.idx < 0) { say('Browse to a point first, with the up and down arrows.'); return; }
         var item = map.items[map.idx];
+        if (item.heading) { say('That is a heading. Up or down to browse into it.'); return; }
         if (mode === 'sector') {
             selected = targets.indexOf(item);
             locked = false;
@@ -3472,6 +3828,14 @@ function mapKey(lname) {
                 startWarp();
             }
         }
+    } else if (mode === 'sector' && typeof lname === 'string' && lname.length === 1 && /[a-z]/.test(lname)) {
+        // SPEC 3.10: first-letter jump to a group heading.
+        var gi = -1;
+        for (var i = 0; i < map.items.length; i++) {
+            if (map.items[i].heading && map.items[i].letter === lname) { gi = i; break; }
+        }
+        if (gi >= 0) { map.idx = gi; say(mapLineText(map.items[gi])); }
+        else { SIM.audio.blip(220, 80, 0.1); say('No group starts with that letter.'); }
     } else {
         say('Up and down browse the map, Enter ' +
             (mode === 'sector' ? 'sets the nav target' : 'departs') + ', Escape closes.');
@@ -3604,8 +3968,14 @@ function overHeldText() {
 }
 
 function startTug() {
-    var poiData = null;
-    SECTOR_POIS.forEach(function (p) { if (p.poiType === 'station') poiData = p; });
+    // SPEC 3.10: more than one station can exist now — go to whichever is
+    // nearest the pilot's SECTOR-frame position at the moment of death
+    // (sectorHome's own snapshot inside an encounter; ship.pos directly for
+    // an open-flight death, e.g. a collision). The delivery run's fixed
+    // sector still only ever has Station Meridian (nearestStationTo's own
+    // demo branch), unchanged.
+    var pilotPos = (mode === 'sector') ? ship.pos : (sectorHome ? sectorHome.pos : ship.pos);
+    var poiData = nearestStationTo(pilotPos);
     // Read influence BEFORE anything this death might bump — same ordering
     // rule as influenceGreeting, so the halved wait reflects standing
     // earned before now, not credit for the wreck currently happening.
@@ -3838,26 +4208,47 @@ var HAIL_ITEMS = [
 // Same nested-submenu shape as the station menu's Modules list: HAIL_ITEMS'
 // own "Missions" entry sets hailMenu.submenu, and hailMenuKey dispatches
 // here first while it's set, same as stationMenuKey does for Modules.
+// Labels are functions (SPEC 3.10): the delivery run's fixed sector always
+// names its own Planet Auren / Field Kappa, but the open quadrant has
+// different points entirely — missionDestinationPlanet/Field pick the
+// nearest real one so a hail never advertises a place that isn't there.
 var MISSIONS = [
-    { kind: 'escort', label: 'Escort freighter to Planet Auren',
+    { kind: 'escort', label: function () { return 'Escort freighter to ' + missionDestinationPlanet(); },
       desc: function () {
           return 'Three waves of raiders will try to stop it over the ' + CFG.missionEscortLegS +
                  ' second leg. ' + CFG.missionCredits + ' credits on success.';
       } },
-    { kind: 'defend', label: 'Defend the miner at Field Kappa',
+    { kind: 'defend', label: function () { return 'Defend the miner at ' + missionDestinationField(); },
       desc: function () {
           return 'Two waves of raiders. ' + CFG.missionCredits + ' credits on success.';
       } }
 ];
 
-function missionAvailable(kind) { return simClock >= (missionCooldownUntil[kind] || 0); }
+function missionDestinationPlanet() {
+    if (demo) return 'Planet Auren';
+    var best = null, bestD = Infinity;
+    QUADRANT.forEach(function (q) {
+        if (q.poiType !== 'planet') return;
+        var d = len(sub(ringPos(q), ship.pos));
+        if (d < bestD) { bestD = d; best = q.name; }
+    });
+    return best || 'the nearest planet';
+}
+function missionDestinationField() {
+    if (demo) return 'Field Kappa';
+    var q = currentQuadrant();
+    return (q && q.fields.length) ? q.fields[0].name : 'the nearest field';
+}
+
+function missionAvailable(kind) { return profile.clock >= (profile.missionCooldownUntil[kind] || 0); }
 
 function missionText(i) {
     var m = MISSIONS[i];
     if (!missionAvailable(m.kind)) {
-        return m.label + '. Not available for ' + Math.ceil(missionCooldownUntil[m.kind] - simClock) + ' more seconds.';
+        return itemLabel(m) + '. Not available for ' +
+               Math.ceil(profile.missionCooldownUntil[m.kind] - profile.clock) + ' more seconds.';
     }
-    return m.label + '. ' + m.desc();
+    return itemLabel(m) + '. ' + m.desc();
 }
 
 function missionsMenuIntro() {
@@ -3878,7 +4269,7 @@ function missionsKey(lname) {
         say(missionText(missionIdx));
     } else {
         SIM.audio.blip(220, 80, 0.1);
-        say('Up and down arrows browse missions, Enter accepts, Escape returns. ' + MISSIONS[missionIdx].label + '.');
+        say('Up and down arrows browse missions, Enter accepts, Escape returns. ' + itemLabel(MISSIONS[missionIdx]) + '.');
     }
 }
 
@@ -3888,7 +4279,8 @@ function missionsKey(lname) {
 // spec) — the spec object becomes `mission`, which routes newGame's own
 // roster-building to makeMissionRoster instead of the standard five ships.
 function startMissionRun(kind) {
-    missionCooldownUntil[kind] = simClock + CFG.missionCooldownS;
+    profile.missionCooldownUntil[kind] = profile.clock + CFG.missionCooldownS;
+    saveProfile();
     var poi = hailMenu.poi;
     hailMenu.open = false;
     hailMenu.submenu = null;
@@ -4244,21 +4636,27 @@ function callPoi() {
     if (t.poiType === 'combat') {
         sectorHome = snapshotSector(t);
         newGame('combat');
-        say('Contested Zone control: hostiles inbound, weapons free. ' + combatIntro());
+        say(t.name + ' control: hostiles inbound, weapons free. ' + combatIntro());
     } else if (t.poiType === 'mining') {
         if (demo && !demo.combatCleared) {
-            say('Field Kappa control: mining rights are suspended while hostiles hold the Contested Zone. Clear it first, pilot.');
+            say(t.name + ' control: mining rights are suspended while hostiles hold the Contested Zone. Clear it first, pilot.');
             return;
         }
         sectorHome = snapshotSector(t);
         newGame('mining');
-        say('Field Kappa control: mining rights confirmed. ' + miningIntro());
+        say(t.name + ' control: mining rights confirmed. ' + miningIntro() + fieldTypeNote(t));
     } else if (t.poiType === 'station') {
         if (docked) { say('Already docked. Escape or X undocks.'); return; }
         if (d <= CFG.stationDockRange) dockAtStation(t);
         else openHailMenu(t);
+    } else if (t.poiType === 'gate') {
+        // SPEC 3.10: sealed until SPEC 3.22 gives it a real transit — no
+        // favor/hydrogen check yet, just the placeholder 2.6 text.
+        say(t.name + ' control: transit lane not commissioned.');
+    } else if (t.poiType === 'star') {
+        say(t.name + '. Nothing answers.');
     } else {
-        say('Planet Auren orbital relay: atmospheric operations are not yet available. ' +
+        say(t.name + ' orbital relay: atmospheric operations are not yet available. ' +
             'The view is spectacular, though.');
     }
 }
@@ -4266,16 +4664,55 @@ function callPoi() {
 // X from an encounter entered via the sector: back to open space at the POI.
 function returnToSector(silent) {
     var home = sectorHome;
+    var wasMode = mode, wasWon = won;    // captured BEFORE newGame('sector') resets them
     sectorHome = null;
+    // SPEC 3.10: a cleared zone or a worked-out field is replaced elsewhere
+    // in the open quadrant the moment it's exited — decided (and, for a
+    // depleted field, executed) BEFORE rebuilding the roster below, so the
+    // fresh targets already reflect the new spawn instead of a stale one.
+    var pendingRespawn = null;   // 'zone' | the depleted field's own name
+    if (!demo && wasMode === 'combat' && wasWon) {
+        pendingRespawn = 'zone';
+    } else if (!demo && wasMode === 'mining') {
+        var q0 = currentQuadrant();
+        var qf0 = q0 && q0.fields.filter(function (x) { return x.name === home.poiName; })[0];
+        if (qf0 && qf0.budget <= 0) pendingRespawn = home.poiName;
+    }
+    var respawnedField = null;
+    if (pendingRespawn === 'zone') {
+        currentQuadrant().zone = spawnZone(home.pos);
+    } else if (pendingRespawn) {
+        var q = currentQuadrant();
+        q.fields = q.fields.filter(function (f) { return f.name !== pendingRespawn; });
+        respawnedField = spawnField(home.pos);
+        q.fields.push(respawnedField);
+    }
     newGame('sector');
     ship.pos = home.pos; ship.yaw = home.yaw; ship.pitch = home.pitch;
     var idx = -1;
     targets.forEach(function (t, i) { if (t.name === home.poiName) idx = i; });
     if (idx >= 0) { selected = idx; locked = false; stopLockTone(); }
+    else selectNearest();
     refillWarp();                                  // the core cooled while you were busy
-    if (!silent) {
-        say('Back in open space near ' + home.poiName + '. Warp tank full. Ore hold ' + ore + '. Q for the map.');
+    // "Near X" only when X is still actually there — a same-named
+    // replacement (Contested Zone) or a depleted field's replacement both
+    // mean the ship isn't really near what it's nominally selected on.
+    var stillAtSameSpot = idx >= 0 && !pendingRespawn;
+    var respawnNote = '';
+    if (pendingRespawn === 'zone') {
+        var zt = findTargetByName('Contested Zone');
+        respawnNote = zt ? ' Contested Zone cleared. A new one is reported, ' + bearingText(zt)
+                         : ' Contested Zone cleared. A new one is reported elsewhere.';
+    } else if (respawnedField) {
+        var nt = findTargetByName(respawnedField.name);
+        respawnNote = ' ' + pendingRespawn + ' is worked out. ' + respawnedField.name + ' sighted, ' +
+                      fieldKindWord(respawnedField.type) + (nt ? '. ' + bearingText(nt) : '.');
     }
+    if (!silent) {
+        say('Back in open space' + (stillAtSameSpot ? ' near ' + home.poiName : '') +
+            '. Warp tank full. Ore hold ' + ore + '.' + respawnNote + ' Q for the map.');
+    }
+    saveProfile();
 }
 
 // ============================== 9. INPUT ====================================
@@ -4518,10 +4955,21 @@ function frame(now) {
 }
 
 function simTick(dt) {
-    // Session game-time clock (SPEC 2.17): backs mission cooldowns, so it
+    // The game clock (SPEC 2.17, persisted as of 3.10 — profile.clock):
+    // backs mission cooldowns and the quadrant's orbits/drift/spawns, so it
     // needs to keep counting outside the delivery run too — same gate as
     // the delivery clock, minus its over()/tug wrinkle (nothing here needs it).
-    if (running && !help.open && !map.open && !menuOpen && dt > 0) simClock += dt;
+    if (running && !help.open && !map.open && !menuOpen && dt > 0) {
+        profile.clock += dt;
+        // A quiet autosave every CFG.quadrantSaveEveryS of open sector
+        // flight (SPEC 3.10) — never mid-encounter (that gate is `mode
+        // === 'sector'`, so a combat/mining visit just doesn't tick this;
+        // leaving one is its own transition save in returnToSector).
+        if (mode === 'sector') {
+            quadrantAutosaveIn -= dt;
+            if (quadrantAutosaveIn <= 0) { saveProfile(); quadrantAutosaveIn = CFG.quadrantSaveEveryS; }
+        }
+    }
     // The delivery clock runs whenever the sim is live, hyperwarp included —
     // and, as of SPEC 2.16, through a tug wait too: the tug is a consequence
     // on the clock, not a pause of it.
@@ -4669,7 +5117,15 @@ window.__sim = {
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
             locked: locked, lockToneMode: lockToneKind(),
             music: !!SIM.audio.musicNode,
-            stationBand: (function () { var s = null; targets.forEach(function (t) { if (t.kind === 'poi' && t.poiType === 'station') s = t.rangeBand; }); return s; })(),
+            stationBand: (function () {
+                var best = null, bestD = Infinity;
+                targets.forEach(function (t) {
+                    if (t.kind !== 'poi' || t.poiType !== 'station') return;
+                    var d = len(sub(t.pos, ship.pos));
+                    if (d < bestD) { bestD = d; best = t.rangeBand; }
+                });
+                return best;
+            })(),
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
@@ -4682,9 +5138,16 @@ window.__sim = {
                                    wavesSent: mission.wavesSent, ended: mission.ended, success: mission.success,
                                    friendly: { name: mission.friendly.name, hp: mission.friendly.hp,
                                                maxHp: mission.friendly.maxHp, alive: mission.friendly.alive } } : null,
-            simClock: Math.round(simClock * 10) / 10,
-            missionCooldown: { escort: Math.round(Math.max(0, missionCooldownUntil.escort - simClock)),
-                               defend: Math.round(Math.max(0, missionCooldownUntil.defend - simClock)) },
+            clock: Math.round(profile.clock * 10) / 10,
+            missionCooldown: { escort: Math.round(Math.max(0, profile.missionCooldownUntil.escort - profile.clock)),
+                               defend: Math.round(Math.max(0, profile.missionCooldownUntil.defend - profile.clock)) },
+            quadrant: (!demo && profile.quadrants[profile.quadrantId]) ? (function () {
+                var q = profile.quadrants[profile.quadrantId];
+                return { zone: { name: q.zone.name, pos: q.zone.pos },
+                         fields: q.fields.map(function (f) {
+                             return { name: f.name, type: f.type, budget: Math.round(f.budget), ring: Math.round(f.ring) };
+                         }) };
+            })() : null,
             warp: { charge: Math.round(warpCharge), max: CFG.warpTankMax, pct: warpPct() },
             rcs: { charge: Math.round(rcs), max: CFG.rcsMax, pct: Math.round(rcsPct()), battery: rcsBattery },
             collisionDamage: collisionDamage,
@@ -4756,6 +5219,12 @@ window.__sim = {
         if (o && o.friendlyHp !== undefined && mission) mission.friendly.hp = o.friendlyHp;
         if (o && o.missionElapsed !== undefined && mission) mission.elapsed = o.missionElapsed;
         if (o && o.credits !== undefined && profile) profile.credits = o.credits;
+        if (o && o.clock !== undefined && profile) profile.clock = o.clock;
+        if (o && o.depleteField && profile.quadrants[profile.quadrantId]) {
+            profile.quadrants[profile.quadrantId].fields.forEach(function (f) {
+                if (f.name === o.depleteField) f.budget = 0;
+            });
+        }
         if (o && o.pos !== undefined) ship.pos = v3(o.pos.x, o.pos.y, o.pos.z);
         if (o && o.vel !== undefined) ship.vel = v3(o.vel.x, o.vel.y, o.vel.z);
         if (o && o.collisionDamage !== undefined) collisionDamage = o.collisionDamage;
@@ -4798,7 +5267,17 @@ function newGame(m, missionSpec) {
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'mining') {
-        targets = makeMiningRoster();
+        // SPEC 3.10: sectorHome.poiName names the field this visit is
+        // against (set by callPoi before this runs) — its type biases the
+        // rock draw. Kappa and the standalone drill (no sectorHome) pass
+        // no type, unchanged.
+        var fieldType = null;
+        if (!demo && sectorHome) {
+            var qm = currentQuadrant();
+            var fm = qm && qm.fields.filter(function (x) { return x.name === sectorHome.poiName; })[0];
+            fieldType = fm ? fm.type : null;
+        }
+        targets = makeMiningRoster(fieldType);
     } else if (mission) {
         targets = makeMissionRoster(mission);
         targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
@@ -5068,9 +5547,12 @@ function combatIntro() {
 }
 
 function sectorIntro() {
-    return 'Entering the sector just outside Station Meridian, warp tank full. Four points of interest on the quadrant map: ' +
-           'a combat area, a mining area, a space station, and a planet, each with its own beacon sound. ' +
-           'Q opens the map, Tab cycles beacons, H hyperwarps to your nav target, ' +
+    // SPEC 3.10: only ever spoken for the open quadrant (startMission's own
+    // 'sector' branch — the delivery run uses demoIntro instead), so this
+    // can describe the moving world without a demo check.
+    return 'Entering the quadrant just outside Station Meridian, warp tank full. The star, two stations, two planets, ' +
+           'a jump gate, the Contested Zone, and one or more asteroid fields are on the quadrant map, grouped by kind, ' +
+           'each with its own beacon sound. Q opens the map, Tab cycles beacons, H hyperwarps to your nav target, ' +
            'and C calls a point once you are within ' + CFG.poiInteract + '. F1 for help.' + beaconNote();
 }
 

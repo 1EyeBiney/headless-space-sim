@@ -1825,16 +1825,17 @@ item, machine-test at a local server with beacons off, docs in sync,
 push, re-test at Pages, close every tab. Every number is a placeholder
 in CFG or a data table for Brian's ear and hands.
 
-**Build order**: 3.10 the quadrant → 3.23 favor, control, and the three
-ranges (touches docking, so it goes in before the ports multiply) → 3.18
-containers and hydrogen → 3.11 ports and F4 → 3.19 planets as ports →
-3.14 the cargo limit → 3.12 the price levers → 3.20 hauling and biomass →
-3.21 threat escalation → 3.13 salvage gates and the drone swarm → 3.22
-the gate and the frontier quadrant. Then **Phase 3b**: 3.16 verbosity and
-the journal, 3.17 tutorials — once the world has been flown, so the
-tutorials teach what is actually there. Stop for Brian's ears after 3.10
-(the first thing that *moves*), after 3.23 (the first thing that says
-*no*), and after 3.20 (the first thing that *pays*).
+**Build order**: 3.10 the quadrant (DONE) → 3.23 favor, control, and the
+three ranges (touches docking, so it goes in before the ports multiply,
+next up) → 3.18 containers and hydrogen → 3.11 ports and F4 → 3.19
+planets as ports → 3.14 the cargo limit → 3.12 the price levers → 3.20
+hauling and biomass → 3.21 threat escalation → 3.13 salvage gates and
+the drone swarm → 3.22 the gate and the frontier quadrant. Then
+**Phase 3b**: 3.16 verbosity and the journal, 3.17 tutorials — once the
+world has been flown, so the tutorials teach what is actually there.
+Stop for Brian's ears after 3.10 (the first thing that *moves* — built;
+not yet heard), after 3.23 (the first thing that says *no*), and after
+3.20 (the first thing that *pays*).
 
 **What Phase 3 is, in one paragraph.** Today the sector is four fixed
 points, one friendly station, and one flat clock. Phase 3 makes it a
@@ -1851,113 +1852,191 @@ about you, haul between ports, feed a station from its planet, clear
 zones that harden the more you fight and soften the longer you don't —
 and, once one station trusts you, take the gate to the frontier.
 
-#### 3.10 The quadrant: a hand-authored sky with moving parts (A.10)
+#### 3.10 The quadrant: a hand-authored sky with moving parts (A.10) — DONE
+
+Built as the foundation 3.11/3.19/3.21/3.23 layer onto — this item is
+positions, spawning, drift, the game clock, and the save; it does NOT
+yet include `serves`/`wants`, unions, favor/control, or threat, all
+still to come. Every deviation from the original brief below is a
+scope call made while building, not a silent drop.
 
 - **`QUADRANT`** replaces `SECTOR_POIS` for the open campaign (the Sector
   menu item and everything reached from it). `SECTOR_POIS` stays exactly
-  as it is for the delivery run — its legs are hand-tuned (A.10).
-  Placeholder names (Brian: "placeholders for now"; rename in the table
-  any time — Station Meridian keeps its name, it's already known):
+  as it is for the delivery run — its legs are hand-tuned (A.10);
+  `makeSectorRoster()`'s one fork (`if (demo) ... else makeQuadrantRoster()`)
+  is the entire seam between the two. Placeholder names, six fixed rows:
 
-  | Name | Kind | Ring | Rate | Serves | Notes |
-  | --- | --- | --- | --- | --- | --- |
-  | The Star | star | 0 | — | — | beacon only, no C; the quadrant's compass |
-  | Station Meridian | station | 3,500 | 0 | Planet A | home: starts Trusted; the shipyard |
-  | Planet A | planet | 6,000 | `planetDegPerHour` 6 | — | a port (3.19), sells biomass |
-  | Station Two | station | 9,500, opposite side | 0 | the Jump Gate | starts Unknown; the shipyard; sells hydrogen |
-  | Planet B | planet | 11,000 | 6 | — | a port (3.19), sells biomass |
-  | Jump Gate | gate | 14,000 | 0 | — | opens in 3.22 for hydrogen fare, once a station is Trusted |
+  | Name | Kind | Ring | Rate |
+  | --- | --- | --- | --- |
+  | The Star | star | 0 | — |
+  | Station Meridian | station | 3,500 | 0 |
+  | Planet A | planet | 6,000 | 6 deg/hour |
+  | Station Two | station | 9,500 | 0 |
+  | Planet B | planet | 11,000 | 6 deg/hour |
+  | Jump Gate | gate | 14,000 | 0 |
 
-  Each row: `{ name, kind, desc, ring, degPerHour, phaseDeg, serves,
-  wants, voice }`. `serves` is what the station is *for* (A.6): a station
-  serving a planet wants that planet's biomass above all; a station
-  serving the gate wants hydrogen and sells it. Stations hold station
-  (accepted by default: fixed, so the run to a known market is a known
-  run); planets creep — a full orbit in 60 play-hours, enough that a
-  regular's route drifts over weeks, never enough to lose one in a
-  session. Position is `polar(ring, phaseDeg + degPerHour × clockHours)`
-  computed **every frame from the clock** — no velocity integration, so
-  the save is nothing but rates and phases.
-- **Unions**: each quadrant names two or three NPC unions in a `UNIONS`
-  table (placeholders: the Meridian Compact, the Outer Ring Company) —
-  they hold the control share (3.23) of every station the pilot doesn't;
-  no fleets, no speech beyond a station naming who holds it ("Station
-  Two, Outer Ring Company, 70 percent."). They are numbers with names
-  until Phase 4.
-- **The star**: a beacon at the origin, a deep 30 Hz drone with a slow
-  flicker, audible everywhere (`starAudibleDist` 16,000 — the one point
-  a pilot can always hear, so nobody is ever lost). C at it: "The star.
-  Nothing answers." Nothing else until Phase 4 makes it a hydrogen
-  source.
-- **Spawned entries** — the moving parts: one combat zone and one to
-  three asteroid fields, spawned by the A.10 rules: `spawnMinFromPilot`
-  5,000, `spawnMaxFromPilot` 11,000 (one clean jump — leaving any
-  encounter refills the tank), `spawnMinGap` 4,000 from every other
-  point, within `spawnMaxFromStation` 11,000 of at least one station,
-  inside `quadrantRadius` 16,000; reject-and-retry 50 times, then relax
-  the pilot band. A replacement spawns when the old one is
-  cleared/depleted AND exited. Rules: exactly one zone active; one to
-  three fields, never zero. Announced once, from the pilot's frame:
-  "Contested Zone reported. Bearing 40 left, distance 7,200." /
-  "Asteroid Field Rho sighted, iron-rich. Bearing..." Spawned names:
-  fields walk the Greek alphabet from Rho (Kappa is the delivery run's);
-  the zone is always "Contested Zone" — there is only ever one.
-- **Fields drift**: `cloudDriftPerS` 5 along a circle around the star at
-  the ring they spawned on (prograde; about 300 a minute, a third of an
-  orbit an hour on the inner rings). Position from the clock like the
-  planets. `returnToSector` follows the field: leaving its encounter puts
-  the pilot at the field's CURRENT position, not the snapshot. Combat
-  zones do not move.
-- **Typed fields** (Brian): a field spawns `ice` / `iron` / `mixed`
-  by `cloudTypeWeights` {0.3, 0.3, 0.4}; the type shapes
-  `makeMiningRoster`'s rock draw (ice-rich: 60 % ice rocks; iron-rich:
-  60 % iron; mixed: today's spread). Named on the map, at its beacon
-  hail, and in the sighting line ("iron-rich"). Depletion: `cloudOreBudget`
-  40,000 per field, spoken roughly at the hail — "plenty" above 60 %,
-  "thinning" above 25 %, "nearly worked out" below; at zero the field
-  is depleted and vanishes on exit ("Asteroid Field Rho is worked out.").
-  Hidden per-rock thresholds stay hidden; only the field's total is
-  ever characterized, never numbered.
-- **The game clock**: 2.17's session-only `simClock` becomes
-  **`profile.clock`** — loaded at boot, advanced on the same gate (live,
-  not under an overlay), saved with the quadrant. Everything keys off it:
-  orbits, drift, respawns, mission cooldowns (which thereby start
-  persisting), saturation decay (3.12), favor decay and control erosion
-  (3.23), threat decay (3.21). Never wall-clock (A.10).
-- **The quadrant save** (Brian: on every transition): `profile.quadrants`
-  keyed by quadrant id, each `{ clock, threat, zone, fields: [{ id, name,
-  type, ring, phaseDeg, spawnedAt, budget }], ports: { name: { favor,
-  control, lastVisit, saturation: {...} } } }`, plus `profile.quadrant`
-  (the current id), written by `saveQuadrant()` on dock, undock, land,
-  launch, entering or leaving an encounter, warp arrival, gate transit,
-  every spawn, every sale — plus a quiet timer every `quadrantSaveEveryS`
-  30 of open flight. **Never mid-encounter** (an encounter is its own
-  little space; its rocks and ships aren't saved — leaving one is the
-  transition). A crash costs at most half a minute of flight. Created
-  the first time a profile picks Sector: the first field and the first
-  zone spawned by the rules with the pilot at `placeAtStationStart`.
-  `PROFILE_VERSION` → 3; a v2 save gets an empty quadrant, the clock at
-  0, and its influence count folded into Meridian's favor (2.18's
-  migration path).
-- **Beacons at ten points**: audible only within `beaconAudibleDist`
-  8,000 plus the selected target (accepted by default in ideas5); B's
-  On overrides to all. Tab cycles nearest first as now.
-- **The map, grouped by kind** (Brian): headings *Stations*, *Planets*,
-  *Asteroid fields*, *Contested zone*, *Gate*, *Star*; nearest first
-  within a group; a heading is its own line ("Stations, 2."); first
-  letter jumps to a group (S, P, A, C, G); every entry line keeps
-  bearing, distance, and warp reach, plus the typed detail (a field's
-  type and fullness, a zone's threat word, a port's favor tier — "Station
-  Two, Unknown"). Enter sets the nav target as now; inside an encounter
-  the lines read as chart entries as now.
-- **`__sim`**: `state().quadrant` (clock, threat, every point with its
-  live position, favor and control per port), `poke({ clock, spawnZone,
-  spawnField, budget, favor, control })`.
-- **Test**: positions move with a stepped clock; a save then reload
-  gives identical positions to the unit; 200 forced spawns all satisfy
-  every rule; leaving a field's encounter lands at its current position
-  (not its entry position) after a stepped clock; the delivery run's
-  four points do not move.
+  Each row: `{ name, poiType, desc, ring, degPerHour, phaseDeg }` — no
+  `serves`/`wants` fields yet (3.11/3.23 add those when the market and
+  favor exist to read them). Stations and the gate hold station;
+  planets creep at a full orbit per 60 play-hours. Position is
+  `ringPos(entry)`: `polar(ring, phaseDeg + degPerHour × clockHours)`
+  from `profile.clock`, computed fresh every call — no velocity
+  integration, so the save really is nothing but rates and phases.
+  **Not built**: the `UNIONS` table/control-share display — that's
+  3.23's.
+- **The star**: a beacon at the origin, a low 30 Hz drone with a slow
+  flicker. Audible everywhere in practice: `CFG.beaconMax` (40,000, set
+  long before this round) already exceeds `quadrantRadius` (16,000), so
+  no separate "always audible" override was needed. C at it: "The Star.
+  Nothing answers."
+- **Spawned entries** — the moving parts: one combat zone
+  (`spawnZone`) and `CFG.quadrantFieldCount` 2 asteroid fields
+  (`spawnField`), placed by `findSpawnPos`: `spawnMinFromPilot` 5,000–
+  `spawnMaxFromPilot` 11,000 from the pilot for 50 tries; if none
+  validate, 50 more anywhere in `quadrantRadius` (the pilot-distance
+  rule dropped, everything else kept); if THAT also fails, the last
+  candidate is used regardless — every attempt is checked against
+  `spawnMinGap` 4,000 from every existing point and `spawnMaxFromStation`
+  11,000 of a station. A cleared zone or a worked-out field is replaced
+  the moment its encounter is exited (`returnToSector`, decided and
+  executed BEFORE the sector roster rebuilds, so the fresh roster never
+  shows the old one). Built with a **fixed field count of 2**, not a
+  variable "1 to 3" — a deliberate simplification of "never zero, at
+  most 3": two is replaced 1-for-1 forever, satisfying "never zero"
+  without a separate growth rule nothing yet calls for. Spawned field
+  names walk `GREEK_FIELD_NAMES` from Rho (Sigma, Tau, Upsilon...),
+  cycling with a number suffix past the list; the zone is always
+  "Contested Zone." Exit announcement folds the sighting into the SAME
+  `say()` as everything else leaving fires (the SPEC 2.15 double-say
+  lesson applied again): "Asteroid Field Rho is worked out. Asteroid
+  Field Tau sighted, mixed deposit. Bearing 50 right. Distance 6030."
+- **Fields drift**: a field's `degPerHour` is derived once at spawn time
+  from `CFG.cloudDriftPerS` 5 (a linear speed) converted to angular
+  speed at its own ring, always prograde — same `ringPos` formula
+  planets use. `returnToSector` already follows the field's CURRENT
+  position rather than a snapshot, since the sector roster is rebuilt
+  fresh from `profile.quadrants` (which has the live rates/phases) every
+  time, not from a stored position.
+- **Typed fields**: `ice` / `iron` / `mixed` by `FIELD_TYPE_WEIGHTS`
+  {0.3, 0.3, 0.4}, biasing `makeMiningRoster`'s rock draw via
+  `FIELD_TYPE_ROCK_WEIGHTS` (ice-rich 60% ice, iron-rich 60% iron, mixed
+  even) — `makeMiningRoster(fieldType)` takes the type as an optional
+  argument; called with none (the delivery run's Kappa, the standalone
+  drill), it is byte-for-byte the original function, first-rock-always-
+  Ice quirk included. Named at the hail ("Asteroid Field Rho control:
+  mining rights confirmed... Iron-rich, plenty.") and on the map
+  (`fieldTypeNote`). Depletion: `CFG.cloudOreBudget` 40,000 per field,
+  drained by the SAME `ore += amount` gain both extraction (`vacTick`)
+  and the dust vacuum (`dustTick`) already produce (`depleteCurrentField`,
+  a one-line hook after each) — not saved mid-tick, only at the next
+  transition, matching "never mid-encounter." Fullness in words only:
+  plenty / thinning / nearly worked out, never a number.
+- **The game clock**: SPEC 2.17's session-only `simClock` is now
+  **`profile.clock`**, persisted, no session mirror at all — every read
+  is `profile.clock` directly, so a reload can never desync a session
+  value from a saved one (there isn't a session one anymore). Backs
+  orbits, drift, spawns, and mission cooldowns, which — per the original
+  brief's own note — now persist too: `profile.missionCooldownUntil`
+  replaces the SPEC 2.17 session object of the same shape, no other
+  code changed. Advances on the same live/not-under-an-overlay gate as
+  the delivery clock.
+- **The quadrant save**: simpler than first specced — `profile.quadrants`
+  keyed by id (only `'home'` exists; `profile.quadrantId` names the
+  current one, always `'home'` until 3.22's Frontier), each `{ zone: {
+  name, pos }, fields: [{ name, type, ring, phaseDeg, degPerHour, budget
+  }], fieldSeq }`. No `threat`/`ports` yet — those fields belong to
+  3.21/3.23 and will be added when built, `Object.assign` already
+  preserving whatever a future version adds. **No separate `saveQuadrant()`
+  function** — `saveProfile()` already serializes the whole profile
+  object wholesale (confirmed unchanged since SPEC 2.18), so the
+  quadrant persists through the SAME calls already used for
+  transitions: `returnToSector()` (leaving any encounter), the mission-
+  accept flow, and a new quiet `CFG.quadrantSaveEveryS` 30-second timer
+  in open sector flight (`simTick`, mode `'sector'` only — never mid-
+  encounter). `ensureQuadrantHome()` creates the very first zone/fields
+  the first time a profile ever picks Sector, using Station Meridian's
+  own position as the "pilot position" the initial spawn measures from
+  (there's no real ship position in the sector frame yet at that
+  moment). `PROFILE_VERSION` → 3; a v2 save backfills `clock: 0`,
+  `missionCooldownUntil: {escort:0, defend:0}`, `quadrants: {}`,
+  `quadrantId: 'home'` — **NOT** built: folding old `profile.stations`
+  influence into a new favor number, since favor doesn't exist until
+  3.23; that migration step is 3.23's to add when it lands.
+- **Beacons**: `beaconAudible()` gained a distance cutoff —
+  `CFG.beaconAudibleDist` 8,000, or the selected target at any distance
+  — but ONLY for the open quadrant (`if (demo) return true;` keeps the
+  delivery run's four-point sector exactly as tested before, since an
+  8,000 cutoff there would have silenced points the shipped/tested demo
+  currently relies on hearing from further out).
+- **The map, grouped by kind**: `mapBuildItems()` (sector mode only)
+  produces heading rows — Stations, Planets, Asteroid fields, Contested
+  zone, Gate, Star, in that order, nearest-first within each, a count on
+  the heading ("Stations, 2.") — with first-letter jump to a heading
+  (s/p/a/c/g; the star has no letter, every other initial being taken).
+  A heading row refuses Enter ("That is a heading..."). Applies to the
+  delivery run's map too (nothing demo-gates it) — harmless with only
+  four points (just two short headings), and one less special case to
+  maintain. **Not built**: a zone's threat word, a port's favor tier on
+  the line — both read from systems that don't exist yet.
+- **The tug and mission destinations, fixed in passing**: two real bugs
+  the quadrant's second station exposed immediately. `startTug()` used
+  to find "the" station by scanning `SECTOR_POIS`, which only ever had
+  one — with two stations and `SECTOR_POIS` no longer even backing the
+  open campaign, it would have crashed. Now `nearestStationTo(pilotPos)`
+  picks whichever is closer (demo keeps its own Meridian-only branch,
+  unchanged). `placeAtStationStart()` similarly picked "whichever
+  station turns up last while scanning `targets`" — harmless with one
+  station, wrong with two (it would start new pilots at Station Two).
+  Now matches Station Meridian by name explicitly. SPEC 2.17's escort/
+  defend mission labels named the delivery run's own "Planet Auren"/
+  "Field Kappa" unconditionally; `missionDestinationPlanet()`/
+  `missionDestinationField()` now name the nearest real planet / the
+  quadrant's own first field instead, so a hail from Station Two never
+  advertises a place that isn't in this quadrant.
+- **`__sim`**: `state().quadrant` (the zone and every field, with type/
+  budget/ring — no favor/control, not built), `state().clock`; `poke({
+  clock, depleteField: name })` for testing (force-deplete a named field
+  without mining 40,000 ore for real).
+- **Test**, machine-tested at a local server in a fresh tab (a real bug
+  was caught this way — see below): a fresh profile's first Sector visit
+  creates a 2-field quadrant with correct positions/types, the ship
+  starting at Station Meridian specifically (not Two); the grouped map
+  reads all six headings with correct counts, nearest-first ordering,
+  and typed field detail, and first-letter jump reaches every group
+  correctly including the "no such group" refusal; the star and gate
+  give their placeholder lines; mining a typed field draws visibly
+  biased rock types; force-depleting a field via `poke` and exiting
+  correctly retires it and reports a freshly sighted replacement with a
+  real bearing, while an untouched field is left alone; clearing the
+  Contested Zone and exiting respawns it elsewhere with a bearing, and
+  the "near X" phrasing correctly drops itself when X has moved; the
+  distance-based beacon cutoff was confirmed muting far points while
+  leaving near ones and the selected target audible, with the delivery
+  run's own beacons confirmed unaffected; a seeded v2 profile migrates
+  cleanly to v3 and can immediately enter Sector without error; the tug
+  from a death near Station Two correctly goes to Station Two, not
+  Meridian; the escort/defend mission hail correctly named "Planet A"
+  and "Asteroid Field Rho" instead of Auren/Kappa; the delivery run
+  itself (`?run=delivery`) was re-run start to finish (four fixed
+  points, unaffected beacon behavior, full mining-and-deliver) with no
+  change in behavior; the standalone Combat and Mining training drills
+  were confirmed unaffected (identical rock draw for Mining's no-
+  argument call, identical five-ship win/retry for Combat). One real
+  bug was found and fixed DURING this pass: `ensureQuadrantHome()`
+  assigned `profile.quadrants.home` before its `zone` field was
+  populated, and `spawnField`'s own avoid-list computation
+  (`existingQuadrantPositions`) read `q.zone.pos` in that exact window,
+  throwing on the very first Sector visit — caught because a stale
+  console error from the crash persisted across a same-tab reload and
+  looked like it might be unrelated old noise until a genuinely fresh
+  tab confirmed it was real, then confirmed the fix. **Not stress-
+  tested**: the spawn algorithm's constraint-satisfaction under many
+  repeated forced spawns (the original checklist's "200 forced spawns")
+  — only the handful of real spawns this session produced were checked
+  by hand, all valid; a batch/programmatic version of that check is a
+  reasonable follow-up before this ships to Brian if the spawn rules
+  ever look wrong in play. Zero console errors throughout. Not yet
+  heard by Brian.
 
 #### 3.23 Favor, control, and the three ranges (A.6 — Brian's station game)
 
