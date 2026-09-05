@@ -244,6 +244,37 @@ stations. Every income source feeds credits or a resource.
   should be a difficulty setting, not a fixed number. Written as
   direction here; the buildable pieces are Phase 4's (see Part C, the
   ideas11.txt review).
+  **Revised the same day — "our cube" (Brian, 2026-09-05).** Q1 IS a
+  corner (decided). And the lattice shrinks: a **3×3×3 cube whose eight
+  CORNERS are the quadrants** — no 9×9×9 underneath, no quadrants on the
+  edges, faces, or centre. 27 (or the 26 he'd keep on the faces) is
+  "a lot of quadrants to explore control whatever"; more to the point,
+  "I do not want quadrants to ever feel the same or they will get very
+  boring" — eight can be hand-authored, each unmistakable by ear (a
+  star, a field mix, a station count, a signature recording — the
+  pulsar and space_loop candidates on disk are exactly this), which 27
+  generated ones never would be. Each quadrant holds **more stations
+  than today's two** (four to six — DECIDE). The **twelve edges are the
+  routes**; the cell at each edge's midpoint is its one **waypoint**
+  (encounters, the anomaly, a lone outpost — or nothing); the six face
+  centres and the centre are travel space at most, "not controllable
+  area, or at least not quadrants" — Fable's suggestion: keep them
+  unreachable for now and **reserve the centre for A.8's base**, the one
+  place in the cube every corner is equidistant from. A corner has three
+  edges, so **three neighbours**: Q2 (the economy) and Q3 (control) are
+  two of Q1's three neighbours, the third a later quadrant — ideas10's
+  three tiers survive as three corners instead of three cells of one
+  edge. The galactic cursor is simpler than the lattice needed — three
+  positions per axis, only corners and edge midpoints valid, one press
+  a corner and Shift a midpoint. Travel gets faster "once the game gets
+  more macro" and **jump distance is the edge**: one hydrogen fare per
+  edge, the warp tank still for flying within a quadrant. Opponents:
+  seven other corners is the ceiling, but seven rivals in eight
+  quadrants is one per quadrant — the count should be a difficulty
+  setting with most corners **unaligned**, quadrants to win. Expansion
+  later is the cube's own outer shell, or a second cube — the
+  buildable shape is the same either way. What this changes in the
+  spec is listed in Part C under the ideas11.txt review.
 
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
@@ -4530,7 +4561,12 @@ build once the questions in Part C are answered:
   if Brian wants isolation to bite lower, it should erode *control*
   (this item's investment share), not favor — the cleaner reading
   anyway, since control is the strategic layer and favor the personal
-  one. (4) *Resource-specific quadrants* — A.10's typed fields per
+  one. **Decided (Brian, 2026-09-05): control.** A cut-off quadrant —
+  a controlled corner of the cube with no controlled neighbour along any
+  of its edges — erodes the pilot's control there; favor is untouched,
+  3.33's rules stand. Under the cube (A.13), "controlled quadrant" itself
+  needs a definition: a majority of its stations held — DECIDE.
+  (4) *Resource-specific quadrants* — A.10's typed fields per
   quadrant and 3.12's price levers already give a quadrant a resource
   identity; the lattice just makes "which ones to get" a map question.
   (5) *Planets the pilot has invested in supplying their station, favor
@@ -5078,13 +5114,43 @@ resolve cleanly**, one push-back, and a handful of readings to confirm:
   "Everything" line (saved, with the risk above)?
 - 3.41: in the game as a mission-menu item, not the lab — confirmed?
   Eight gates, radius 150, four audible, +10 s a miss — first numbers.
-- Lattice: Q1 is a **corner** and the three quadrants are one edge —
-  confirmed? Is the centre the base (A.8)? Opponent count as a
-  difficulty setting, ceiling eight? Do the three "tiers" (no trade /
-  economy / control) repeat by distance from home across the other 24,
-  or is every later quadrant a full economy?
-- Cut-off quadrants: erode **control** (not favor, which 3.33 protects
-  below Allied) — agreed?
+- **Decided (Brian, 2026-09-05): Q1 is a corner; cut-off erodes
+  control, not favor.** And the lattice became **the cube** (A.13): a
+  3×3×3 whose eight corners are the quadrants, the twelve edges the
+  routes, one waypoint per edge, more stations per quadrant. **What the
+  cube changes in the spec** (Fable's impact list, for the record):
+  - *3.22 (the gate and Q2's skeleton)*: one Jump Gate POI per quadrant
+    is enough — it offers the corner's three edges as destinations (the
+    galactic map in 3D is that same choice, browsed by ear), rather than
+    three separate gate POIs; the fare is per edge. Q2 is one of Q1's
+    three neighbours, Q3 another, not cells along one route.
+  - *3.10/3.11 (the quadrant, ports)*: `QUADRANT` becomes
+    `QUADRANTS[id]`, one hand-authored row set per corner with its own
+    station count (four to six, not two), star, field mix, signature
+    recording; `PORTS` keyed per quadrant. Favor is already per port per
+    quadrant; the map, the tug, `nearestTrustedStationTo`, the contract's
+    Meridian-only gate all already iterate stations by name, so more
+    stations is a data change, not a code one — the exception is
+    anything that assumes "the other station," which nothing does since
+    3.10's two-station fixes.
+  - *3.23b (control)*: gains **quadrant control** — a corner is
+    controlled when the pilot holds a majority of its stations; cut-off
+    erodes it; a union (ideas9's ten stations) becomes roughly two whole
+    corners. The centre reserved for A.8's base.
+  - *3.21 (threat)*: per quadrant as written, nothing changes.
+  - *A.13's galactic cursor / L.1b*: simpler — three positions an axis,
+    corners and midpoints only, one press a corner, Shift a midpoint.
+  - *The Frontier's anomaly* lives at a waypoint, one per edge at most.
+  - *Distinctness* is now a hard requirement, not a wish: eight
+    quadrants Brian can tell apart blind, each with its own recording
+    on the beacon and its own field/station mix. That is the single
+    strongest argument for eight over twenty-seven.
+- **Still open on the cube**: stations per quadrant (four? six? the
+  same for all, or part of each quadrant's character?); "controlled
+  quadrant" = majority of stations — agreed?; the centre as the base;
+  opponent count as a difficulty setting with most corners unaligned;
+  are face centres and the centre reachable at all before Phase 5;
+  which of Q1's three neighbours is Q2 (the economy) and which Q3.
 - 3.42: Shift+F for formation; up/down as standoff distance (angle
   already rotates); nose outward by default; `spaceship_cruiser_2r` as
   the freighter's voice — any of those wrong? Build it before or after

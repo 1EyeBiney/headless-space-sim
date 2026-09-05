@@ -2476,3 +2476,23 @@ proposed order: 3.43 now, then Brian's playtest, then 3.41 → 3.42, then
 quadrant 2 as ordered; the lattice stays Phase 4. Six questions for
 Brian sit in Part C under "DECIDE (open, from ideas11.txt)". Nothing
 built this round.
+
+**Round 29, continued (Fable, docs only)**: Brian answered the two
+questions that mattered — **Q1 is a corner; cut-off erodes control, not
+favor** — and then shrank the lattice to **"our cube"**: a 3×3×3 whose
+**eight corners are the quadrants**, the twelve edges the routes (one
+waypoint at each midpoint), the faces and centre travel space at most
+(Fable: reserve the centre for A.8's base). His reasons: 27 is too many
+to fill with control play, and "I do not want quadrants to ever feel
+the same" — eight can be hand-authored and told apart blind, each with
+more stations than today's two. Written into A.13 and 3.23b, with an
+impact list in Part C: Q2/Q3 become two of Q1's three neighbouring
+corners (not cells along one route); 3.22 needs one gate POI per
+quadrant offering three edges, not three gates; `QUADRANT` becomes
+`QUADRANTS[id]` with four-to-six stations a corner — a data change, not
+a code one, since everything since 3.10 already iterates stations by
+name; 3.23b gains "quadrant control" (a majority of a corner's stations)
+as the thing cut-off erodes; the galactic cursor gets simpler (corners
+and midpoints only). Still open: stations per quadrant, the majority
+rule, the centre as the base, opponent count as a difficulty setting,
+which neighbour is Q2. Nothing built.
