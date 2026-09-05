@@ -55,6 +55,7 @@
         <a href="#sec-gate">Lighthouse gate (Phase 3L, L.9)</a>
         <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
         <a href="#sec-vortex">3D vortex (Phase 3L, L.5)</a>
+        <a href="#sec-way">"Be the Way" voices (ideas11)</a>
         <a href="#sec-cues">Discrete cues</a>
         <a href="#sec-prim">Raw primitives</a>
         <a href="#sec-embed">Recordings in the manifest</a>
@@ -154,6 +155,20 @@
     Arrow keys, Page Up/Down, Home, End, [ and ], and R work here once the orbit is running.
 </div>
 <p id="vortexStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
+
+<!-- ============================================================ -->
+<h2 id="sec-way" class="section-header">"Be the Way" voices (ideas11)</h2>
+<p class="section-note">From Brian's own note (<code>audio/demo/be the way vortex demo1.txt</code>): four of his new recordings &mdash; the Way, the Truth, the Light, and an outro &mdash; each on its own HRTF panner orbiting the listener, same as the vortex demo above, but NOT linked into one shared group: each voice keeps its own speed, height, and tilt, set independently. Two orbit one way, two the other, by default. They fire in the order Brian listed rather than all at once &mdash; the Way starts alone, then the Truth joins a few seconds later, then the Light, then the outro &mdash; and each plays through once rather than looping, since these are spoken/sung segments, not ambient texture. Of the three outro clips on disk (13s/18s/full-song), the full-song ending is wired in here as a placeholder; say if you'd rather hear one of the others. Start it, then put focus in the box: Up/Down select one of the four voices by name, Left/Right change ITS OWN speed, Page Up/Down its own height, Home/End its own tilt, R resets all four, Escape stops.</p>
+<div class="button-group">
+    <button id="wayStart">Start "Be the Way"</button>
+    <button id="wayStop">Stop</button>
+</div>
+<div id="wayArena" tabindex="0" role="application"
+     aria-label="Be the Way voice controls. Up and down select one of the four voices, left and right change its own speed, page up and page down change its own height, Home and End change its own tilt, R resets all four, Escape stops."
+     style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
+    Arrow keys, Page Up/Down, Home, End, and R work here once it's running.
+</div>
+<p id="wayStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
 <!-- ============================================================ -->
 <h2 id="sec-cues" class="section-header">Discrete cues (SIM.cues)</h2>
@@ -1124,6 +1139,137 @@ vortexArena.addEventListener('keydown', function (e) {
 document.getElementById('vortexStart').addEventListener('click', vortexStart);
 document.getElementById('vortexStop').addEventListener('click', vortexStop);
 
+// ---- "Be the Way" voices (ideas11, audio/demo/"be the way vortex demo1.txt") -
+// Four independent HRTF sources, NOT sharing one group's state the way the
+// vortex demo above deliberately does (L.5b) — Brian's own txt asks for
+// these to be "not linked," each with its own speed/rotation, at least two
+// running opposite the others. Each plays one of his four voice/song clips
+// ONCE (loop: false — these are discrete spoken/sung segments, not ambient
+// texture, unlike every other looping source on this page) and they don't
+// all start together: "fire in the order listed" is read literally as a
+// staggered entrance (the Way alone first, then the Truth joins, then the
+// Light, then the outro), so a listener hears each new voice arrive rather
+// than all four landing on top of each other. Manifest keys share a `way_`
+// prefix purely so AUDIO_PRELOAD's own exclusion regex can skip this whole
+// lab-only set with one clause, same pattern as vortex/propeller_plane.
+// Three outro clips exist on disk (13s/18s/full-song); the full-song
+// ending is wired in as a placeholder pick — swap way_outro's manifest
+// path if Brian wants a different one once he's heard this.
+var WAY_VOICES = [
+    { key: 'way_the_way',   label: 'The Way',   r: 140, w:  0.30 },
+    { key: 'way_the_truth', label: 'The Truth', r: 160, w: -0.24 },
+    { key: 'way_the_light', label: 'The Light', r: 120, w:  0.36 },
+    { key: 'way_outro',     label: 'The outro', r: 180, w: -0.20 }
+];
+var WAY_FIRE_GAP_MS = 4000;
+var way = { nodes: [], sel: 0, raf: null, last: 0, fireTimers: [] };
+var wayArena = document.getElementById('wayArena');
+var wayStatus = document.getElementById('wayStatus');
+function waySay(t) { wayStatus.textContent = t; }
+
+function wayStop() {
+    way.fireTimers.forEach(function (id) { clearTimeout(id); });
+    way.fireTimers = [];
+    if (way.raf) { cancelAnimationFrame(way.raf); way.raf = null; }
+    var nodes = way.nodes; way.nodes = [];
+    nodes.forEach(function (n) {
+        if (!n.playing) { try { n.p.disconnect(); } catch (e) {} return; }
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.3); } catch (e) {}
+        setTimeout(function () { try { n.src.stop(); n.p.disconnect(); } catch (e) {} }, 500);
+    });
+    if (nodes.length) waySay('Stopped.');
+}
+registerStop(wayStop);
+
+function wayStep(dt) {
+    way.nodes.forEach(function (n) {
+        n.angle += n.orbit.w * n.speedMul * dt;
+        var tilt = n.tiltDeg * Math.PI / 180;
+        var swing = Math.sin(n.angle) * n.orbit.r;
+        SIM.audio.movePanner(n.p, {
+            x: Math.cos(n.angle) * n.orbit.r,
+            y: n.height + swing * Math.sin(tilt),
+            z: swing * Math.cos(tilt)
+        });
+    });
+}
+function wayFrame(now) {
+    var dt = Math.min((now - way.last) / 1000, 0.1);
+    way.last = now;
+    wayStep(dt);
+    way.raf = requestAnimationFrame(wayFrame);
+}
+function wayReadback() {
+    var n = way.nodes[way.sel];
+    if (!n) return;
+    waySay(n.voice.label + ' selected' + (n.playing ? '' : ' (not playing yet)') +
+           '. Speed times ' + n.speedMul.toFixed(2) + ', height ' + Math.round(n.height) +
+           ', tilt ' + Math.round(n.tiltDeg) + ' degrees.');
+}
+
+function wayFireVoice(i) {
+    var n = way.nodes[i];
+    if (!n || n.playing) return;
+    var A = SIM.audio;
+    A.load(n.voice.key).then(function (buf) {
+        if (way.nodes[i] !== n) return;   // torn down (or restarted) mid-load
+        var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = false;
+        var g = A.ctx.createGain(); g.gain.value = 0.0001;
+        src.connect(g); g.connect(n.p); n.p.connect(A.worldBus);
+        src.start(0);
+        A.ramp(g.gain, 0.4, 0.8);
+        n.src = src; n.g = g; n.playing = true;
+        src.onended = function () { n.playing = false; };
+        waySay(n.voice.label + ' joins.');
+    }).catch(function (err) { waySay('Load failed: ' + err.message); });
+}
+
+function wayStart() {
+    stopAll();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    way.nodes = WAY_VOICES.map(function (voice, i) {
+        var angle = i * Math.PI / 2;
+        return {
+            voice: voice, orbit: { r: voice.r, w: voice.w }, angle: angle,
+            speedMul: 1, height: 0, tiltDeg: 0,
+            p: A.makePanner({ x: Math.cos(angle) * voice.r, y: 0, z: Math.sin(angle) * voice.r }),
+            playing: false, src: null, g: null
+        };
+    });
+    way.sel = 0;
+    way.last = performance.now();
+    way.raf = requestAnimationFrame(wayFrame);
+    wayArena.focus();
+    waySay('Starting: the Way, the Truth, the Light, then the outro — joining one at a time.');
+    WAY_VOICES.forEach(function (v, i) {
+        way.fireTimers.push(setTimeout(function () { wayFireVoice(i); }, i * WAY_FIRE_GAP_MS));
+    });
+}
+
+wayArena.addEventListener('keydown', function (e) {
+    if (!way.nodes.length) return;
+    var n = way.nodes[way.sel];
+    var k = e.key;
+    if (k === 'ArrowUp') { way.sel = (way.sel + way.nodes.length - 1) % way.nodes.length; wayReadback(); }
+    else if (k === 'ArrowDown') { way.sel = (way.sel + 1) % way.nodes.length; wayReadback(); }
+    else if (k === 'ArrowLeft') { n.speedMul = Math.max(0.125, n.speedMul / 1.25); wayReadback(); }
+    else if (k === 'ArrowRight') { n.speedMul = Math.min(8, n.speedMul * 1.25); wayReadback(); }
+    else if (k === 'PageUp') { n.height = clamp(n.height + 15, -300, 300); wayReadback(); }
+    else if (k === 'PageDown') { n.height = clamp(n.height - 15, -300, 300); wayReadback(); }
+    else if (k === 'Home') { n.tiltDeg = clamp(n.tiltDeg + 15, 0, 90); wayReadback(); }
+    else if (k === 'End') { n.tiltDeg = clamp(n.tiltDeg - 15, 0, 90); wayReadback(); }
+    else if (k === 'r' || k === 'R') {
+        way.nodes.forEach(function (nn) { nn.speedMul = 1; nn.height = 0; nn.tiltDeg = 0; });
+        waySay('Reset. All four back to default speed, height, and tilt.');
+    }
+    else if (k === 'Escape') { wayStop(); e.preventDefault(); return; }
+    else return;
+    e.preventDefault();
+});
+document.getElementById('wayStart').addEventListener('click', wayStart);
+document.getElementById('wayStop').addEventListener('click', wayStop);
+
 // ---- discrete cues, generated from SIM.cues -------------------------------
 var CUE_LABELS = {
     combat: 'Combat', shields: 'Shields', sector: 'Sector', mining: 'Mining', ui: 'UI'
@@ -1283,6 +1429,7 @@ window.__lab = {
         if (flyby.stuntNode) flybyStuntTick(ms);
         if (room.turning) roomTurnTick(ms);
         if (gate.panner) gateStep(dt);
+        if (way.nodes.length) wayStep(dt);
     },
     state: function () {
         return {
@@ -1297,7 +1444,12 @@ window.__lab = {
                      stuntIdx: flyby.stuntIdx },
             room: { running: room.nodes.length, turning: !!room.turning, totalYawDeg: room.totalYawDeg,
                     turnDir: room.turnDir, positions: room.positions },
-            gate: { running: !!gate.panner, az: gate.az, sweepS: gate.sweepS, phase: gate.phase }
+            gate: { running: !!gate.panner, az: gate.az, sweepS: gate.sweepS, phase: gate.phase },
+            way: { running: way.nodes.length, sel: way.sel,
+                   voices: way.nodes.map(function (n) {
+                       return { label: n.voice.label, playing: n.playing, speedMul: n.speedMul,
+                                 height: n.height, tiltDeg: n.tiltDeg };
+                   }) }
         };
     }
 };

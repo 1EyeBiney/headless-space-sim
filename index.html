@@ -199,11 +199,12 @@ var CFG_DEFAULTS = {
     favorAllied: 70,    // +50% ranges; decay itself doesn't even start until this tier (favorDecayStartsAt)
     favorHonored: 90,   // SPEC 3.33's fifth tier: +50% ranges (no more than Allied's), honoredDiscount off
                         // purchases, and decay halved (favorDecayHonored)
-    // SPEC 3.33: nobody starts at 40 any more, Station Meridian included
-    // — home is a stranger like every other station. The tug still
-    // lands a fresh pilot at Meridian and docks them (its own arrival
-    // has never been favor-gated), so the early game's only guaranteed
-    // "in" is a lost ship, until a station is actually earned.
+    // SPEC 3.33 tried "nobody starts favored, Meridian included"; Brian's
+    // own play (ideas11) reversed that — the home station stays the one
+    // guaranteed exception. Station Meridian, in the starting/home
+    // quadrant specifically, is seeded at favorTrusted and never drops
+    // below it (see ensurePort) — every OTHER station, and Meridian in
+    // any future non-home quadrant, still starts a stranger at 0.
     favorMission: 16,          // a mission (escort/defend/the timed contract) completed for that port — 2x 3.23's 8
     favorFail: 10,             // a mission ABANDONED (X mid-run) while the friendly was still alive
     favorFriendlyLost: 25,     // the port's own escort freighter or miner destroyed — the bigger loss
@@ -550,18 +551,18 @@ function loadProfile() {
     // port, per quadrant (profile.quadrants[q].ports[name].favor). Folds
     // an old profile.stations[name].influence in at 10 points each (the
     // spec's own conversion) into whichever quadrant is current today
-    // (always 'home' in practice — there's only ever been one). SPEC
-    // 3.33 (Brian, ideas10): nobody starts favored any more, Station
-    // Meridian included — ensurePort no longer special-cases it, so a
-    // save with no stations data at all correctly leaves every port a
-    // stranger. A genuinely fresh profile is left with NO quadrant
-    // record at all, same as always: the shell below is only created
-    // when there's real data to put in it, so ensureQuadrantHome's
-    // "first ever Sector visit" check (on `.zone`, not the record's mere
-    // existence) still works, and every other place that tests
-    // `profile.quadrants[id]` for plain truthiness (a real bug this
-    // exact migration surfaced in testing — see SPEC.md 3.23) doesn't
-    // see a hollow shell it wasn't expecting.
+    // (always 'home' in practice — there's only ever been one). Every
+    // OTHER port still starts a stranger regardless of old data; Station
+    // Meridian gets its own seed from ensurePort itself (SPEC 3.33/
+    // ideas11 — see that function), not from this migration, so a save
+    // with no stations data at all is unaffected. A genuinely fresh
+    // profile is left with NO quadrant record at all, same as always: the
+    // shell below is only created when there's real data to put in it, so
+    // ensureQuadrantHome's "first ever Sector visit" check (on `.zone`,
+    // not the record's mere existence) still works, and every other place
+    // that tests `profile.quadrants[id]` for plain truthiness (a real bug
+    // this exact migration surfaced in testing — see SPEC.md 3.23)
+    // doesn't see a hollow shell it wasn't expecting.
     if (profile.stations && typeof profile.stations === 'object' && Object.keys(profile.stations).length) {
         if (!profile.quadrants[profile.quadrantId]) {
             profile.quadrants[profile.quadrantId] = { zone: null, fields: [], fieldSeq: 0, ports: {} };
@@ -5807,14 +5808,26 @@ function favorTierRank(tier) { return FAVOR_TIERS.indexOf(tier); }
 function favorFloor(port) { return port.peakFavor >= CFG.favorTrusted ? CFG.favorTrusted : 0; }
 
 // Lazily creates a port's record the first time anything touches it.
-// SPEC 3.33: nobody starts favored any more — Station Meridian included
-// — every port is a stranger (Unknown, favor 0) until it's actually
-// earned. Safe to call with a bare quadrant shell that has no `ports`
-// yet (loadProfile's own v5->v6 migration relies on that).
+// SPEC 3.33 first tried "nobody starts favored, Station Meridian
+// included" — Brian's own play (ideas11) reversed that: the home
+// station is the one deliberate exception, "never not have favor."
+// Seeding it at exactly favorTrusted makes that permanent for free via
+// favorFloor's existing "peakFavor >= favorTrusted -> floor there" rule
+// (no separate special-case needed in decay, hard losses, or the v5->v6
+// migration's own max()-merge of old influence data) — home is
+// identified by quadrantId, not just by name, so a station that happens
+// to share the name in some future non-home quadrant (3.22's later
+// quadrants) still starts a stranger like everyone else. Every other
+// port is a stranger (Unknown, favor 0) until it's actually earned. Safe
+// to call with a bare quadrant shell that has no `ports` yet
+// (loadProfile's own v5->v6 migration relies on that).
 function ensurePort(q, name) {
     if (!q.ports) q.ports = {};
     if (!q.ports[name]) {
-        q.ports[name] = { favor: 0, peakFavor: 0, lastVisitHour: profile.clock / 3600 };
+        var isHome = profile.quadrantId === 'home' && name === 'Station Meridian';
+        q.ports[name] = isHome
+            ? { favor: CFG.favorTrusted, peakFavor: CFG.favorTrusted, lastVisitHour: profile.clock / 3600 }
+            : { favor: 0, peakFavor: 0, lastVisitHour: profile.clock / 3600 };
     }
     return q.ports[name];
 }

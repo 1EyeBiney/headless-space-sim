@@ -57,7 +57,11 @@ expands.
   fixed-step polar navigation with compass-word readback), the flyby
   (L.4, Brian's propeller-plane clips on routes and stunts), the
   spatial room (L.8, a solo-then-turn-then-multiple-choice localization
-  test), and the lighthouse gate (L.9, a directional cone). Shared
+  test), and the lighthouse gate (L.9, a directional cone). **Round 26
+  (ideas11) added L.10, "Be the Way"**: four of Brian's new voice/song
+  clips, each on its own independent (not shared/grouped, unlike L.5's
+  vortex) HRTF orbit, firing in a staggered sequence rather than all at
+  once — see the "Be the Way" bullet further down. Shared
   helpers (`labPolarToPos`, `labNormAz`, `labDescribeAz`/`labDescribeEl`,
   `LAB_NAMES8`, `labShuffle`, `labResetListener`) sit above all of them;
   `window.__lab` (`tick(ms)`/`state()`) is this page's test hook, the
@@ -100,7 +104,16 @@ expands.
   = `propeller_plane1–8.mp3` (Brian, 2026-09-05, for the lab's flyby
   L.4 — 1–3 are 5 s, 4 is 8 s,
   5–8 are 12 s, all stereo 48k; in the manifest as of Round 21, lab-only,
-  excluded from `AUDIO_PRELOAD`) and `audio/stations/` =
+  excluded from `AUDIO_PRELOAD`) plus, as of Round 26 (ideas11),
+  `be_the_way1.mp3`/`be_the_truth1.mp3`/`be_the_light.mp3` (short voice/
+  song clips, a few seconds each) and three `outro_*` clips (13s/18s/
+  full-song — only the full-song ending is in the manifest so far, as
+  `way_outro`, a placeholder pick) for L.10's "Be the Way" demo; all four
+  wired-in keys share a `way_` prefix (`way_the_way`/`way_the_truth`/
+  `way_the_light`/`way_outro`), lab-only, excluded from `AUDIO_PRELOAD`
+  same as the flyby set (`audio/demo/"be the way vortex demo1.txt"` is
+  Brian's own note describing what to build — kept untracked like every
+  other ideas file, not duplicated into this file); and `audio/stations/` =
   `space_station1–10.mp3` (same day, for 3.31's recorded station
   beacons and L.9's gate — number 6 is the gate by Brian's pick; all
   ten in the manifest as of Round 21 and DO preload, real station voices
@@ -1136,6 +1149,26 @@ static once tiers exist.
   5-kill zone clear folded "Quadrant-wide comms open" into the victory
   line once, and a hail from 14,240 units out then succeeded. Zero
   console errors. Not yet heard or flown by Brian.
+  **Correction (Round 26, ideas11): the home station IS the exception.**
+  Brian played the build above and reversed "nobody starts at 40,
+  Meridian included" — the home station should "never not have favor."
+  `ensurePort` now seeds Station Meridian, in the home quadrant
+  specifically (`profile.quadrantId === 'home'`), at `favor`/`peakFavor`
+  both `favorTrusted` (40) on first creation — every other port, and
+  Meridian in any future non-home quadrant, still starts a stranger at
+  0. The existing `favorFloor` rule (`peakFavor >= favorTrusted` ⇒ floor
+  there) makes this permanent for free, no new special-case needed
+  anywhere else. This also quietly resolves a standing inconsistency:
+  the game's own help text had said "Station Meridian starts Trusted —
+  it's home" the whole time, unchanged since Round 23 — the "nobody
+  starts favored" rewrite above never touched that line, so the shipped
+  build briefly disagreed with its own help screen. They agree again
+  now. Machine-tested: a fresh profile's first Sector entry shows
+  Meridian at favor 40/peakFavor 40 and Station Two at 0/0 in the same
+  read; hailing Meridian immediately says "We trust you" with Trusted's
+  ranges; forcing its clock 100,000 hours stale and hailing again still
+  reads exactly 40. Zero console errors. Not yet heard or flown by
+  Brian.
   **A full stop to dock (Round 25, SPEC 3.34)**: `CFG.dockMaxSpeed` (2)
   checked in `callPoi()`'s dock branch before the favor check —
   `len(ship.vel) > dockMaxSpeed` refuses by name with the rounded speed.
@@ -2140,3 +2173,50 @@ for newcomers, the docking corridor's tightness (`dockRadius` 40,
 module loosens it in Phase 2), and the 5 module prices/costs (placeholder
 numbers, never priced against actual ore/credit earn rate over a real
 session).
+
+Round 25 (Sonnet) built the four items ideas9/ideas10 called for, in
+order: **3.33** favor second pass (decay/floor split, five tiers, the
+Honored discount, Donate ore, quadrant-wide comms — see the "Favor,
+second pass" bullet above), **3.34** a full stop to dock, the **lab
+second pass** (L.1b the grid cursor, L.4b synthesized stunts, L.5b group
+vortex controls, L.8b the four-asset room with no quiz — see the
+"System damage" era bullets above for L.1-L.9's own originals and the
+"Favor, second pass"/"A full stop to dock"/"Reaction mass matters"
+bullets for this round's own work), and **3.32** reaction mass sources
+plus the `runBudget()` estimator. One real, pre-existing bug was found
+and fixed along the way: `stopAll()` in `soundlab.html` had been
+silently breaking STOP ALL and cross-demo stopping since whenever it was
+first built, unrelated to any of this round's own four items. Everything
+machine-tested at a local server and confirmed on Pages, zero console
+errors, nothing yet heard or flown by Brian.
+
+**Round 26 (Sonnet)**: Brian played the Round 25 build and sent two
+things to fix before resuming the build order — see the "Correction
+(Round 26, ideas11)" bullet above (Favor section) and the "Be the Way"
+bullet (`soundlab.html`/`audio/demo/` above) for the full shape of each.
+(1) He reversed one line of his own ideas10 answer: the home station
+(Station Meridian, in the starting/home quadrant) should start favored
+and "never not have favor," not join every other station as a stranger
+— `ensurePort` now seeds it at Trusted on creation, permanent for free
+via the existing floor rule, and every OTHER station is unaffected.
+This also resolved a standing inconsistency this session's own Round 25
+work introduced without noticing: the game's help text had said
+"Station Meridian starts Trusted" the whole time, unchanged since Round
+23, while the code briefly disagreed. (2) A new lab demo, **L.10 "Be the
+Way"** (`soundlab.html`, `#sec-way`), built from Brian's own txt
+(`audio/demo/"be the way vortex demo1.txt"`) and four new recordings:
+four independently-orbiting HRTF sources (explicitly NOT sharing L.5's
+group-control model — Brian's own "not linked" here asks for the
+opposite of what he asked for there), firing in a staggered sequence
+rather than all at once, each shaped by its own speed/height/tilt.
+His second paragraph (concentric off-center orbits with near/far
+distance modulation) is noted in SPEC.md as a further idea, not built —
+no numbers or mechanism given yet. Both machine-tested at a local
+server (the home-station fix via a fresh-profile Sector entry and a
+100,000-hour stale-clock floor check; the new demo via real-time state
+polling confirming the staggered entrance, per-node independence, reset,
+stop, and correct interplay with the shared `stopAll()` registry), zero
+console errors. Per the user's own instruction, these two fixes came
+before resuming the SPEC.md build order — the next step per that order
+is still **Brian flying everything since 3.24**, a human playtesting
+checkpoint, not a build task.

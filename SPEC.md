@@ -1928,7 +1928,10 @@ game items are all complete**)
 → **ideas9/ideas10, DONE** (Brian, 2026-09-05, after reading 3.23 as
 built: 3.33 favor second pass, DONE → 3.34 a full stop to dock, DONE →
 the lab second pass L.1b/L.4b/L.5b/L.8b, DONE → 3.32 reaction mass,
-DONE) → **Brian flies everything since 3.24, next** → **quadrant 2
+DONE) → **ideas11, DONE** (Brian, 2026-09-05, from playing the build
+above: the home-station favor correction folded into 3.33, DONE → L.10
+"Be the Way" voices, DONE) → **Brian flies everything since 3.24,
+next** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
 fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
@@ -2881,6 +2884,63 @@ first, and TWO separate STOP ALL presses both correctly tore everything
 down. Zero console errors throughout all four demos and the bug fix.
 Not yet heard by Brian.
 
+#### L.10 "Be the Way" voices (ideas11, `audio/demo/"be the way vortex demo1.txt"`) — DONE
+
+Brian dropped a new txt alongside four new recordings in `audio/demo/`
+(`be_the_way1.mp3`, `be_the_truth1.mp3`, `be_the_light.mp3`, plus three
+outro clips) and asked for a demo built from it before resuming the
+build order proper. His own words: "use 4 primatives, not linked... the
+prims should act like the vortex demo in that they are individual and
+orbit about the listener. they should fire in the order listed. they
+should be independent in speed and rotation and I want at least 2 to
+move in opposite directions. we need speed, height and tilt controls...
+this is to see how voices sound when rotating." A second paragraph
+(concentric orbits around an off-center point, near/far distance
+modulation rather than a flat ring) is a further idea, not a spec —
+no numbers, no clear mechanism yet; noted here for later, not built.
+
+New section in `soundlab.html`, `#sec-way`, right after the vortex demo:
+four independent HRTF sources (`WAY_VOICES`), each on its OWN orbit
+(own radius, own angular velocity and direction — two clockwise, two
+counter, satisfying "at least 2 opposite" by default) and each with its
+OWN live speed/height/tilt state — explicitly NOT the vortex demo's own
+shared-group model (L.5b), since Brian's "not linked" here asks for the
+opposite of what he asked for there. Up/Down selects one of the four by
+name; Left/Right, Page Up/Down, and Home/End shape ONLY the selected
+one's speed, height, and tilt (mirroring the ORIGINAL pre-L.5b vortex
+key layout, since that model fits a "not linked" ask exactly). "Fire in
+the order listed" is read literally as a staggered entrance rather than
+all four landing at once: the Way starts alone, then (`WAY_FIRE_GAP_MS`
+4000) the Truth joins, then the Light, then the outro — each plays
+through ONCE (`loop: false`), since these are discrete spoken/sung
+segments forming a sequence ("I am the way, the truth, and the life"),
+not ambient texture like every other looping source on this page.
+Three outro clips exist on disk (13s/18s/full-song); the full-song
+ending is wired in as a named placeholder pick, easy to swap. New
+manifest keys share a `way_` prefix (`way_the_way`/`way_the_truth`/
+`way_the_light`/`way_outro`) purely so `AUDIO_PRELOAD`'s own exclusion
+regex can skip this lab-only set with one added clause, same pattern as
+`vortex\d`/`propeller_plane\d`. Registers with the shared `stopAll()`
+registry like every other demo (the bug fixed above, three items up,
+covers this one too — confirmed).
+
+Machine-tested at a local server: all four manifest paths fetch
+correctly (200 OK); polling `__lab.state().way` at real intervals
+confirmed the staggered entrance fires on schedule (the Way alone at
+0–2s, the Truth alone by 4.5s once the Way's own short clip had ended,
+the Light alone by 8.5s, the outro — the long clip — still sounding at
+13s); selecting "The Truth" and raising its speed/height/tilt left
+"The Way," "The Light," and "The outro" completely untouched at their
+own defaults, confirming true independence; R reset all four; Escape
+stopped all four; starting the vortex demo then starting this one
+correctly silenced the vortex, and STOP ALL correctly silenced this one
+in turn. Zero console errors. Every timing number (the 4-second stagger
+gap, the three orbit radii/speeds) is a placeholder for Brian's ear —
+worth a specific note: the three short voice clips are only a few
+seconds each, so a 4-second gap already gives near-zero overlap between
+them; a shorter gap may sound better for "hearing them rotate together"
+depending on what he's after. Not yet heard by Brian.
+
 #### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8) — DONE
 
 - `audio/stations/space_station1–10.mp3` (new, untracked, staged
@@ -3627,6 +3687,37 @@ own bullet list above still shows a stray "8" for the zone-clear number
 from the ideas9-only draft; fixed to 16 just above, matching CFG. Every
 favor/range number is a placeholder for Brian's ear. Not yet heard or
 flown by Brian.
+
+**Correction (Brian, ideas11, 2026-09-05): the home station IS the
+exception.** Playing the build above, Brian reversed the one line of
+ideas10 that mattered most here — "nobody starts at 40, Meridian
+included" — back out: "the player would indeed start out favored in Q1
+at that first station. that would be the 'home station' and never not
+have favor." `ensurePort` now seeds Station Meridian, in the home
+quadrant specifically (`profile.quadrantId === 'home'`), at exactly
+`favorTrusted` (`favor` AND `peakFavor` both 40) the first time anything
+touches it — every other port, and Meridian in any future non-home
+quadrant (3.22), still starts a stranger at 0. "Never not have favor"
+falls out of the EXISTING floor rule for free: `favorFloor` already
+treats `peakFavor >= favorTrusted` as a permanent floor at 40, so
+seeding peakFavor there at creation makes the floor permanent from the
+very first frame, with no separate special-case needed in decay, hard
+losses, or the v5→v6 migration's own `max()`-merge of old influence
+data (a save with real old influence at Meridian still correctly keeps
+whichever is higher). This also quietly resolves a pre-existing
+inconsistency: the game's own help text (`HELP_SECTIONS`, the Sector
+entry on favor) had said "Station Meridian starts Trusted — it's home"
+the WHOLE time, unchanged since Round 23 — 3.33's "nobody starts
+favored" rewrite above never touched that line, so the shipped build
+briefly had code and help text disagreeing with each other. They agree
+again now. Machine-tested at a local server: a fresh profile's first
+Sector entry shows `Station Meridian: {favor: 40, peakFavor: 40}` and
+`Station Two: {favor: 0, peakFavor: 0}` in the same read; hailing
+Meridian immediately says "We trust you" with Trusted's own +25% ranges
+(750/188); forcing Meridian's clock 100,000 hours stale and hailing
+again still reads exactly 40 (the floor holding against a decay
+"attack" this extreme, same test shape as 3.33's own). Zero console
+errors. Not yet heard or flown by Brian.
 
 #### 3.34 A full stop to dock (ideas9) — DONE
 

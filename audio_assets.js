@@ -118,7 +118,16 @@ window.AUDIO_MANIFEST = {
   space_station7: 'audio/stations/space_station7.mp3',
   space_station8: 'audio/stations/space_station8.mp3',
   space_station9: 'audio/stations/space_station9.mp3',
-  space_station10: 'audio/stations/space_station10.mp3'
+  space_station10: 'audio/stations/space_station10.mp3',
+
+  // "Be the Way" voices (ideas11, sound lab only): Brian's four new
+  // recordings, orbited by their own independent (not linked) HRTF
+  // panners. way_outro is a placeholder pick of the three outro clips on
+  // disk (13s/18s/full-song) — the full-song ending.
+  way_the_way: 'audio/demo/be_the_way1.mp3',
+  way_the_truth: 'audio/demo/be_the_truth1.mp3',
+  way_the_light: 'audio/demo/be_the_light.mp3',
+  way_outro: 'audio/demo/outro_C_15s_full_song_ending.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
@@ -130,5 +139,5 @@ window.AUDIO_MANIFEST = {
 // real station voices in the live game as of SPEC 3.31, same as the ship
 // engine loops.
 window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
-  return !/^(vortex\d|propeller_plane\d|station_interior)/.test(k);
+  return !/^(vortex\d|propeller_plane\d|station_interior|way_)/.test(k);
 });
