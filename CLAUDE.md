@@ -857,6 +857,73 @@ static once tiers exist.
   console errors throughout. Not yet heard by Brian — every sound this
   round touches (the strike tone, the wave-inbound line, the
   mission-complete fanfare) is new.
+  **Second pass and kill buffs (Round 18, SPEC 3.25)**: Brian flew 2.17
+  and found the escort too hard to feel good and too short to build to
+  anything. `missionEscortLegS` 90→180, escort's waves 2→3 of 2→3 Drones
+  each (`missionEscortWaveTimes` [15,45,75]→[20,70,120] — the third wave
+  now lands with a minute left, so a pilot who cleared the first two
+  still has the freighter under fire as it leaves); defend keeps its own
+  two waves of three. `missionStrikeDmg` 15→8. `MISSION_WAVE_STATS`
+  (escort→Drone hp40, defend→Raider hp80, both carrying their own
+  voice/asset/salvage) replaces the single hardcoded Raider spawn so
+  `spawnMissionWave` and `missionIntro` both read the right ship name/
+  class per mission kind — the friendly still only ever calls its
+  attackers "Raiders" for defend and "Drones" for escort, and
+  `missionIntro`'s "clear any X that engages you" / "from the X waves"
+  phrasing is generated from the same table (see the grammar bug below).
+  **The friendly gets a shield**: `f.shieldPool`/`f.shield` (60,
+  initialized in `makeMissionRoster`) absorb `missionStrike`'s damage
+  before hull, regenerating `friendlyShieldRegenPerS` 1.5/s in
+  `updateMission`. **A real bug found here**: a naive `hadShield =
+  f.shield > 0` check re-announced "Freighter shields down." on every
+  hit once the shield sat near zero and ticked back up a fraction
+  between strikes (continuous regen vs. an instantaneous transition
+  check — the same bug shape as SPEC 2.15's speech-collision lesson,
+  but a different mechanism). Fixed with a sticky `f.shieldDown`
+  boolean: the "just dropped" line fires only on the transition into
+  `shield <= 0.5`, and only re-arms once shield genuinely recovers past
+  10% of the pool. Confirmed via `Math.random`-seeded, `__sim.poke`-
+  forced repeated strikes that the line now fires once, stays silent
+  through consecutive low-shield hits, and correctly re-fires after a
+  real recovery-then-second-drain. **Partial reward**:
+  `missionEnd(success)` now pays `CFG.missionCredits × (friendly.hp /
+  friendly.maxHp)`, rounded, spoken as "Mission complete. Freighter home
+  at N percent. M credits." — a wounded-but-alive friendly still pays,
+  just less. **Kill buffs**: `rollKillBuff()`, three independent
+  sequential `Math.random()` rolls (missile resupply
+  `killBuffMissileChance` 0.35 → +1 missile; laser boost
+  `killBuffLaserChance` 0.35 → `laserBoostUntil` extends to a fresh
+  `killBuffLaserS` 30s window, `beamTick`'s damage line multiplies by
+  `1 + killBuffLaserPct` (0.25) while active, a second grant resets
+  the timer rather than stacking, a `setTimeout` speaks "Laser boost
+  over." at expiry (guarded by comparing the captured deadline to the
+  live `laserBoostUntil`, so an extension doesn't produce two
+  "over" lines); shield top-up `killBuffShieldChance` 0.3 → +15 to the
+  pool or −4s off an in-progress disrepair) — called from
+  `damageTarget` on every ship kill (`!t.kind` gate, same as salvage),
+  folded into the SAME `say()` as the salvage/kill line (never its own
+  — the SPEC 2.15 rule applied again on purpose), and confirmed firing
+  in the standalone Combat drill too, not just inside a mission (a
+  kill is a kill, per Brian). **The grammar bug**: `missionIntro()`
+  originally built one pluralized `word` used both for "clear any X
+  that engages you" and "from the X waves" — the latter needs the
+  singular ("raider waves", not "raiders waves"). Split into
+  `singular`/`plural` locals; re-verified live after the fix. Machine-
+  tested at a local server end to end (both mission kinds accepted
+  fresh with a properly-cleared profile — clearing `localStorage` has
+  to happen in a script call BEFORE the page reload, not folded into
+  the same script as the boot click, since `loadProfile()` already ran
+  against the old profile by the time a same-script `removeItem` would
+  fire — a repeat of an established gotcha), both intros' corrected
+  wording confirmed, the shield-down sticky fix confirmed via forced
+  repeated strikes, all three kill buffs confirmed via seeded
+  `Math.random` sequences (kept mocked through an `await` spanning the
+  actual kill resolution inside `beamTick`'s tick-by-tick `setTimeout`
+  chain, not restored right after the keypress), the laser boost's
+  1.25× damage and non-stacking extension confirmed, the partial-reward
+  math confirmed at both full and damaged friendly hull, F2/F3/I all
+  confirmed reading the friendly's shield/hull and the boost countdown.
+  Zero console errors. Not yet heard or flown by Brian.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
   `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)`
   — **Round 18, SPEC 3.24 fix**: Shift+digit never actually worked from a
@@ -1291,6 +1358,27 @@ confirmed lifting once `demo.delivered` and confirmed never active in
 the open quadrant; the Sound Lab link confirmed navigating cleanly.
 Zero console errors. Not yet heard by Brian. Next: SPEC 3.25 (the
 escort second pass and kill buffs).
+
+Round 18 also built **SPEC 3.25** (the escort second pass and kill
+buffs) — see the "Second pass and kill buffs (Round 18, SPEC 3.25)"
+bullet above for the full shape: the 180 s/three-wave escort, halved
+strikes, the friendly's own regenerating shield, the hull-fraction
+partial reward, and the three independent kill buffs (missile
+resupply, laser boost, shield top-up), all layered onto 2.17's
+untouched core machinery. One real bug found and fixed (the friendly's
+"shields down" line re-announcing itself on every hit near empty
+charge, due to continuous regen racing an instantaneous transition
+check — fixed with a sticky, hysteresis-gated flag) and one grammar
+bug found and fixed (`missionIntro`'s "raiders waves" → "raider
+waves", a pluralized noun used adjectivally). Machine-tested
+end to end at a local server, including both mission intros' corrected
+wording, the shields-down fix under forced repeated strikes, all three
+kill buffs under a seeded `Math.random` sequence (kept mocked through
+the actual async kill resolution), the laser boost's damage multiplier
+and non-stacking extension, the partial-reward math at full and
+damaged hull, and buffs confirmed firing in the standalone Combat
+drill too. Zero console errors. Not yet heard or flown by Brian. Next:
+SPEC 3.26 (laser levels, wear, and repair).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

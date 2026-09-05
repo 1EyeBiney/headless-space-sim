@@ -1827,8 +1827,9 @@ in CFG or a data table for Brian's ear and hands.
 
 **Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
 2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
-second pass and kill buffs, next → 3.26 laser levels and wear → 3.27
-system damage and the repair crew → 3.28 the quadrant's timed contract)
+second pass and kill buffs, DONE → 3.26 laser levels and wear, next →
+3.27 system damage and the repair crew → 3.28 the quadrant's timed
+contract)
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
 ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
@@ -2102,7 +2103,7 @@ the Sound Lab menu item confirmed reachable and correctly navigating
 console errors on the destination page. Zero console errors throughout.
 Not yet heard or flown by Brian.
 
-#### 3.25 Escort, second pass, and kill buffs (ideas7)
+#### 3.25 Escort, second pass, and kill buffs (ideas7) — DONE
 
 Brian flew 2.17's escort and it was too hard to feel good and too
 short to build to anything. Numbers are the same placeholders-for-his-ear
@@ -2147,6 +2148,64 @@ as everything else; the shape is decided.
   apply in every combat, not just missions — a kill is a kill. The
   "semi-permanent" buffs Brian mentioned are the laser levels (3.26);
   everything here is temporary or a consumable.
+
+Built exactly as scoped above; one real bug found and fixed along the
+way, and one grammar bug found and fixed. **The shields-down bug**: the
+friendly's shield regenerates continuously (`friendlyShieldRegenPerS`),
+so a naive "was it above zero before this hit" check re-triggered
+"Freighter shields down." on every subsequent hit once the shield sat
+near empty and ticked up a fraction between strikes. Fixed with a
+sticky `f.shieldDown` boolean (added in `makeMissionRoster`): the
+"just dropped" line only fires on the transition into
+`shield <= 0.5`, and only re-arms once the shield genuinely recovers
+past 10% of the pool — confirmed via deterministic testing
+(`__sim.poke({friendlyShield, missionNextStrikeIn})` plus a mocked
+`Math.random` sequence to force repeated strikes) that the line now
+fires once, stays silent through consecutive low-shield hits, and
+correctly re-fires after a real recovery followed by a second drain.
+**The grammar bug**: `missionIntro()`'s Defend text originally read
+"Defend the Miner from the raiders waves." (a pluralized noun used
+adjectivally) — split into separate `singular`/`plural` locals so the
+"from the X waves" phrase uses the singular form; re-verified live at
+a local server after the fix.
+
+Machine-tested at a local server end to end: accepted both Escort and
+Defend fresh (profile cleared via `localStorage.removeItem` in a
+separate script call BEFORE the reload, not after — clearing it in
+the same script as the boot click is too late, since `loadProfile()`
+already ran at page-load time against the OLD profile; a repeat of a
+gotcha from earlier this session) and confirmed both intros read
+correctly: Escort — "Stay near the Freighter and clear any drone that
+engages you. ... The Drones hold their fire on you until you hit
+them — until then they harass the Freighter."; Defend — "Defend the
+Miner from the raider waves. ... The Raiders hold their fire on you
+until you hit them — until then they harass the Miner." Confirmed via
+`__sim.poke` (`friendlyHp`, `friendlyShield`, `missionNextStrikeIn`,
+`missiles`, `shieldPool`) and a seeded `Math.random` sequence (kept
+mocked through an `await` spanning the actual async kill resolution,
+not restored immediately after the triggering keypress, since
+`rollKillBuff()` runs inside `beamTick`'s per-tick `setTimeout` chain)
+that all three kill buffs fire correctly and independently: missile
+resupply increments `missiles` and speaks "Missile recovered, N
+left."; laser boost sets a 30 s window, multiplies beam damage by
+1.25× while active (confirmed via `beamTick`'s tick damage before/
+after), speaks "Laser boost, 30 seconds." on grant and "Laser boost
+over." on expiry, and a second grant while one is active resets the
+timer to a fresh 30 s rather than stacking; shield top-up adds 15 to
+the pool (or shaves 4s off an in-progress disrepair) and speaks
+"Shields plus 15."; a failed roll on all three correctly grants
+nothing and the kill line reads normally. Confirmed buffs fire in the
+standalone Combat training drill too, not just inside a mission
+(Brian's explicit requirement — a kill is a kill everywhere). Confirmed
+the friendly's shield absorbs strikes before hull, regenerates between
+waves, and the partial-hull-fraction reward computes and speaks
+correctly ("Mission complete. Freighter home at N percent. M
+credits.") both at full hull and after damage. F2/F3/I all confirmed
+reading the friendly's shield/hull and the laser-boost countdown while
+a mission is live. Zero console errors throughout. Numbers (wave
+timing, damage, buff chances/magnitudes) are all placeholders for
+Brian's ear, same as everything else in Phase 2/3. Not yet heard or
+flown by Brian.
 
 #### 3.26 Laser levels, wear, and repair (ideas7 — replaces 2.12's free cycling)
 

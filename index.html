@@ -161,19 +161,40 @@ var CFG_DEFAULTS = {
     // menu. Raiders spawn hostile from the start (they're already attacking
     // the friendly) but only actually fight the PLAYER once provoked — see
     // `t.provoked` in TARGETING/WEAPONS.
-    missionCredits: 300,       // reward on success; failure pays nothing
+    missionCredits: 300,       // full reward at 100% friendly hull; SPEC 3.25 scales it down from there
     missionCooldownS: 600,    // per mission kind, per station, in persisted game time (profile.clock)
     missionEscortHull: 200,
     missionMinerHull: 150,
     missionEscortSpeed: 40,   // u/s, the freighter's own drift toward the planet
-    missionEscortLegS: 90,    // the leg's duration — surviving it is the win condition
-    missionEscortWaveTimes: [15, 45, 75],  // game-seconds into the mission each wave arrives
+    // SPEC 3.25: too hard to feel good, too short to build to anything
+    // (Brian, from flying it) — the leg nearly doubles and the third wave
+    // now arrives with a minute left, so clearing two waves still means
+    // outrunning the third rather than a clean sweep every time.
+    missionEscortLegS: 180,   // the leg's duration — surviving it is the win condition
+    missionEscortWaveTimes: [20, 70, 120],  // game-seconds into the mission each wave arrives
     missionDefendWaveTimes: [10, 45],
-    missionEscortWaveSize: 2, // raiders per wave
-    missionDefendWaveSize: 3,
+    missionEscortWaveSize: 3, // Drones per wave (SPEC 3.25: was 2 Raiders)
+    missionDefendWaveSize: 3, // Raiders per wave, unchanged
     missionStrikeGapMinS: 6,  // how often an unprovoked raider hits the friendly
     missionStrikeGapMaxS: 10,
-    missionStrikeDmg: 15,
+    missionStrikeDmg: 8,      // SPEC 3.25: halved from 15
+    // SPEC 3.25: the friendly's own shield — a pool like the pilot's,
+    // absorbing strikes first; regenerates between hits so a wave cleared
+    // fast leaves the friendly near-fresh for the next.
+    friendlyShieldPool: 60,
+    friendlyShieldRegenPerS: 1.5,
+    // Kill buffs (SPEC 3.25): rolled independently, in this order, on
+    // every ship kill (not rocks/dust/poi) — the first check that hits
+    // AND applies wins, so a kill can grant nothing as easily as one.
+    // Missile and laser sum with shield to under 1.0 on purpose (roughly
+    // 30% of kills grant nothing) rather than partitioning a single roll
+    // into "always exactly one" — "at most one" was the brief.
+    killBuffMissileChance: 0.35,
+    killBuffLaserChance: 0.35,
+    killBuffLaserPct: 0.25,   // +25% laser damage while active
+    killBuffLaserS: 30,       // a second boost extends this timer, never the size
+    killBuffShieldChance: 0.3,
+    killBuffShieldPts: 15,    // into the pool, or off a disrepair countdown
 
     // The quadrant (SPEC 3.10): the open campaign's sector is no longer
     // four fixed points. QUADRANT (below) holds the star/stations/planets/
@@ -683,59 +704,101 @@ function makeMissionRoster(m) {
     f.kind = 'friendly';
     f.alive = true;
     f.maxHp = f.hp;
+    // SPEC 3.25: a shield pool like the pilot's, starting full.
+    f.shieldPool = CFG.friendlyShieldPool;
+    f.shield = CFG.friendlyShieldPool;
+    f.shieldDown = false;
     m.friendly = f;
     return [f];
 }
 
-// A wave of raiders arrives around the friendly's current position — always
-// named plainly 'Raider' (not numbered) so SHIP_CLASS/SALVAGE/laser-matchup
-// lookups, which all key off exact ship name, resolve the same way a
-// standalone drill's Raider would; the trade-off is that Tab-cycling two at
-// once can't tell them apart by name, only by bearing/distance.
+// A wave arrives around the friendly's current position. Escort's raiders
+// are now Drones (SPEC 3.25 — three per wave, hull 40); Defend keeps
+// Raiders (hull 80, unchanged). Always named plainly (not numbered) so
+// SHIP_CLASS/SALVAGE/laser-matchup lookups, which all key off exact ship
+// name, resolve the same way a standalone drill's own Drone/Raider would
+// (Drone already maps to 'corvette' there, matching the 3-salvage-a-kill
+// spec asked for) — the trade-off is that Tab-cycling two at once can't
+// tell them apart by name, only by bearing/distance.
+var MISSION_WAVE_STATS = {
+    escort: { name: 'Drone', hp: 40, voice: { type: 'beat', freq: 165 },
+              shipAsset: { name: 'ship_corvette_1', rate: 1.2 } },
+    defend: { name: 'Raider', hp: 80, voice: { type: 'square', freq: 110, trem: 8 },
+              shipAsset: { name: 'ship_interceptor_1', rate: 1.15 } }
+};
 function spawnMissionWave() {
     mission.wavesSent++;
-    var f = mission.friendly, n = mission.kind === 'escort' ? CFG.missionEscortWaveSize : CFG.missionDefendWaveSize;
+    var f = mission.friendly, stats = MISSION_WAVE_STATS[mission.kind];
+    var n = mission.kind === 'escort' ? CFG.missionEscortWaveSize : CFG.missionDefendWaveSize;
     var first = null;
     for (var i = 0; i < n; i++) {
         var ang = Math.random() * Math.PI * 2;
         var pos = add(f.pos, v3(Math.cos(ang) * 400, (Math.random() - 0.5) * 100, Math.sin(ang) * 400));
-        var t = { name: 'Raider', hp: 80, maxHp: 80, pos: pos,
-                  voice: { type: 'square', freq: 110, trem: 8 },
-                  shipAsset: { name: 'ship_interceptor_1', rate: 1.15 },
+        var t = { name: stats.name, hp: stats.hp, maxHp: stats.hp, pos: pos,
+                  voice: stats.voice, shipAsset: stats.shipAsset,
                   alive: true, hostile: true, provoked: false };
         targets.push(t);
         if (SIM.audio.ctx) buildVoice(t);
         if (!first) first = t;
     }
-    say(n + (n === 1 ? ' raider inbound on the ' : ' raiders inbound on the ') + f.name + '. ' + bearingText(first));
+    var word = stats.name.toLowerCase();
+    say(n + ' ' + (n === 1 ? word : word + 's') + ' inbound on the ' + f.name + '. ' + bearingText(first));
 }
 
 // An unprovoked raider (one the player hasn't hit yet) periodically hits the
 // friendly instead of the player — a deliberately simpler side-channel than
 // the full telegraph/beam/missile simulation in WEAPONS, which stays 100%
-// about the player; see updateMission for the timer that calls this.
+// about the player; see updateMission for the timer that calls this and
+// for the friendly's own shield regen. SPEC 3.25: the friendly's shield
+// absorbs first, same pool shape as the pilot's; "shields down" is spoken
+// only once, the instant a hit spills past an already-nonzero shield.
 function missionStrike(t) {
     var f = mission.friendly;
     var out = SIM.audio.worldOut(t.pos, 500);
     SIM.audio.sfxTone({ type: 'square', f1: 900, f2: 500, dur: 0.3, vol: 0.3, out: out });
-    f.hp = Math.max(0, f.hp - CFG.missionStrikeDmg);
+    var dmg = CFG.missionStrikeDmg;
+    var absorbed = Math.min(f.shield, dmg);
+    f.shield -= absorbed;
+    var spill = dmg - absorbed;
+    if (spill > 0) f.hp = Math.max(0, f.hp - spill);
+    // "Shields down" announces once per real drop — f.shieldDown is a
+    // STICKY flag, not a same-tick "was it up a second ago" check: a
+    // shield sitting near zero regenerates a sliver every frame
+    // (friendlyShieldRegenPerS), so an instantaneous "just crossed zero"
+    // test re-fires the announcement on every following hit as it ticks
+    // up past 0 and immediately back down again. It only re-arms once the
+    // pool recovers past a real threshold (10%), not a fraction of a point.
+    var announceDown = false;
+    if (!f.shieldDown && f.shield <= 0.5) { f.shieldDown = true; announceDown = true; }
+    else if (f.shield > f.shieldPool * 0.1) { f.shieldDown = false; }
     if (f.hp <= 0) {
         f.alive = false;
         stopVoice(f);
         SIM.cues.play('explosion_kill', { pos: f.pos });
         say(t.name + ' hits the ' + f.name + '. ' + f.name + ' destroyed.');
         missionEnd(false);
-    } else {
-        say(t.name + ' hits the ' + f.name + '. ' + f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent.');
+        return;
     }
+    var line = t.name + ' hits the ' + f.name + '. ';
+    if (announceDown) {
+        line += f.name + ' shields down. ' + f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent.';
+    } else if (f.shieldDown) {
+        line += f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent.';
+    } else {
+        line += f.name + ' shields ' + Math.round(f.shield / f.shieldPool * 100) + ' percent.';
+    }
+    say(line);
 }
 
 function missionIntro() {
     var f = mission.friendly;
+    var singular = MISSION_WAVE_STATS[mission.kind].name.toLowerCase();   // 'drone' / 'raider'
+    var plural = singular + 's';
     return (mission.kind === 'escort'
-        ? 'Stay near the ' + f.name + ' and clear any raider that engages you.'
-        : 'Defend the ' + f.name + ' from the raider waves.') +
-        ' Raiders hold their fire on you until you hit them — until then they harass the ' + f.name +
+        ? 'Stay near the ' + f.name + ' and clear any ' + singular + ' that engages you.'
+        : 'Defend the ' + f.name + ' from the ' + singular + ' waves.') +
+        ' The ' + f.name + ' carries its own shield. The ' + capFirst(plural) +
+        ' hold their fire on you until you hit them — until then they harass the ' + f.name +
         '. Tab cycles hostiles once they arrive. Space fires when the tone goes solid. ' +
         'G raises the shields. F1 for help.';
 }
@@ -755,6 +818,12 @@ function updateMission(dt) {
     }
     while (mission.wavesSent < mission.waveTimes.length && mission.elapsed >= mission.waveTimes[mission.wavesSent]) {
         spawnMissionWave();
+    }
+    // SPEC 3.25: the friendly's shield regenerates like the pilot's own,
+    // just without a raise/lower gesture — always trickling back while
+    // alive and not full, so a wave cleared fast leaves it near-fresh.
+    if (f.alive && f.shield < f.shieldPool) {
+        f.shield = Math.min(f.shieldPool, f.shield + CFG.friendlyShieldRegenPerS * dt);
     }
     if (f.alive) {
         mission.nextStrikeIn -= dt;
@@ -780,12 +849,19 @@ function missionEnd(success) {
     shieldReset();
     endThreat();
     if (success) {
-        profile.credits += CFG.missionCredits;
+        // SPEC 3.25: partial reward by the friendly's hull fraction at the
+        // end (shield ignored on purpose — hull is what the mission was
+        // actually protecting). A mediocre run that still gets the
+        // friendly home pays out something, not all-or-nothing.
+        var frac = mission.friendly.hp / mission.friendly.maxHp;
+        var reward = Math.round(CFG.missionCredits * frac);
+        profile.credits += reward;
         bumpInfluence({ name: 'Station Meridian' }, 1);
         saveProfile();
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
-            say('Mission complete! ' + CFG.missionCredits + ' credits earned. X returns to the sector.');
+            say('Mission complete! ' + mission.friendly.name + ' home at ' + Math.round(frac * 100) +
+                ' percent. ' + reward + ' credits earned. X returns to the sector.');
         }, 900);
     } else {
         setTimeout(function () {
@@ -1126,6 +1202,14 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
 // directly (no session mirror) so a reload never desyncs the two.
 var quadrantAutosaveIn = 0;  // SPEC 3.10: counts down to the next quiet autosave
                               // in open sector flight (CFG.quadrantSaveEveryS)
+// SPEC 3.25: a kill-buff laser boost's deadline, wall clock (Date.now()-based,
+// same convention as laser.hotUntil below) — 0 or past means inactive. A
+// second boost overwrites this with a later deadline (extends, never stacks
+// the size); the setTimeout that speaks "Laser boost over." on expiry checks
+// its own captured deadline against the live value, so an extension silently
+// supersedes the earlier one's own expiry announcement.
+var laserBoostUntil = 0;
+function laserBoostActive() { return Date.now() < laserBoostUntil; }
 var hull = 100;          // set from CFG.shipHull at mission start
 var missiles = 0;        // magazine, set from CFG.missileMax
 var chaff = 0;           // decoys, set from CFG.chaffMax (SPEC 1.8)
@@ -2139,6 +2223,44 @@ function addSalvage(shipName) {
     return amt;
 }
 
+// SPEC 3.25: an instant, temporary reward on a ship kill (never rocks/
+// dust/poi — the same !t.kind gate salvage uses just below). Independent
+// rolls in a fixed order; the first that hits AND applies wins, so a kill
+// can grant nothing as easily as one (see the CFG comment for why the
+// three chances don't sum to 1). Returns a string ending in a space, or
+// '' — folded into the SAME say() as the kill line by the caller, never
+// its own (the SPEC 2.15 lesson: two say()s in one tick collapse to one).
+function rollKillBuff() {
+    if (Math.random() < CFG.killBuffMissileChance) {
+        if (missiles < CFG.missileMax) {
+            missiles++;
+            return 'Missile recovered, ' + missiles + ' left. ';
+        }
+        return '';
+    }
+    if (Math.random() < CFG.killBuffLaserChance) {
+        laserBoostUntil = Date.now() + CFG.killBuffLaserS * 1000;
+        var deadline = laserBoostUntil;
+        SIM.audio.sfxTone({ type: 'sine', f1: 500, f2: 1100, dur: 0.25, vol: 0.2 });
+        setTimeout(function () {
+            if (laserBoostUntil === deadline) say('Laser boost over.');
+        }, CFG.killBuffLaserS * 1000 + 50);
+        return 'Laser boost, ' + CFG.killBuffLaserS + ' seconds. ';
+    }
+    if (Math.random() < CFG.killBuffShieldChance) {
+        if (shield.repairing > 0) {
+            shield.repairing = Math.max(0, shield.repairing - 4);
+            return 'Disrepair crew hurries. ';
+        }
+        if (shield.pool < CFG.shieldPool) {
+            shield.pool = Math.min(CFG.shieldPool, shield.pool + CFG.killBuffShieldPts);
+            return 'Shields plus ' + CFG.killBuffShieldPts + '. ';
+        }
+        return '';
+    }
+    return '';
+}
+
 function damageTarget(t, dmg) {
     provoke(t);
     t.hp -= dmg;
@@ -2146,7 +2268,9 @@ function damageTarget(t, dmg) {
         var name = t.name;
         var salvageGain = !t.kind ? addSalvage(name) : 0;
         var salvageText = salvageGain ? 'Salvage plus ' + salvageGain + '. ' : '';
-        var over = destroyTarget(t, salvageText);
+        var buffText = !t.kind ? rollKillBuff() : '';
+        var prefix = salvageText + buffText;
+        var over = destroyTarget(t, prefix);
         if (!over) {
             // A mission's friendly (kind: 'friendly') never counts as a
             // "target remaining" in this readout — it isn't something to
@@ -2154,7 +2278,7 @@ function damageTarget(t, dmg) {
             // permanently off by one otherwise.
             var remain = mission ? aliveTargets().filter(function (x) { return !x.kind; }).length
                                   : aliveTargets().length;
-            say(salvageText + name + ' destroyed. ' + remain + ' targets remain.');
+            say(prefix + name + ' destroyed. ' + remain + ' targets remain.');
         }
         return true;
     }
@@ -2430,7 +2554,8 @@ function beamTick() {
     var q = beamQuality();
     var base = L.ticks[beam.tick];      // this tick's slot in the laser's damage profile
     var dmg = Math.ceil(base * q *
-                        (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1));
+                        (t && t.alive ? laserRangeMult(aim(t.pos).dist) : 1) *
+                        (laserBoostActive() ? (1 + CFG.killBuffLaserPct) : 1));
     if (beam.nodes && beam.nodes.isAsset) {
         // The recording's rate narrates aim quality, gently.
         SIM.audio.ramp(beam.nodes.src.playbackRate, 0.92 + 0.16 * q, 0.15);
@@ -3476,9 +3601,11 @@ function statusReport() {
     if (demo) line += 'Clock ' + fmtTime(demo.elapsed) + '. ' + demoObjective();
     if (mission) {
         var f = mission.friendly;
-        line += f.name + ' hull ' + Math.round(f.hp / f.maxHp * 100) + ' percent. ';
+        line += f.name + ' shields ' + Math.round(f.shield / f.shieldPool * 100) + ' percent, hull ' +
+                Math.round(f.hp / f.maxHp * 100) + ' percent. ';
         if (mission.kind === 'escort') line += 'Leg ' + Math.round(mission.elapsed) + ' of ' + CFG.missionEscortLegS + ' seconds. ';
     }
+    if (laserBoostActive()) line += 'Laser boost, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left. ';
     say(line);
 }
 
@@ -3609,6 +3736,14 @@ function buildShipLines() {
     lines.push('Cargo hold: ' + ore + ' ore, ' + (profile ? profile.credits : 0) + ' credits.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.'));
     lines.push(chaff + (chaff === 1 ? ' decoy remaining.' : ' decoys remaining.'));
+    if (mission) {
+        var mf = mission.friendly;
+        lines.push(mf.name + ': shields ' + Math.round(mf.shield / mf.shieldPool * 100) +
+                   ' percent, hull ' + Math.round(mf.hp / mf.maxHp * 100) + ' percent.');
+    }
+    if (laserBoostActive()) {
+        lines.push('Laser boost active, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left.');
+    }
     for (var i = 0; i < LASER_SLOTS; i++) {
         var L = profile ? laserById(profile.slots[i]) : null;
         if (!L) { lines.push('Slot ' + (i + 1) + ' is empty.'); continue; }
@@ -4236,12 +4371,12 @@ var HAIL_ITEMS = [
 var MISSIONS = [
     { kind: 'escort', label: function () { return 'Escort freighter to ' + missionDestinationPlanet(); },
       desc: function () {
-          return 'Three waves of raiders will try to stop it over the ' + CFG.missionEscortLegS +
-                 ' second leg. ' + CFG.missionCredits + ' credits on success.';
+          return 'Three waves of drones will try to stop it over the ' + CFG.missionEscortLegS +
+                 ' second leg. ' + CFG.missionCredits + ' credits at full hull; less if the freighter takes damage.';
       } },
     { kind: 'defend', label: function () { return 'Defend the miner at ' + missionDestinationField(); },
       desc: function () {
-          return 'Two waves of raiders. ' + CFG.missionCredits + ' credits on success.';
+          return 'Two waves of raiders. ' + CFG.missionCredits + ' credits at full hull; less if the miner takes damage.';
       } }
 ];
 
@@ -5173,7 +5308,10 @@ window.__sim = {
             mission: mission ? { kind: mission.kind, elapsed: Math.round(mission.elapsed * 10) / 10,
                                    wavesSent: mission.wavesSent, ended: mission.ended, success: mission.success,
                                    friendly: { name: mission.friendly.name, hp: mission.friendly.hp,
-                                               maxHp: mission.friendly.maxHp, alive: mission.friendly.alive } } : null,
+                                               maxHp: mission.friendly.maxHp, alive: mission.friendly.alive,
+                                               shield: Math.round(mission.friendly.shield * 10) / 10,
+                                               shieldPool: mission.friendly.shieldPool } } : null,
+            laserBoost: laserBoostActive() ? Math.ceil((laserBoostUntil - Date.now()) / 1000) : 0,
             clock: Math.round(profile.clock * 10) / 10,
             missionCooldown: { escort: Math.round(Math.max(0, profile.missionCooldownUntil.escort - profile.clock)),
                                defend: Math.round(Math.max(0, profile.missionCooldownUntil.defend - profile.clock)) },
@@ -5248,11 +5386,15 @@ window.__sim = {
         if (o && o.laserReady) laserReadyAt = [];
         if (o && o.warpCharge !== undefined) warpCharge = o.warpCharge;
         if (o && o.chaff !== undefined) chaff = o.chaff;
+        if (o && o.missiles !== undefined) missiles = o.missiles;
+        if (o && o.shieldPool !== undefined) shield.pool = o.shieldPool;
         if (o && o.rcs !== undefined) rcs = o.rcs;
         if (o && o.rcsBattery !== undefined) rcsBattery = o.rcsBattery;
         if (o && o.tugRemaining !== undefined && tug) tug.remaining = o.tugRemaining;
         if (o && o.kill) shipDestroyed('test rig');
         if (o && o.friendlyHp !== undefined && mission) mission.friendly.hp = o.friendlyHp;
+        if (o && o.friendlyShield !== undefined && mission) mission.friendly.shield = o.friendlyShield;
+        if (o && o.missionNextStrikeIn !== undefined && mission) mission.nextStrikeIn = o.missionNextStrikeIn;
         if (o && o.missionElapsed !== undefined && mission) mission.elapsed = o.missionElapsed;
         if (o && o.credits !== undefined && profile) profile.credits = o.credits;
         if (o && o.clock !== undefined && profile) profile.clock = o.clock;
@@ -5286,7 +5428,7 @@ function clearMission() {
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
     shieldReset();
-    laser.misses = []; laser.hotUntil = 0; laserReadyAt = [];
+    laser.misses = []; laser.hotUntil = 0; laserReadyAt = []; laserBoostUntil = 0;
     stopLaserSwitch();
     autoThrust = false;
     // (the warp charge itself persists across a sector run)
