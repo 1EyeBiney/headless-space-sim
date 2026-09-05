@@ -2240,9 +2240,13 @@ pilot buys two), and the countdown reminding a lost pilot of F2/F3 (F4
 once 3.11 exists); **3.36** the repair crew works the hull when no
 system is broken, at HALF the system rate (`25 / repairHalfS` a second,
 `repairHullFactor` 0.5 — ~6 min to full at stock, the crew modules speed
-it for free), spending reaction mass (`repairHullRcsPerPoint` 0.2,
-pausing at a 10-unit floor), no cap, docking still instant — Brian's own
-adjustment after agreeing the rest; **3.38** auto-target
+it for free), no cap, docking still instant — Brian's own adjustment
+after agreeing the rest — and **ALL crew repairs now spend reaction
+mass** (`repairRcsPerPoint` 0.2 per hull point OR system percent point,
+pausing at a `repairRcsFloor` of 10 so the ship can always still turn;
+Brian: "yes, all repairs use reaction mass"), which reaches back into
+3.27's `updateRepairCrew` as built — the one line that changes there is
+noted under 3.27 in SPEC.md; **3.38** auto-target
 on **Shift+T** (rebound from cycle-back — Shift+Tab keeps that; the key
 map above is annotated): the stabilizers slew yaw+pitch onto the
 selected target at a rate set so the worst case (180° behind at

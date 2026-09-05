@@ -2567,6 +2567,16 @@ throughout. Numbers (the 40% knockout chance, all eight weights, the
 are placeholders for Brian's ear, same as everything else in Phase 3.
 Not yet heard or flown by Brian.
 
+**Addendum (ideas10.txt, 2026-09-05): repairs spend reaction mass.**
+Brian, after the hull-repair item was written: "yes, all repairs use
+reaction mass." From 3.36 on, `updateRepairCrew`'s system work above
+draws `repairRcsPerPoint` (0.2) of reaction mass per percent point
+restored, through `spendRcs()`, and pauses at `repairRcsFloor` (10)
+with "Damage control paused: reaction mass low." — the same rule, the
+same knobs, as the hull. Nothing else here changes; the rates, the
+priority, the preemption, and the two crew modules stay as built. It is
+built as part of 3.36, not re-opened here.
+
 ### Phase 3L — the Sound Lab as an HRTF laboratory (ideas_crazy_7 + ideas8, 2026-09-05)
 
 Brian's notes on a ten-point review of the lab (`ideas_crazy_7.txt`)
@@ -3938,19 +3948,24 @@ system). Every number is a placeholder for Brian's ear.
   stays instant. Collision damage repaired by the crew is still BILLED
   at the next landing (2.14's `collisionDamage` is money owed, not
   hull) — say so in the DONE note if it feels wrong in play.
-- **Hull repair spends reaction mass** (Brian: "repairs use reaction
-  mass or whatever the resource we use for thrusters" — it is reaction
-  mass, 2.14's `rcs`). `repairHullRcsPerPoint` **0.2** — a full 100-point
-  hull costs 20 of the 100-unit tank, so a long fight's patching shows
-  up on F3 and a pilot who fixes everything the slow way pays for it in
-  maneuvering. Drawn through `spendRcs()` so the 50/25 % alerts and the
-  battery flip fire exactly as thrusting does. The crew **stops** hull
-  work at `repairHullRcsFloor` **10** — it never drains the tank past
-  the point where the ship can still turn and brake — saying "Damage
-  control paused: reaction mass low." once, and resumes on its own when
-  a kill, an ice core, or a fill puts mass back. Empty tank (battery)
-  therefore means no hull repair at all. Whether the SYSTEM repairs of
-  3.27 should spend mass too is a Part C question, not built here.
+- **All repairs spend reaction mass** (Brian: "repairs use reaction
+  mass or whatever the resource we use for thrusters... yes, all repairs
+  use reaction mass" — it is reaction mass, 2.14's `rcs`). One rate for
+  the whole crew, `repairRcsPerPoint` **0.2** per point restored — a
+  hull point or a system's percent point alike — so a full 100-point
+  hull or a full 0→100 system repair costs 20 of the 100-unit tank, and
+  a long fight's patching shows up on F3: a pilot who fixes everything
+  the slow way pays for it in maneuvering. This reaches back into 3.27
+  as built: `updateRepairCrew`'s system work spends mass at the same
+  rate from this item on (a one-line change there, noted under 3.27).
+  Drawn through `spendRcs()` so the 50/25 % alerts and the battery flip
+  fire exactly as thrusting does. The crew **stops all work** at
+  `repairRcsFloor` **10** — it never drains the tank past the point
+  where the ship can still turn and brake — saying "Damage control
+  paused: reaction mass low." once, and resumes on its own when a kill,
+  an ice core, or a fill puts mass back. Empty tank (battery) therefore
+  means no repairs at all, hull or system — a broken thruster with an
+  empty tank is a real predicament, which is the point.
 - Spoken: "Damage control on the hull." once when the crew turns to it
   after a hit; "Hull repaired." at 100 (the 2.13 pattern — a threshold
   crossing, spoken once, no flag). No line per point. F2's Hull heading
@@ -3963,8 +3978,9 @@ system). Every number is a placeholder for Brian's ear.
   point, "Hull repaired." once at 100; a knockout mid-repair pulls the
   crew off (hull frozen, mass untouched) and it resumes after; mass
   poked to 12 → repair runs to the floor at 10 and pauses with the line,
-  a kill's mass resumes it; the modules change the rate and nothing
-  else.
+  a kill's mass resumes it; a knocked-out system's own repair also draws
+  0.2 a percent point and also pauses at the floor (3.27's crew, same
+  rule); the modules change the rate and nothing else.
 
 #### 3.38 Auto-target — the stabilizers aim the ship (ideas10.txt)
 
@@ -4652,10 +4668,9 @@ flagged here for Brian to overrule:
   full at stock, `repairHullFactor` 0.5) and **spends reaction mass**
   (`repairHullRcsPerPoint` 0.2, stopping at a 10-unit floor so the ship
   can always still turn). Still no cap; collision damage the crew
-  repairs is still billed at the next landing. **Still open:** should
-  3.27's SYSTEM repairs spend reaction mass too? Fable's read of
-  "repairs use reaction mass" is the hull item at hand; if Brian meant
-  all crew work, it is one line in `updateRepairCrew` at the same rate.
+  repairs is still billed at the next landing. **Decided (Brian): all
+  repairs spend reaction mass** — 3.27's system repairs too, at the same
+  `repairRcsPerPoint` and the same 10-unit floor. Nothing open on 3.36.
 - **Decoy confirmation comes at the pop, not the press** (3.37) — "Decoy
   took it." a second after the launch. And: it is possible decoys are
   simply broken; the build proves it first.
