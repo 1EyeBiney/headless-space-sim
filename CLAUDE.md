@@ -1148,9 +1148,26 @@ transition-saved quadrant state → 3.18 containers and hydrogen (the old
 no shipyard) → 3.14 the cargo limit → 3.12 the price levers → 3.20
 hauling (buy low, sell high; hydrogen sell-only) → 3.21 threat
 escalation that decays with play → 3.13 salvage gates and the drone
-swarm; then Phase 3b (3.16, 3.17). Stop for Brian's ears after 3.10 and
-after 3.20. Nothing in Phase 3 is built; the names are placeholders he
-will replace. The vortex demo stays lab-only until he has heard it.
+swarm; then Phase 3b (3.16, 3.17). The same night Brian added the
+**station game** (three more rounds; SPEC A.6 rewritten, A.13 new,
+Part C): every station **serves** a POI and wants what it needs; two
+meters per station — **favor** 0–100 with tiers gating comms /
+transporter / docking / Allied, decaying slowly in absence, and
+**control**, a share bought with wanted resources at Allied and eroded
+by named NPC unions, giving free docking, a tithe, the union count, and
+quadrant-wide comms at full control; **three ranges** (talk / hand over /
+land) replacing 1.19's two, extended by shipyard modules and favor;
+Meridian starts Trusted, everyone else Unknown; biomass exists now as
+the planet-to-station favor good; the gate opens once one station
+trusts you, for hydrogen, into a **Frontier** quadrant with no ports,
+rich fields, and one anomaly (specced as a kind, not built); the
+galactic map opens only at the gate *after* the Frontier. Those became
+3.23 (favor/control/ranges, built right after 3.10 since it touches
+docking) and 3.22 (the gate and the Frontier, last), with 3.11/3.19/3.20
+reworked around wants and biomass. Stop for Brian's ears after 3.10,
+3.23, and 3.20. Nothing in Phase 3 is built; the names are placeholders
+he will replace; "more mechanics in quadrant 2" is his to define before
+3.22. The vortex demo stays lab-only until he has heard it.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

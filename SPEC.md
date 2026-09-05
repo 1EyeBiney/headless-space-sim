@@ -85,21 +85,64 @@ stations. Every income source feeds credits or a resource.
 - The "Upgrades" list in the old station plan is this: modules with mass and
   price, not flat CFG overrides.
 
-### A.6 Stations, influence, control
+### A.6 Stations: favor, control, the three ranges (Brian, 2026-09-04 night)
 
-- Activity in a sector matters. Each station has an **influence** score the
-  pilot raises by combat missions for it, selling ore to it, trade runs,
-  meeting its needs (rescues, hauling). Station speech and prices reflect
-  it.
-- Long game: influence enough stations to form a **union**; quadrants end
-  up in unions; the player flips, holds, develops, or captures quadrants;
-  an automated war runs; a small local AI model writes news stories on the
-  fly. Planets and stations can be controlled and **auto-governed** so
-  resources collect without micromanagement once the empire is big.
-  Possibly a farm game on planets.
-- None of this is built. What the demo needs from it now: an influence
-  number per station that the existing actions already feed, so the
-  economy has its hook from day one (B, 1.7).
+- **Stations are the gate to the macro game.** A station exists to
+  **serve** something in its quadrant — a planet, the jump gate, later an
+  anomaly — and wants what that thing needs. Bring it and the station
+  warms to you; hold enough of them and the next stage of the game opens
+  (A.13).
+- **Two meters per station** (Brian's answer, Phase 3 questions):
+  **favor** (0–100) is the station's opinion of you — earned by
+  missions, rescues, selling what it wants, feeding its planet's
+  biomass to it; lost by failure, by hurting what it protects, and by
+  slow decay in your absence. Favor **tiers** gate what you may do:
+  Unknown, comms only → Known, the transporter → Trusted, docking →
+  Allied, a price break, the good missions, and the right to Invest.
+  **Control** (0–100) is your *share* of the station against the
+  quadrant's named unions — bought at Allied with the resources it wants,
+  eroding slowly toward the unions unless you keep feeding it.
+  Controlled at a majority: the station docks you free, pays a tithe in
+  credits and its resource, counts toward union play, and — once every
+  station in the quadrant is yours — makes comms quadrant-wide.
+- **Three ranges**, replacing the two of 1.19: **comms** (far — talk:
+  the greeting, prices, what it wants, accept missions), **transporter**
+  (middle — hand over: turn in, sell, buy, rearm, invest; cargo beams
+  across), **docking / landing** (near — land: repairs, refits, the
+  shipyard, the interior). Each is gated by a favor tier and extended by
+  shipyard modules and by favor itself. Why a veteran still hails from
+  far out: comms is where work is taken and prices are read, all game
+  long.
+- **Home**: Station Meridian starts Trusted; everyone else starts
+  Unknown. The delivery run's fixed sector runs none of this.
+- Long game (unchanged): control enough stations to form a **union**;
+  quadrants end up in unions; the player flips, holds, develops, or
+  captures quadrants; an automated war runs; a small local AI model
+  writes news. Planets and stations can be controlled and
+  **auto-governed** so resources collect without micromanagement once the
+  empire is big. Possibly a farm game on planets. Built in Phase 3 (3.23,
+  3.11, 3.19, 3.22) as far as one quadrant and the frontier beyond it.
+
+### A.13 Quadrants, gates, and the road to the galactic map (Brian, 2026-09-04 night)
+
+- **Quadrant 1 is the opening** — the hand-authored home quadrant of
+  A.10, where the favor game is learned. **Quadrant 2 is the Frontier**:
+  no ports, richer fields, one anomaly, a gate back and a sealed gate
+  onward — where the next mechanics live (the anomaly instance first;
+  Brian has more in mind). The **galactic map and union play open only at
+  the gate after Quadrant 2** — pass it and Phase 4 begins.
+- A pilot leaves Quadrant 1 early: the gate opens **once any station
+  trusts them**, for a hydrogen fare. Support — favor and control — is
+  gathered quadrant by quadrant; nothing at the galactic scale is
+  needed to travel, only to *play* the union game.
+- **Anomalies** are a POI kind with an instance of their own, the way
+  combat zones and asteroid fields are: a vortex storm (Brian's vortex
+  recordings orbiting a hidden core), a derelict hulk, a gas-pocket field
+  (2.4). A station can serve one — research wants hydrogen, pays favor
+  for readings taken inside. Specified as a kind in Phase 3; the first
+  instance is built when its sound exists.
+- Time is game time everywhere; every quadrant keeps its own saved
+  state; favor and control are per station, so per quadrant by nature.
 
 ### A.7 What stays true at every scale
 
@@ -1771,33 +1814,42 @@ It is the sector's exit and hydrogen's sink; opening it is Phase 4.
 (HRTF), then "Iron. Rich." / "Ice. Lean." A hint, never a number — hidden
 thresholds stay hidden. Later a module tells you which laser suits it.
 
-### Phase 3 — the moving world, the ports, the hauling (after the demo is heard)
+### Phase 3 — the moving world, the ports, the favor game (after the demo is heard)
 
-Scoped with Brian in three rounds of questions on the night of
-2026-09-04, right after ideas6 (2.20) landed; his answers are in Part C.
-From A.9–A.12. Nothing here is built. Same rules as Phase 2: one commit
-per numbered item, machine-test at a local server with beacons off, docs
-in sync, push, re-test at Pages, close every tab. Every number is a
-placeholder in CFG or a data table for Brian's ear and hands.
+Scoped with Brian in six rounds of questions on the night of 2026-09-04,
+right after ideas6 (2.20) landed — three on the world and markets, three
+more on his station-game additions the same night. His answers are in
+Part C; the direction they set is A.6 and A.13. From A.6, A.9–A.13.
+Nothing here is built. Same rules as Phase 2: one commit per numbered
+item, machine-test at a local server with beacons off, docs in sync,
+push, re-test at Pages, close every tab. Every number is a placeholder
+in CFG or a data table for Brian's ear and hands.
 
-**Build order**: 3.10 the quadrant → 3.18 containers and hydrogen →
-3.11 ports and F4 → 3.19 planets as ports → 3.14 the cargo limit →
-3.12 the price levers → 3.20 hauling → 3.21 threat escalation → 3.13
-salvage gates and the drone swarm. Then **Phase 3b**: 3.16 verbosity and
+**Build order**: 3.10 the quadrant → 3.23 favor, control, and the three
+ranges (touches docking, so it goes in before the ports multiply) → 3.18
+containers and hydrogen → 3.11 ports and F4 → 3.19 planets as ports →
+3.14 the cargo limit → 3.12 the price levers → 3.20 hauling and biomass →
+3.21 threat escalation → 3.13 salvage gates and the drone swarm → 3.22
+the gate and the frontier quadrant. Then **Phase 3b**: 3.16 verbosity and
 the journal, 3.17 tutorials — once the world has been flown, so the
-tutorials teach what is actually there. Stop for Brian's ears after
-3.10 (the first thing that *moves*) and again after 3.20 (the first
-thing that *pays*).
+tutorials teach what is actually there. Stop for Brian's ears after 3.10
+(the first thing that *moves*), after 3.23 (the first thing that says
+*no*), and after 3.20 (the first thing that *pays*).
 
 **What Phase 3 is, in one paragraph.** Today the sector is four fixed
-points and one flat clock. Phase 3 makes it a quadrant: a star at the
-center, planets that creep on orbits, ports with their own prices, one
-combat zone and one to three asteroid fields that come and go, all on a
-game clock that is saved and reloaded so tomorrow's sky is today's. The
-delivery run keeps its fixed sector untouched. The pilot's new loops:
-pick a field by what it holds, pick a port by what it pays, haul between
-ports, and clear zones that harden the more you fight and soften the
-longer you don't.
+points, one friendly station, and one flat clock. Phase 3 makes it a
+quadrant: a star at the center, planets that creep on orbits, ports with
+their own prices and their own opinion of you, one combat zone and one
+to three asteroid fields that come and go, all on a game clock that is
+saved and reloaded so tomorrow's sky is today's. Every station exists to
+serve something — a planet, the gate, later an anomaly — and wants what
+that thing needs; bring it and the station warms to you, from a voice on
+the comms to a place you can land to a station you *hold*. The delivery
+run keeps its fixed sector untouched. The pilot's new loops: pick a
+field by what it holds, pick a port by what it pays and how it feels
+about you, haul between ports, feed a station from its planet, clear
+zones that harden the more you fight and soften the longer you don't —
+and, once one station trusts you, take the gate to the frontier.
 
 #### 3.10 The quadrant: a hand-authored sky with moving parts (A.10)
 
@@ -1807,22 +1859,31 @@ longer you don't.
   Placeholder names (Brian: "placeholders for now"; rename in the table
   any time — Station Meridian keeps its name, it's already known):
 
-  | Name | Kind | Ring | Rate | Notes |
-  | --- | --- | --- | --- | --- |
-  | The Star | star | 0 | — | beacon only, no C; the quadrant's compass |
-  | Station Meridian | station | 3,500 | 0 | the first port; the shipyard |
-  | Planet A | planet | 6,000 | `planetDegPerHour` 6 | a port (3.19), no shipyard |
-  | Station Two | station | 9,500, opposite side | 0 | the second port; the shipyard |
-  | Planet B | planet | 11,000 | 6 | a port (3.19), no shipyard |
-  | Jump Gate | gate | 14,000 | 0 | sealed (2.6's text); hydrogen's sink in Phase 4 |
+  | Name | Kind | Ring | Rate | Serves | Notes |
+  | --- | --- | --- | --- | --- | --- |
+  | The Star | star | 0 | — | — | beacon only, no C; the quadrant's compass |
+  | Station Meridian | station | 3,500 | 0 | Planet A | home: starts Trusted; the shipyard |
+  | Planet A | planet | 6,000 | `planetDegPerHour` 6 | — | a port (3.19), sells biomass |
+  | Station Two | station | 9,500, opposite side | 0 | the Jump Gate | starts Unknown; the shipyard; sells hydrogen |
+  | Planet B | planet | 11,000 | 6 | — | a port (3.19), sells biomass |
+  | Jump Gate | gate | 14,000 | 0 | — | opens in 3.22 for hydrogen fare, once a station is Trusted |
 
-  Each row: `{ name, kind, desc, ring, degPerHour, phaseDeg, voice }`.
-  Stations hold station (accepted by default: fixed, so the run to a
-  known market is a known run); planets creep — a full orbit in 60
-  play-hours, enough that a regular's route drifts over weeks, never
-  enough to lose one in a session. Position is `polar(ring, phaseDeg +
-  degPerHour × clockHours)` computed **every frame from the clock** —
-  no velocity integration, so the save is nothing but rates and phases.
+  Each row: `{ name, kind, desc, ring, degPerHour, phaseDeg, serves,
+  wants, voice }`. `serves` is what the station is *for* (A.6): a station
+  serving a planet wants that planet's biomass above all; a station
+  serving the gate wants hydrogen and sells it. Stations hold station
+  (accepted by default: fixed, so the run to a known market is a known
+  run); planets creep — a full orbit in 60 play-hours, enough that a
+  regular's route drifts over weeks, never enough to lose one in a
+  session. Position is `polar(ring, phaseDeg + degPerHour × clockHours)`
+  computed **every frame from the clock** — no velocity integration, so
+  the save is nothing but rates and phases.
+- **Unions**: each quadrant names two or three NPC unions in a `UNIONS`
+  table (placeholders: the Meridian Compact, the Outer Ring Company) —
+  they hold the control share (3.23) of every station the pilot doesn't;
+  no fleets, no speech beyond a station naming who holds it ("Station
+  Two, Outer Ring Company, 70 percent."). They are numbers with names
+  until Phase 4.
 - **The star**: a beacon at the origin, a deep 30 Hz drone with a slow
   flicker, audible everywhere (`starAudibleDist` 16,000 — the one point
   a pilot can always hear, so nobody is ever lost). C at it: "The star.
@@ -1861,20 +1922,23 @@ longer you don't.
   **`profile.clock`** — loaded at boot, advanced on the same gate (live,
   not under an overlay), saved with the quadrant. Everything keys off it:
   orbits, drift, respawns, mission cooldowns (which thereby start
-  persisting), saturation decay (3.12), threat decay (3.21). Never
-  wall-clock (A.10).
-- **The quadrant save** (Brian: on every transition): `profile.quadrant`
-  = `{ clock, threat, zone, fields: [{ id, name, type, ring, phaseDeg,
-  spawnedAt, budget }], ports: { name: { saturation: {...} } } }`,
-  written by `saveQuadrant()` on dock, undock, land, launch, entering or
-  leaving an encounter, warp arrival, every spawn, every sale — plus a
-  quiet timer every `quadrantSaveEveryS` 30 of open flight. **Never
-  mid-encounter** (an encounter is its own little space; its rocks and
-  ships aren't saved — leaving one is the transition). A crash costs at
-  most half a minute of flight. Created the first time a profile picks
-  Sector: the first field and the first zone spawned by the rules with
-  the pilot at `placeAtStationStart`. `PROFILE_VERSION` → 3; a v2 save
-  gets an empty quadrant and the clock at 0 (2.18's migration path).
+  persisting), saturation decay (3.12), favor decay and control erosion
+  (3.23), threat decay (3.21). Never wall-clock (A.10).
+- **The quadrant save** (Brian: on every transition): `profile.quadrants`
+  keyed by quadrant id, each `{ clock, threat, zone, fields: [{ id, name,
+  type, ring, phaseDeg, spawnedAt, budget }], ports: { name: { favor,
+  control, lastVisit, saturation: {...} } } }`, plus `profile.quadrant`
+  (the current id), written by `saveQuadrant()` on dock, undock, land,
+  launch, entering or leaving an encounter, warp arrival, gate transit,
+  every spawn, every sale — plus a quiet timer every `quadrantSaveEveryS`
+  30 of open flight. **Never mid-encounter** (an encounter is its own
+  little space; its rocks and ships aren't saved — leaving one is the
+  transition). A crash costs at most half a minute of flight. Created
+  the first time a profile picks Sector: the first field and the first
+  zone spawned by the rules with the pilot at `placeAtStationStart`.
+  `PROFILE_VERSION` → 3; a v2 save gets an empty quadrant, the clock at
+  0, and its influence count folded into Meridian's favor (2.18's
+  migration path).
 - **Beacons at ten points**: audible only within `beaconAudibleDist`
   8,000 plus the selected target (accepted by default in ideas5); B's
   On overrides to all. Tab cycles nearest first as now.
@@ -1883,68 +1947,167 @@ longer you don't.
   within a group; a heading is its own line ("Stations, 2."); first
   letter jumps to a group (S, P, A, C, G); every entry line keeps
   bearing, distance, and warp reach, plus the typed detail (a field's
-  type and fullness, a zone's threat word). Enter sets the nav target
-  as now; inside an encounter the lines read as chart entries as now.
+  type and fullness, a zone's threat word, a port's favor tier — "Station
+  Two, Unknown"). Enter sets the nav target as now; inside an encounter
+  the lines read as chart entries as now.
 - **`__sim`**: `state().quadrant` (clock, threat, every point with its
-  live position), `poke({ clock, spawnZone, spawnField, budget })`.
+  live position, favor and control per port), `poke({ clock, spawnZone,
+  spawnField, budget, favor, control })`.
 - **Test**: positions move with a stepped clock; a save then reload
   gives identical positions to the unit; 200 forced spawns all satisfy
   every rule; leaving a field's encounter lands at its current position
   (not its entry position) after a stepped clock; the delivery run's
   four points do not move.
 
+#### 3.23 Favor, control, and the three ranges (A.6 — Brian's station game)
+
+- **Favor** is a per-port meter, 0–100, replacing the influence count
+  (`profile.quadrants[q].ports[name].favor`; today's `influence` folds
+  into it at 10 points each on migration). **Tiers** gate what the port
+  lets you do, and every gate is spoken: *Unknown* under `favorKnown`
+  10 — comms only; *Known* at 10 — the transporter; *Trusted* at
+  `favorTrusted` 40 — docking; *Allied* at `favorAllied` 70 — a
+  `alliedPriceBreak` 10 % better price both ways, the good missions
+  (2.17's, and 3.13's), the right to Invest (control). Earned by: a
+  mission completed for that port (+`favorMission` 8), a rescue
+  delivered there (+8, once 2.1 exists), selling what it *wants*
+  (+1 per `favorPerWantUnit` — 200 ore, 4 salvage, 4 alloy, 10
+  hydrogen, 5 biomass — of a wanted category; nothing for the rest),
+  the delivery run's handover at Meridian (+10). **Lost** by: a failed or
+  abandoned mission (−`favorFail` 10), destroying something the port
+  protects — its escort freighter, its miner (−25) — and, Brian's
+  choice, **slow decay**: −1 per `favorDecayPerHour` play-hour of absence
+  (no sale, mission, or hail there), never below the tier floor you've
+  reached minus one tier (a Trusted pilot can drift to Known, not to
+  Unknown; `favorFloorTiers` 1). A regular is remembered; a stranger is
+  forgotten.
+- **Home**: Station Meridian starts at Trusted (40) on a fresh profile —
+  it's home, and the delivery run still ends by docking there (its fixed
+  sector doesn't run favor at all). Every other port starts Unknown.
+- **Control** is a second meter, 0–100, the pilot's *share* of a station
+  against the quadrant's unions (3.10): **Invest** on the hail's menu at
+  Allied — deliver what the station wants and each `controlPerUnit`
+  delivery unit (same table as favor's) buys one point; the unions' share
+  is the remainder and it **creeps back** `controlErodePerHour` 1 per
+  play-hour per station, so a neglected station slips. **Controlled at
+  51 %** (`controlThreshold`) and it can be lost again. What control
+  gives (Brian): the station docks you free of any favor check, pays a
+  **tithe** of `titheCreditsPerHour` 20 credits and `titheUnitsPerHour` 2
+  of its resource (a gate station: hydrogen; a planet station: biomass)
+  per play-hour, collected on any hail ("Tithe: 60 credits, 6 hydrogen
+  banked."), counts toward union play (Phase 4), and — once **every**
+  station in the quadrant is controlled — makes **comms quadrant-wide**:
+  hail any port from anywhere in the quadrant.
+- **The three ranges** (Brian's notes, replacing 1.19's two): every port
+  has `commRange`, `transporterRange`, `dockRange` — stations 2,000 /
+  600 / 150, planets 3,000 / 900 / 300 — and ideas6's crossing cues
+  become three: `comm_range`, a new `transporter_range` (a rising pair
+  with a shimmer under it), `dock_range`, each with its line. What
+  happens where:
+  - **Comms** (talk): the hail greeting with the port's mood spoken as
+    the tier word ("Station Two control. You're unknown to us."), Prices
+    (F4), **what it wants** ("We're short on biomass and hydrogen."),
+    accept missions, hear the tithe, read who holds it. Nothing changes
+    hands. This is why a pilot still hails from far out for the rest of
+    the game — it's where work is taken and prices are read.
+  - **Transporter** (hand over), needs Known: turn in missions, sell and
+    buy (3.20), rearm missiles and decoys, buy reaction mass, Invest —
+    cargo beams across, no landing. The transporter has a sound of its
+    own (a rising shimmer, `transporter_beam` cue, positional at the
+    port) every time something crosses.
+  - **Docking / landing** (land), needs Trusted: repairs, refits, the
+    shipyard, the interior loop, the free refill — today's docked state.
+    C inside dock range at a port that doesn't trust you: "Station Two
+    control: docking denied. Earn our trust first — we're short on
+    hydrogen." — a refusal that names the way in.
+  - Today's hail menu splits accordingly: the comm-range menu keeps
+    Prices, Missions, Wants, Close; Rearm, Sell, Buy reaction mass move
+    to the transporter menu, which opens instead when C is pressed inside
+    transporter range (the nearer range wins, as dock range does today).
+- **Range growth** (Brian): shipyard modules — `comm_array` (+50 %
+  comms), `transporter_booster` (+50 % transporter), `docking_computer`
+  (docking range doubled) — and favor tiers on top at each port: Allied
+  +25 % to all three there; quadrant-wide comms at full control. No
+  achievements yet (a milestone table is Phase 4).
+- **The tug** (A.11, 2.16) goes to the nearest port that will *dock* you
+  (Trusted or Controlled); if none in the quadrant, it's a long ride home
+  to Meridian at `tugHomeFactor` 2 × the base wait — spoken as such.
+  Docking by tug never changes favor.
+- **I / F3** speak the current port's tier when in comms range; the map
+  line does too. **F2** gains the three ranges with their module bonuses.
+- Test: a fresh profile hails Station Two and is refused docking with the
+  reason; selling 200 wanted ore there speaks "+1 favor" and the tier
+  changes at 10/40/70 with the transporter, docking, and price break
+  each turning on the moment they should; favor decays only in absence
+  and never below the floor; Invest moves control and the unions creep
+  it back on a stepped clock; a tug from a quadrant with no trusting
+  port doubles the wait and lands at Meridian.
+
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
-- **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', prices: {
-  ore, salvage, alloy, hydrogen }, bias: { category: +0.3 | −0.3 | 0 },
-  shipyard: bool }`. `price` = base × (1 + bias); a port's bias is its
-  character and the guarantee that prices *diverge*: Station Meridian
-  buys ore dear and sells alloy cheap, Station Two the reverse, the
-  planets pay for salvage and hydrogen (3.19). Base prices are today's
+- **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', serves,
+  wants: ['biomass', 'hydrogen'], prices: { ore, salvage, alloy,
+  hydrogen, biomass }, bias: { category: +0.3 | −0.3 | 0 }, shipyard:
+  bool }`. `price` = base × (1 + bias); a port's bias is its character
+  and the guarantee that prices *diverge*: a station wants (and pays
+  most for) what the thing it serves needs — Meridian, serving Planet A,
+  wants biomass and buys ore dear; Station Two, serving the gate, wants
+  hydrogen and sells it, buys alloy cheap; the planets pay for salvage
+  and hydrogen and sell biomass (3.19). Base prices are today's
   (`oreCreditRate`, `salvageCredit`, `alloyCredit`) plus `hydrogenCredit`
-  25.
+  25 and `biomassCredit` 15.
 - **F4** = the trading screen (A.12): the same browsable shell as F2/F3.
   One line per category: "Ore. Buys at 0.13 a unit, sells at 0.16. High
-  here." — buy price, sell price, and the word (high / normal / low
-  against base). Reachable by F4 within comm range of any port and from
-  the hail menu's new **Prices** line; outside comm range F4 shows the
-  **last-seen** prices at every port, each dated in play-minutes ("Station
-  Two, 14 minutes ago: ore low") — accepted by default, the pilot's
-  memory, since a blind trader can't glance at a chart.
+  here. Wanted." — buy price, sell price, the word (high / normal / low
+  against base), and *wanted* where it earns favor. Reachable by F4
+  within comms range of any port and from the hail menu's **Prices**
+  line; outside comms range F4 shows the **last-seen** prices at every
+  port, each dated in play-minutes ("Station Two, 14 minutes ago: ore
+  low, wants hydrogen") — accepted by default, the pilot's memory, since
+  a blind trader can't glance at a chart.
 - Both stations dock, repair, refit, rearm exactly as Meridian does
-  today; only prices and the interior sound differ (Brian is collecting
-  ambience sets — `station_interior1` is Meridian's, a second gets a
-  key when it exists). The hail menu's Sell lines already name the
-  amount; they now name the *price* too.
+  today — for a pilot they trust (3.23); only prices, wants, and the
+  interior sound differ (Brian is collecting ambience sets —
+  `station_interior1` is Meridian's, a second gets a key when it
+  exists). Sell lines name the *price* as well as the amount.
 
 #### 3.19 Planets as ports (Brian: land like a station; market and fuel, no shipyard)
 
-- A planet has `planetCommRange` 800 and `planetLandRange` 300 (it's
-  big) and a `planetHullRadius` 200 for the collision check. C inside
-  the land range → `dockAtStation(poi)` with `docked.kind = 'planet'`:
-  the same held-still state, its own menu: **Sell** lines, **Buy**
-  lines (3.20), **Launch**. Repairs and the reaction-mass refill are
-  free as at a station (collision damage billed as ever); missiles and
-  decoys are NOT restocked (no armory — accepted by default, one thing
-  a station has that a planet doesn't besides the shipyard); no
-  Modules; the warp tank refills (the core cools anywhere you're
-  parked). Launch = `undock()` at `undockDist`, the same no-warp-zone
-  line.
+- A planet has the three ranges of 3.23 at planet scale (comms 3,000,
+  transporter 900, landing 300 — it's big) and a `planetHullRadius` 200
+  for the collision check. It runs favor like a station: Known for the
+  transporter, Trusted to land. C inside the land range at a planet that
+  trusts you → `dockAtStation(poi)` with `docked.kind = 'planet'`: the
+  same held-still state, its own menu: **Sell**, **Buy** (3.20),
+  **Launch**. Repairs and the reaction-mass refill are free as at a
+  station (collision damage billed as ever); missiles and decoys are NOT
+  restocked (no armory — accepted by default, one thing a station has
+  that a planet doesn't besides the shipyard); no Modules; the warp tank
+  refills (the core cools anywhere you're parked). Launch = `undock()` at
+  `undockDist`, the same no-warp-zone line.
+- **Biomass** (Brian: now, simply): a planet **sells** biomass at
+  `biomassCredit` 15 × its bias (−0.3 — it has plenty) from Known, via
+  the transporter or landed; cargo weight 5 (3.14). The station that
+  *serves* that planet wants it: pays `biomassCredit` × (1 + 0.4) and
+  favor (3.23) — the single biggest favor lever in the game, the
+  planet-to-orbit run Brian described. Agriculture, farming, and other
+  planetside goods stay Phase 4; Phase 3 only needs the good to exist.
 - The planet's interior loop: `planet_interior1` when Brian records one;
   until then a synthesized wind bed (`planet_wind`, a slow-filtered noise
   on the music bus at `stationAmbientVol`) so landing still *feels*
   different — accepted by default, replaced the day a recording exists.
-- Planets pay: salvage and hydrogen at `bias` +0.4, ore −0.3 (they sell
-  it cheap, having plenty), alloy 0. Planet Auren in the delivery run's
-  sector keeps its placeholder hail — the run is untouched.
+- Planets pay: salvage and hydrogen at `bias` +0.4, ore −0.3, alloy 0.
+  Planet Auren in the delivery run's sector keeps its placeholder hail —
+  the run is untouched.
 
 #### 3.14 Cargo limit (A.12) — builds before 3.20, since hauling needs a hold
 
 - `CFG.cargoMax` 20,000 ore-equivalent; ore fills it 1:1, alloy 20 per
-  unit, hydrogen 10 per unit; salvage is small and never counts. The
-  hold refuses more ("Hold full. Sell, or extract no more."); I / F3
-  read "Hold 14,200 of 20,000". A `cargo_bay` module (+10,000, mass 20,
-  needs 3 alloy — the first 3.13 gate) at the shipyard.
+  unit, hydrogen 10 per unit, biomass 5 per unit; salvage is small and
+  never counts. The hold refuses more ("Hold full. Sell, or extract no
+  more."); I / F3 read "Hold 14,200 of 20,000". A `cargo_bay` module
+  (+10,000, mass 20, needs 3 alloy — the first 3.13 gate) at the
+  shipyard.
 - The tug gains the experience lever only once experience exists (A.11,
   still deferred).
 
@@ -1954,38 +2117,43 @@ longer you don't.
   sold (scaled per category so 10,000 ore and 20 salvage move it about
   the same), decays `satDecayPerMin` 0.05 per play-minute on the game
   clock; the port's price for that category = base × (1 + bias) ×
-  clamp(1.5 − saturation, 0.5, 1.5). Sell a lot in one place and it
-  drops toward half; neglect a category ten minutes and it drifts back
-  past base. **Buying** into a port lowers its saturation (`satPerBuy`
-  0.1 per unit) — a port you've bought out pays more to restock. The
-  lever is audible before the sale: the Sell line names the price it
-  will actually pay for the whole lot.
+  clamp(1.5 − saturation, 0.5, 1.5) × (Allied ? 1.1 : 1) when selling
+  (÷ when buying). Sell a lot in one place and it drops toward half;
+  neglect a category ten minutes and it drifts back past base.
+  **Buying** into a port lowers its saturation (`satPerBuy` 0.1 per
+  unit) — a port you've bought out pays more to restock. The lever is
+  audible before the sale: the Sell line names the price it will
+  actually pay for the whole lot. A *wanted* category saturates at half
+  the rate — the station keeps wanting.
 
 #### 3.20 Hauling: buy low, sell high (Brian)
 
-- Every port **buys and sells** ore, alloy, and salvage; hydrogen is
-  sell-only until the gate exists (Phase 4). Buy price = sell price ×
-  `buySpread` 1.25 at that port, so a same-port round trip always loses
-  and the profit is in the divergence between ports (3.11's biases,
-  moved by 3.12's saturation). **Buy** lines on the hail and port menus:
-  "Buy ore. 0.20 a unit here, 4,000 credits fills the hold." — Enter
-  buys as much as credits and the hold allow, in one go, and says the
-  result. Bought goods are just cargo; a haul is: buy where the word is
-  *low*, fly, sell where it's *high*, F4's last-seen memory being the
-  planning tool.
+- Every port **buys and sells** ore, alloy, salvage, and biomass;
+  hydrogen is bought only at a port that serves a gate (Station Two) and
+  sold anywhere. Buy price = sell price × `buySpread` 1.25 at that port,
+  so a same-port round trip always loses and the profit is in the
+  divergence between ports (3.11's biases, moved by 3.12's saturation).
+  **Buy** lines on the transporter and landed menus: "Buy ore. 0.20 a
+  unit here, 4,000 credits fills the hold." — Enter buys as much as
+  credits and the hold allow, in one go, and says the result. Bought
+  goods are just cargo; a haul is: buy where the word is *low*, fly,
+  sell where it's *high* — or *wanted*, for favor — F4's last-seen memory
+  being the planning tool. The planet-to-station biomass run is the
+  first haul every pilot learns (3.19).
 - Bought ore in the hold delivers on the delivery run exactly like mined
   ore would — except the delivery run has no hauling (its sector has one
   port and no Buy line), so the shortcut doesn't exist there.
 - Test: a full loop (buy at Meridian, sell at Two) makes money when the
-  biases oppose and loses it same-port; saturation from a big sale is
-  audible on the next Sell line; the hold cap holds.
+  biases oppose and loses it same-port; a biomass run from Planet A to
+  Meridian pays credits and favor; saturation from a big sale is audible
+  on the next Sell line; the hold cap holds.
 
 #### 3.21 Threat escalation, and its decay (Brian)
 
-- `profile.quadrant.threat` 0..`threatMax` 6: +1 each time a combat zone
-  is cleared; −1 per `threatDecayMin` 20 play-minutes without a clear.
-  A new zone spawns sized by threat: roster size `3 + floor(threat / 2)`
-  (capped at 5), class weights shifting toward cruisers as it rises
+- `profile.quadrants[q].threat` 0..`threatMax` 6: +1 each time a combat
+  zone is cleared; −1 per `threatDecayMin` 20 play-minutes without a
+  clear. A new zone spawns sized by threat: roster size `3 + floor(threat
+  / 2)` (capped at 5), class weights shifting toward cruisers as it rises
   (`ZONE_CLASS_WEIGHTS[threat]`), hull × (1 + 0.1 × threat) at Veteran
   and Ace only — Rookie feels the count, not the hardness. Spoken at the
   zone's beacon hail and on the map as a word: light (0–1), moderate
@@ -2007,22 +2175,68 @@ longer you don't.
   hydrogen, corvette 15–30, cruiser 40–60 plus one alloy in three.
   Uncollected containers are lost on leaving the encounter.
 - **Hydrogen** is the seventh resource line (F3), persistent like
-  salvage and alloy (`profile.resources.hydrogen`), sold at ports
-  (3.11), sell-only, cargo weight 10 (3.14). The hydrogen-extractor
-  module (mining ticks yield it) waits for a reason to exist — Phase 4.
+  salvage and alloy (`profile.resources.hydrogen`), sold at any port and
+  bought at a gate station (3.20), cargo weight 10 (3.14), the gate's
+  fare (3.22), and what a gate station wants (3.23). The
+  hydrogen-extractor module (mining ticks yield it) waits for Phase 4.
 
 #### 3.13 Salvage gates and the drone swarm (A.9) — as written, with 2.17 in mind
 
 - `MODULES` entries gain optional `salvage` and `alloy` costs on top of
   credits; the first: `cargo_bay` needs 3 alloy (3.14), shield plating
-  needs 4 alloy, the missile rack needs 3 salvage. "Need 2 more salvage"
-  refusals name the resource.
+  needs 4 alloy, the missile rack needs 3 salvage, the three range
+  modules (3.23) need 2 alloy each. "Need 2 more salvage" refusals name
+  the resource.
 - **Easy combat**: "Clear the drone swarm" — a third line in the hail
   menu's Missions list (2.17's shell): four drones that never fire, each
-  tier faster and jinkier (`droneEvadeTier`). Offered only where
-  influence ≥ threshold, costs `easyMissionOre` 2,000 ore to accept, one
-  per port per `missionCooldownS` (now on the persistent clock). Pays
-  salvage only — the gate for the miner who won't fight.
+  tier faster and jinkier (`droneEvadeTier`). Offered only at Allied,
+  costs `easyMissionOre` 2,000 ore to accept, one per port per
+  `missionCooldownS` (now on the persistent clock). Pays salvage only —
+  the gate for the miner who won't fight.
+
+#### 3.22 The gate and the frontier quadrant (A.13 — Brian)
+
+- **The Jump Gate opens** once any station in the quadrant is at
+  Trusted (Brian: in Phase 3, once one station trusts you). Before that,
+  2.6's sealed text with the reason: "Gate control: transit lane closed
+  to unknown pilots. Earn a station's trust." After: C within its comms
+  range hails it — "Gate control: transit to the Frontier, fare 30
+  hydrogen. Confirm?" — Enter pays `gateFareHydrogen` 30 from the hold
+  and **transits**: a warp-like flight of `gateTransitS` 12 with the
+  gate's own sound (a recording when Brian has one; until then the warp
+  engaged loop pitched down under a rising discharge), the quadrant swap
+  happening under the sound, arriving `warpDropout` 600 out from the far
+  gate, facing away. Every transition-save fires on both sides.
+- **The Frontier** (Brian: no ports, one anomaly) — a second hand-authored
+  `QUADRANT`: a star, one to three asteroid fields (richer: `cloudOreBudget`
+  × 1.5 and iron-rich weighted, the reason to come), one **anomaly** POI
+  (A.13: kind `'anomaly'`, placeholder name "the Vortex", a beacon and a
+  placeholder hail — "Readings off the scale. Nothing to do here yet." —
+  its *instance* is Phase 4's first job, with Brian's vortex set as its
+  sound), the gate **back**, and a second gate **onward** that is sealed
+  in Phase 3 ("Transit lane uncharted.") — taking it is where the
+  galactic map begins (A.13, Phase 4). No stations: no docking, no
+  refuel but the core's own regen, no tug — a lost ship in the Frontier
+  is towed *back through the gate* to the last trusting port at
+  `tugHomeFactor` 2 × the wait (the fare waived; the tug pays). Combat
+  zones spawn there too, at the quadrant's own threat.
+- What the Frontier is for in Phase 3: the richest mining in the game,
+  the first place fuel discipline matters (a full tank is two-thirds of
+  the way across; the star's regen is the only refill), the first
+  round-trip haul that pays big (Frontier iron → alloy → Station Two's
+  shipyard wants it), and the door to Phase 4. Its *mechanics* — the
+  anomaly instance and whatever else Brian means by "more mechanics in
+  quadrant 2" — are the first thing to spec once Phase 3 has been flown
+  (DECIDE, Part C).
+- **Per-quadrant state**: `profile.quadrants['home']` and
+  `profile.quadrants['frontier']`, each with its own clock offset, threat,
+  fields, zone, and ports; the map's first line names the quadrant;
+  I says it. Favor and control are per port, so per quadrant by nature.
+- Test: the gate refuses before Trusted and names why; transit costs 30
+  hydrogen, takes 12 s, and lands 600 out from the far gate facing away;
+  the Frontier has no ports and its fields are typed rich; a loss there
+  tows back through the gate at double the wait and lands at Meridian;
+  both quadrants save and reload independently.
 
 #### 3.15 Lazy-load audio — superseded by 2.19
 
@@ -2043,16 +2257,20 @@ longer you don't.
 #### 3.17 Contextual tutorials (A.12, folds in the old 3.1)
 
 - `TUTORIALS` keyed by first-time events: first sector entry, first hail,
-  first dock, first landing, first warp, first sale, first F2/F3/F4,
-  first quadrant exit, first galactic map. Each is three to five spoken
-  steps with an expected key, Escape skips, "seen" flags in the profile.
-  The Tutorial menu item replays any.
+  first refusal at a dock, first transporter trade, first dock, first
+  landing, first warp, first sale, first F2/F3/F4, first gate transit,
+  first galactic map. Each is three to five spoken steps with an expected
+  key, Escape skips, "seen" flags in the profile. The Tutorial menu item
+  replays any.
 
-**Open for Brian before 3.10 starts** (DECIDE, Part C): the real names;
-whether stations should creep too (fixed by default); the star's voice
-(the vortex layers were his own suggestion for "an interesting 3D space"
-— he chose to keep them lab-only for now, so the star gets a plain
-drone until he says otherwise).
+**Open for Brian before 3.10 starts** (DECIDE, Part C): the real names
+(ports, unions, the anomaly); whether stations should creep too (fixed
+by default); the star's voice (the vortex layers were his own suggestion
+for "an interesting 3D space" — he chose to keep them lab-only for now,
+so the star gets a plain drone until he says otherwise); and, before
+3.22, what "more mechanics in quadrant 2" means beyond the anomaly —
+the Frontier is specced as a place to mine, haul, and pass through, and
+he has more in mind.
 
 ### Phase 3, continued — teaching and hosting (the existing 3.1–3.2)
 
@@ -2077,8 +2295,9 @@ with small fleets against other bases. Designed when Phase 4 is real.
 
 ### Phase 4 — the strategic layer (direction only, no specs yet)
 
-Quadrants and the universe map · opening the gate with hydrogen · the sun as
-a hydrogen source · station influence into unions · flipping, holding,
+The galactic map, opened by the gate after the Frontier (A.13) · the
+first anomaly instance (the vortex storm) · the sun as a hydrogen source
+· control into unions (3.23 gives the numbers) · flipping, holding,
 developing, capturing quadrants · automated war · auto-governed stations
 and planets · planetside resources, trade goods, hauling contracts · a
 planet farm game · a local AI model writing news. Each becomes a phase with
@@ -2203,6 +2422,38 @@ restocks nothing (no armory) and gets a synthesized wind bed until a
 recording exists; buying at a port lowers its saturation; the first
 zone of a fresh profile is three ships; Rookie feels escalation as ship
 count only.
+
+Decided (Brian, the station-game additions, night of 2026-09-04, three
+more rounds): stations are the gate to the macro game and each **serves**
+a POI; **two meters** — favor (0–100, tiers gate comms / transporter /
+docking / Allied) and control (a contested share bought with the
+resources a station wants once Allied, eroded by named NPC unions at 1
+point per play-hour, controlled at 51 %); control gives **reach, free
+docking, a tithe, and the union count**, quadrant-wide comms once every
+station in the quadrant is held; the **three ranges** are talk / hand
+over / land (comms: prices, wants, accept missions; transporter: turn
+in, sell, buy, rearm, invest; docking: repairs, refits, shipyard), each
+gated by a favor tier; **Meridian starts Trusted**, everyone else
+Unknown, and the tug goes to the nearest port that will dock you (double
+the wait home if none); **biomass exists now** as a plain good planets
+sell and the station serving that planet wants most; favor **decays
+slowly** with absence (and falls on failure); the gate opens **in Phase
+3 once one station trusts you**, for hydrogen fare; **Quadrant 2 is a
+frontier** — no ports, richer fields, one anomaly, a gate back, a sealed
+gate onward — where the next mechanics live; the **galactic map opens
+only at the gate after Quadrant 2**; anomalies are **specified as a kind,
+none built** yet; ranges grow by **shipyard modules and favor tiers**, no
+achievements yet.
+
+Accepted by default (say otherwise), the station game: tier thresholds
+10 / 40 / 70; favor never decays below one tier under the highest
+reached; the tithe is 20 credits and 2 units per play-hour, banked and
+collected on any hail; a wanted category saturates at half the rate;
+Allied's price break is 10 % both ways; the gate fare is 30 hydrogen and
+the transit 12 s; the Frontier's fields are half again as rich and
+iron-weighted; a Frontier loss tows back through the gate, fare waived;
+the transporter has its own shimmer cue; docking denied names the way
+in; the range modules cost 2 alloy each.
 
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
