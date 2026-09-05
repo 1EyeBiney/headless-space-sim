@@ -1825,17 +1825,21 @@ item, machine-test at a local server with beacons off, docs in sync,
 push, re-test at Pages, close every tab. Every number is a placeholder
 in CFG or a data table for Brian's ear and hands.
 
-**Build order**: 3.10 the quadrant (DONE) → 3.23 favor, control, and the
-three ranges (touches docking, so it goes in before the ports multiply,
-next up) → 3.18 containers and hydrogen → 3.11 ports and F4 → 3.19
-planets as ports → 3.14 the cargo limit → 3.12 the price levers → 3.20
-hauling and biomass → 3.21 threat escalation → 3.13 salvage gates and
-the drone swarm → 3.22 the gate and the frontier quadrant. Then
+**Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
+2026-09-05, from flying 3.10: 3.24 the two bugs → 3.25 the escort second
+pass and kill buffs → 3.26 laser levels and wear → 3.27 system damage
+and the repair crew → 3.28 the quadrant's timed contract) → 3.23 favor,
+control, and the three ranges (touches docking, so it goes in before the
+ports multiply) → 3.18 containers and hydrogen → 3.11 ports and F4 →
+3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
+3.20 hauling and biomass → 3.21 threat escalation → 3.13 salvage gates
+and the drone swarm → 3.22 the gate and the frontier quadrant. Then
 **Phase 3b**: 3.16 verbosity and the journal, 3.17 tutorials — once the
 world has been flown, so the tutorials teach what is actually there.
 Stop for Brian's ears after 3.10 (the first thing that *moves* — built;
-not yet heard), after 3.23 (the first thing that says *no*), and after
-3.20 (the first thing that *pays*).
+being flown now), after 3.27 (the first thing that *breaks*), after
+3.23 (the first thing that says *no*), and after 3.20 (the first thing
+that *pays*).
 
 **What Phase 3 is, in one paragraph.** Today the sector is four fixed
 points, one friendly station, and one flat clock. Phase 3 makes it a
@@ -2037,6 +2041,171 @@ scope call made while building, not a silent drop.
   reasonable follow-up before this ships to Brian if the spawn rules
   ever look wrong in play. Zero console errors throughout. Not yet
   heard by Brian.
+
+#### 3.24 Two bugs from play (ideas7, 2026-09-05) — build first
+
+- **Shift+1 and Shift+2 arrive as `!` and `@`.** `onKeyDown` matches
+  the slot keys on `e.key`, which Shift turns into the symbol on a US
+  layout, so `selectSlot(i, reverse)` never fires with Shift held and
+  the "cycle back" half of SPEC 2.12 has never actually worked from a
+  real keyboard (the tests dispatched synthetic events with `key: '1'`
+  and `shiftKey: true`, which is not what a keyboard sends). Fix: when
+  `e.shiftKey` and `e.code` is `Digit1`–`Digit6`, take the digit from
+  `e.code`. Same for any other Shift chord that reads a symbol key.
+- **Selling ore busted the delivery run.** Brian sold his 15,000 from
+  the hail menu at range; the handover never happened and the run's
+  clock ran on. Decided: **while a delivery is pending** (`demo &&
+  !demo.delivered`), Sell ore is refused everywhere — hail, transporter
+  (once 3.23 exists), the landed station menu — with the line "That ore
+  is the delivery. Dock at Station Meridian to hand it over." The dock
+  hands it over the moment the hold meets the goal, as it does now; a
+  hold short of the goal is not sellable either, so a pilot cannot
+  sell 14,000 and restart. The open quadrant (no `demo`) is untouched.
+
+#### 3.25 Escort, second pass, and kill buffs (ideas7)
+
+Brian flew 2.17's escort and it was too hard to feel good and too
+short to build to anything. Numbers are the same placeholders-for-his-ear
+as everything else; the shape is decided.
+
+- **Length and waves**: `missionEscortLegS` 90 → 180; three waves of
+  **three Drones** (the corvette-class roster ship, hull 40, `SALVAGE`
+  3 each) at `missionEscortWaveTimes` [20, 70, 120] — the third wave
+  arrives with a minute to go, so a pilot who cleared two waves has the
+  freighter under fire as it leaves, exactly the "mediocre effort"
+  Brian described. Defend keeps its two waves of three (accepted by
+  default), gets the shield and the halved strikes below.
+- **Strikes halved**: `missionStrikeDmg` 15 → 8 against the friendly.
+  Raiders still only ever fight the *player* once provoked (2.17's
+  rule, unchanged — Brian: "continue to only attack the human player
+  by the ones they are actively attacking").
+- **The friendly has a shield**: a pool like the pilot's —
+  `friendlyShieldPool` 60 absorbs strikes first, hull takes the rest;
+  regenerates `friendlyShieldRegenPerS` 1.5 (a wave cleared fast leaves
+  the freighter near fresh for the next). Spoken on hits: "Raider hits
+  the Freighter. Freighter shields 40 percent." then, once, "Freighter
+  shields down." then the hull lines as now. I / F2 read the friendly's
+  shield and hull while a mission is live.
+- **Partial reward** (Brian: by freighter hull remaining): success
+  requires the friendly alive at the end, as now; the credits paid are
+  `missionCredits` × the friendly's hull fraction at the end (shield
+  ignored), rounded, spoken with the outcome ("Mission complete.
+  Freighter home at 60 percent. 180 credits."). Salvage per kill is
+  unchanged (already per kill). Favor, once 3.23 exists, follows the
+  same fraction.
+- **Kill buffs** (Brian: missile resupply, laser boost, shield top-up)
+  — a `KILL_BUFFS` table, rolled once per ship kill, at most one buff
+  per kill, spoken in the SAME `say()` as the kill line (the 2.15
+  rule): **missile resupply** `killBuffMissileChance` 0.35 — one missile
+  back in the magazine ("Missile recovered, 6 left."); **laser boost**
+  `killBuffLaserChance` 0.35 — the selected slot does +`killBuffLaserPct`
+  25 % for `killBuffLaserS` 30 s, a second boost extends the timer, never
+  the size ("Laser boost, 30 seconds."), a soft rising cue, ticking off
+  silently, "Laser boost over." at the end; **shield top-up**
+  `killBuffShieldChance` 0.3 — `killBuffShieldPts` 15 back into the
+  pool, or 4 s off a disrepair in progress ("Shields plus 15."). Buffs
+  apply in every combat, not just missions — a kill is a kill. The
+  "semi-permanent" buffs Brian mentioned are the laser levels (3.26);
+  everything here is temporary or a consumable.
+
+#### 3.26 Laser levels, wear, and repair (ideas7 — replaces 2.12's free cycling)
+
+- **Levels are earned, not cycled.** Each family (mining, rapid) has an
+  **owned level** per profile, `profile.laserLevels` `{ mining: 1,
+  rapid: 1 }`, and a **health** per level, `profile.laserHealth` `{
+  mining: 100, rapid: 100 }`. The eight recordings per family map to
+  levels 1–8 exactly as they map to versions today. `1` cycles the
+  slot's family *among owned levels* (1..owned), Shift+1 cycles back
+  (3.24's fix makes that real); an unowned level is refused by name
+  ("Mining laser level 4 is not fitted. The shipyard sells it."). The
+  switch sound and delay stay per slot (SPEC 1.14).
+- **Damage per level** (Brian): +20 % per level to level 5, +10 % per
+  level after: `tickBase × (1 + 0.2 × (L−1))` for L ≤ 5, then × 1.1
+  per level above 5. Levels 6–8 back to 20 % is late game (a module,
+  or a milestone — not specced). Replaces 2.12's flat 1.1^(L−1).
+- **Buying a level** (Brian: at the station only): the shipyard's
+  Lasers line lists each family's next level — `laserLevelCredits`
+  200 × N credits and `laserLevelAlloy` N alloy (the first 3.13 gate
+  that actually bites) — "Need 2 more alloy" refusals name the resource.
+- **Wear** (Brian: usage decays a laser to a prior level): every burst
+  fired at the owned level takes `laserWearPerBurst` 1 point off that
+  level's health, hit or miss. **At 0 the level drops by one** and the
+  health resets to 100 — the bought level is lost; the pilot hears it:
+  "Mining laser worn down to level 4." A level below the owned one
+  (chosen deliberately with 1/Shift+1) wears the SAME per burst but
+  costs less to repair — that's Brian's "use a lower laser on the easy
+  job." **Repair at the station only**: `laserRepairCreditsPerPoint` 2
+  × the level, per point restored, on the shipyard's Lasers line
+  ("Repair mining laser level 5, 38 points, 380 credits."). No repair
+  at range. Wear is spoken only at 50 % ("Mining laser at half.") and
+  25 %, and read by F2 ("Mining laser level 5, health 62.").
+- **Migration**: a v3 profile's `slots` (which held version ids like
+  `mining3`) become owned levels — the highest version id found per
+  family is the owned level, health 100 — so nobody loses a laser they
+  had. `PROFILE_VERSION` → 4.
+
+#### 3.27 System damage and the repair crew (ideas7 — un-defers Part C's "subsystem damage")
+
+- **What can break** (Brian's list, plus one): each laser slot
+  (independently), missiles, decoys, shields, the warp engine,
+  forward/back thrust (never turning or pitch), the targeting sensor,
+  and — added — the **cargo hold**. `SYSTEMS` table, each with a spoken
+  name, a knockout weight, and its own offline and half effects:
+
+  | System | Offline | At 50 % |
+  | --- | --- | --- |
+  | a laser slot | that slot refuses to fire | half damage |
+  | missiles | F refuses | launches at half speed |
+  | decoys | D refuses | a decoy has a 50 % chance to fizzle |
+  | shields | G refuses; a raised shield drops | pool max halved |
+  | warp engine | H refuses; regen stops | jump range halved |
+  | thrust | W and S do nothing; stabilizers still work | half thrust |
+  | targeting sensor | no lock, no tick, Tab still cycles | lock zone halved, tick slower |
+  | cargo hold | 2 % of the ore spills per further hit | 1 % |
+
+- **What breaks it** (Brian's answer): only an enemy **missile that
+  lands on the hull** — not on a raised shield, never a beam —
+  `knockoutChance` 0.4 per hit, one system, drawn by weight
+  (`SYSTEMS[i].weight`: decoys 3, a laser slot 3, sensor 3, missiles 2,
+  cargo 2, thrust 2, shields 1, warp 1). Spoken with the hull line:
+  "Your hull 62. Targeting sensor offline." A system already broken
+  can't be drawn again.
+- **The crew** (Brian: standard on every ship; the module is the
+  upgrade): every ship has a repair crew that works broken systems
+  **automatically, one at a time**, in a fixed priority — shields,
+  thrust, sensor, lasers, missiles, decoys, warp, cargo. Base speed
+  `repairHalfS` 90 to 50 % and 90 more to full. `repair_crew.wav`
+  (Brian's new asset, `audio/ships/repair_crew.wav` → an MP3 sibling and
+  manifest key `repair_crew`) plays on the UI bus each time the crew
+  starts a system; at 50 % a chime (`repair_half`, new cue) and
+  "Targeting sensor at 50 percent, usable."; at full, "Targeting sensor
+  repaired." Docking still repairs everything instantly, as now.
+- **Upgrades** (the module): `repair_crew` in `MODULES` — 500 credits,
+  2 alloy — halves both times (45/45); a second tier (400 credits) to
+  30/30; planet resources replace credits for a third tier later. F2
+  lists the crew's tier and, while anything is broken, what it's on and
+  how far along.
+- **Test**: force a knockout via `poke({ knockout: 'sensor' })`; every
+  offline/half effect in the table; the priority order; the two
+  announcements and the cue; docking clears all; the crew module halves
+  the times.
+
+#### 3.28 The quadrant's timed contract (ideas7 — the timed run lives in both places)
+
+- The **Delivery run** menu item stays exactly as it is — the fixed
+  sector, its hand-tuned legs, its own personal-best log. Untouched.
+- The **quadrant** gains a **Timed delivery** line in Station Meridian's
+  Missions list (2.17's shell): "Clear the current Contested Zone, mine
+  15,000 at any field, deliver here. Timed." Accepting starts a contract
+  clock (`contract.elapsed`, the delivery clock's own rules — runs while
+  the sim is live, through a tug); clearing the zone, then reaching
+  15,000 in the hold, then docking at Meridian with it completes it and
+  speaks the time. Its own log, `profile.contractRuns` (best 10, same
+  shape as `runs`), its own "New personal best!" — the legs vary with
+  the sky, so the two boards never compare. Pays the ore's price plus
+  `contractCredits` 200 on top; favor once 3.23 exists. Cooldown
+  `missionCooldownS` like the others. Selling ore is blocked while a
+  contract is open, exactly as 3.24 blocks it for the run.
 
 #### 3.23 Favor, control, and the three ranges (A.6 — Brian's station game)
 
@@ -2534,6 +2703,32 @@ iron-weighted; a Frontier loss tows back through the gate, fare waived;
 the transporter has its own shimmer cue; docking denied names the way
 in; the range modules cost 2 alloy each.
 
+Decided (Brian, ideas7, 2026-09-05, from flying the 3.10 build, three
+rounds of questions): the escort's partial reward scales with the
+**freighter's hull remaining**; laser versions become **earned tiers,
+worn by use** — bought at the station with credits and alloy, +20 % a
+level to 5 then +10 %, 1 point of health per burst, a level lost at
+zero, repaired only at the station; the repair crew is **standard on
+every ship** and works **automatically in a fixed priority** — the
+module is the upgrade; the timed contested-zone-then-mining route lives
+**in both places** — the fixed Delivery run stays, and the quadrant
+gains a timed contract with its own best-time log; Sell ore is blocked
+**everywhere** while a delivery is pending; kill buffs are **missile
+resupply, laser boost, and shield top-up**; the **cargo hold** joins the
+seven damageable systems; only **missiles on the hull knock systems
+out, 40 percent**; ideas7 builds **before 3.23**, small fixes first.
+
+Accepted by default (say otherwise), ideas7: escort 180 s, three waves
+of three Drones at 20/70/120 s, strikes 8, a freighter shield pool of 60
+regenerating 1.5 a second; Defend keeps two waves of three and gets the
+same shield and strikes; kill buffs at 35/35/30 percent, one per kill,
+the laser boost 25 percent for 30 s extending not stacking; level N of
+a laser costs 200 x N credits and N alloy; wear 1 per burst, repair 2
+credits a point times the level, wear spoken at half and a quarter; the
+knockout weights in the 3.27 table; the base crew 90 s to half and 90
+to full, the module halving it, a second tier to 30/30; repair_crew.wav
+on every start, a chime at half; the contract pays ore price plus 200.
+
 **DECIDE** (open): the real per-tick damage numbers for each laser — set by
 Brian's ear after hearing each recording against its profile; the code
 ships placeholders. The per-slot switch delays (three tie at 1.4 s) —
@@ -2546,8 +2741,8 @@ ranges once the approach has been flown with reaction mass (2.14).
 
 ## Deferred (Brian: "not yet")
 
-Enemy shields · subsystem damage sounds (no cue design yet) · nebula
-muffling · full tutorial content · fully inert systems.
+Enemy shields · nebula muffling · full tutorial content · fully inert
+systems. (Subsystem damage came off this list with ideas7 — it is 3.27.)
 
 ## Test checklist per item
 

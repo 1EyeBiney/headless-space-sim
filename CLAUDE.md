@@ -1245,8 +1245,25 @@ and fixed during testing (`ensureQuadrantHome`'s ordering crashed the
 very first Sector visit — see the bullet for the fix). Commits are
 LOCAL ONLY for this round — Brian asked to hold `git push` until he's
 tested the current build himself; nothing from Round 17 is on Pages
-yet. Not yet heard or flown by Brian. Next: SPEC 3.23 (favor, control,
-the three ranges), still pending the push.
+yet. Pushed 2026-09-05 at Brian's go-ahead; he is flying it. His first notes
+from it are **ideas7** (`ideas7.txt`, untracked like the others), written
+into SPEC.md the same day (Fable, three rounds of questions, answers in
+Part C) as five items that now build BEFORE 3.23: **3.24** two bugs
+(Shift+digit arrives as `!`/`@` — read `e.code`; Sell ore blocked
+everywhere while a delivery is pending), **3.25** the escort second pass
+(180 s, three waves of three Drones, strikes halved, a freighter shield
+pool, reward by the freighter's hull remaining) and kill buffs (missile
+resupply, laser boost, shield top-up), **3.26** laser levels — earned
+tiers bought at the station with credits and alloy, +20 %/level to 5
+then +10 %, worn 1 point per burst, a level lost at zero, repaired at
+the station only, replacing 2.12's free cycling (`PROFILE_VERSION` → 4),
+**3.27** system damage and the repair crew — missiles on the hull knock
+one of nine systems offline at 40 %, a standard crew repairs in fixed
+priority with `repair_crew.wav` (a new untracked asset, needs an MP3
+sibling and a manifest key) and a chime at half, the module is the
+upgrade — and **3.28** a timed delivery contract inside the quadrant
+with its own best-time log, the fixed Delivery run untouched. Next:
+build 3.24 first (the two bugs), then 3.25 → 3.28, then 3.23.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
