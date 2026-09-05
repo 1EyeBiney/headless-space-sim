@@ -220,6 +220,31 @@ stations. Every income source feeds credits or a resource.
   distance steps L.1 has now. "If there are other ways to do this
   better, I am open." L.1b in the lab is where that gets tried.
 
+- **The lattice (Brian, ideas11.txt, 2026-09-05 — proposed, awaiting his
+  answers in Part C).** The galactic map is a **9×9×9 grid of which the
+  quadrants occupy a 3×3×3 lattice** — one quadrant every third cell on
+  each axis, up to 27 — and travel is only along the lattice lines, the
+  "established space routes": a **gate is an edge** of the lattice, so a
+  corner quadrant has three gates, an edge four, a face five, the centre
+  six. The two cells between neighbouring quadrants on a route are
+  **waypoints** — where route encounters live (the old Frontier's
+  "anomaly" becomes a waypoint kind), or nothing. The cursor is L.1b's
+  grid cursor exactly: an unshifted press moves a whole quadrant (three
+  cells), Shift moves one cell, coordinates spoken as now, and it
+  **refuses to leave a route** — nine stops along any one line. Up to
+  **eight opposing factions** start in the other corners (a ninth at the
+  centre is Brian's own maybe). **This reconciles with ideas10's three
+  quadrants rather than replacing them**: Q1 (home, no trading), Q2 (the
+  economy), Q3 (control) are the three quadrants of ONE lattice edge —
+  cells 0, 3, 6 along the home route — so everything specced for them
+  stands, and the other 24 are Phase 4/5 content generated from the same
+  template. What it changes: A.13's "galactic map opens at the gate after
+  Quadrant 2" is unchanged; the Frontier's anomaly moves to a waypoint;
+  "how many opponents" (open since ideas9) gets its ceiling — eight — and
+  should be a difficulty setting, not a fixed number. Written as
+  direction here; the buildable pieces are Phase 4's (see Part C, the
+  ideas11.txt review).
+
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
 The lab stops being only a list of every sound and becomes the place
@@ -1939,7 +1964,11 @@ above: the home-station favor correction folded into 3.33, DONE → L.10
 from flying: 3.39 the first screen speaks, DONE → 3.40 the lab links
 home, DONE → 3.37 decoys confirmed and heard, DONE → 3.35 the tug second
 pass, DONE → 3.36 the crew works the hull, DONE → 3.38 auto-target,
-DONE) → **Brian flies everything since
+DONE) → **ideas11.txt reviewed, nothing scheduled yet** (Fable,
+2026-09-05 — Part C: 3.43 silent test mode proposed to go first, 3.41
+the flight course and 3.42 escort formation proposed after the
+playtest, the lattice and supply chains as A.13/3.23b direction) →
+**Brian flies everything since
 3.24** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
@@ -4213,6 +4242,123 @@ times, the hold, the charges, the module prices — is a placeholder for
 Brian to test and judge, per his own request that the fastest tier ship
 first specifically so he could. Not yet heard or flown by Brian.
 
+#### ideas11.txt — three proposed items (Fable's review, 2026-09-05; awaiting Brian, Part C)
+
+Written from Brian's `ideas11.txt` as items so they are buildable the
+moment he says yes; none is scheduled yet. The two galactic-scale notes
+in that file (the lattice, supply chains) went to A.13 and 3.23b as
+direction, not here.
+
+#### 3.43 Silent test mode (ideas11.txt) — proposed, build first
+
+- Brian: "add an option for no sound at all and have Sonnet use that
+  when testing for now." The `.click()` boot was never actually silent
+  once synthetic keys resumed the context — a targeted beacon, a laser
+  burst, a tug countdown all reach Brian's own speakers while a test
+  runs. Beacons-off (`poke({beacons: 'off'})`) was a partial fix.
+- **Unsaved, deliberately.** The Sound menu's four levels are saved to
+  the profile; an "everything off" saved there would silently persist
+  into Brian's own profile in the same browser after a test. So: a URL
+  flag `?mute=1` and `poke({mute: true})`, both setting
+  `SIM.audio.masterGain` to 0 (ramped) for the session only, plus
+  `state().muted`. Speech is never touched. A Sound-menu "Everything"
+  line is Brian's call (Part C) — the test tool doesn't need it.
+- **Standing rule once built** (CLAUDE.md, Working agreements): every
+  test script boots with `?mute=1` in addition to beacons off.
+- Test: `?mute=1` boots to a master gain of 0 with `assets` still
+  loading and `say()` still speaking; a reload without the flag is loud
+  again; nothing about it is in `localStorage`.
+
+#### 3.41 The flight course — beacons to fly through, against the clock (ideas11.txt) — proposed
+
+- Brian: a stunt/obstacle course that teaches the controls, the way
+  visual games do with a flight path and hoops, made audible: beacons
+  to fly through, guidance ticks on the active one, missed gates as
+  time penalties, "just seeing how fast the player can complete the
+  route" — "this might prove to be a new mini game or encounter/
+  instance."
+- **In the game, not the lab — the one push-back.** Brian said "the
+  demo page," but `soundlab.html` has no ship: the flight model, the
+  targeting tick, the thrusters, `HELD` keys, auto-thrust all live in
+  `index.html`'s closure, and the lab reproducing them would be a second
+  ship to keep in step. His own next sentence asks for "the same
+  controls and environment as we've been using in the space sim" — that
+  IS the game. So: a mission-menu item, **Flight course**, a new mode
+  `'course'` beside the combat and mining drills, with the lab untouched.
+- **Shape**: `COURSES` — a list, the first (`gentle`) eight gates as
+  positions relative to the start, turns under 30°, spacing ~600, so it
+  flies on auto-thrust (Brian's own condition). Each gate is a beacon
+  on its own HRTF panner (`buildPoiVoice` with a `course` type: one
+  base tone, each gate detuned a little by index — "slight variations
+  between the tones"), triggered by passing within `courseGateRadius`
+  150. The **active** gate — the lowest-numbered uncleared one — is the
+  selected target: it gets the guidance ticks exactly as a POI lock
+  does today (`lockToneKind` 'poi'), and when it becomes active its
+  number is spoken once ("Gate 3."). **At most `courseAudible` 4 gates
+  sound at once**, in order, on a volume ladder (`courseGains` [1, 0.6,
+  0.35, 0.2]); a cleared gate falls silent and is removed, and the
+  ladder shifts up — so the next one grows as you approach it. **A
+  miss** — the ship passes the gate's plane (dot of the ship's position
+  against the gate's forward) outside the radius — clears it anyway,
+  adds `courseMissPenaltyS` 10 to the clock, and says so ("Gate 3
+  missed, plus 10."). The clock runs from the first thrust; the last
+  gate speaks the time; `profile.courseRuns` is a third best-10 board
+  in the Run log, labelled like the contract's. Enter restarts, X
+  leaves. Weapons cold, as in the sector.
+- Relation to what exists: this is 3.17's flight tutorial in playable
+  form, and the seed of a race POI in a quadrant later (a waypoint kind
+  under A.13's lattice, even). Nothing here is new machinery — beacons,
+  the tick, the run log, auto-thrust — only a new roster and a new
+  win condition.
+- Test: eight gates cleared in order on auto-thrust with no key but
+  Shift+W; the ladder measured at four audible with the right gains;
+  the number spoken once per gate; a deliberate miss adds 10 and moves
+  on; the time lands in the Run log and the board sorts.
+
+#### 3.42 Escort in formation — station-keeping on the freighter (ideas11.txt) — proposed experiment
+
+- Brian, on the escort: would it be better to "attach" the ship to the
+  freighter's path — W/S sliding ahead or behind along the route,
+  left/right and up/down rotating the ship *around* the path — with a
+  freighter engine sound so the HRTF makes it feel like guarding its
+  underbelly, and a button that auto-flies from below to above? "I do
+  not know if this would make it any different."
+- **Fable's honest read**: today's escort is a free-flight fight near a
+  freighter that does move (along +z at `missionEscortSpeed`) but has no
+  voice of its own that motion would sell, and the pilot spends the leg
+  chasing bearings rather than *escorting*. Formation turns the leg into
+  station-keeping on a moving, audible hull — which is what escort
+  means — and it puts the HRTF to work on the one thing it does best:
+  a big engine loop passing over or under you. So yes, different, and
+  probably better; the risk is aiming, below.
+- **Shape, as a toggle so free flight stays**: **Shift+F** (unused today)
+  enters/leaves formation during an escort. In formation the ship's
+  position is a frame on the freighter: `formation = { along, angle,
+  standoff }` — W/S slide `along` ±`formationAlongMax` 300, left/right
+  rotate `angle` around the freighter's axis (the "underbelly" is
+  angle 180 at the default standoff), up/down change `standoff`
+  between `formationStandoffMin` 80 and `Max` 250 (Brian's "up/down does
+  the same" read as distance, since angle already covers the rotation
+  — Part C). A station key (Shift+F again? a second key?) cycles
+  presets: below, above, port, starboard, ahead, astern — Brian's
+  "button that moves the prims around." The freighter gets a real
+  engine loop (one of the un-wired cruiser recordings on disk —
+  `spaceship_cruiser_2r` — as `friendlyAsset`, Brian's "rocket freighter
+  sound"), so every slide and rotation is heard against it.
+- **Aiming is the catch**: lasers are nose-on, and in formation the
+  arrows move the ship's *position*, not its nose. Two choices — the
+  nose auto-points **outward** (away from the freighter), so drones
+  closing on it are ahead of you, or the pilot leans on **auto-target
+  (3.38)** to swing the nose while the frame holds position. Fable's
+  recommendation: outward by default, Shift+T on top — 3.42 leans on
+  3.38 being good, which is another reason it waits for Brian to have
+  flown 3.38.
+- Test: toggling on snaps to the underbelly and the engine loop is
+  audibly above; W/S slide, arrows rotate/standoff, presets cycle; a
+  drone's strike still lands on the freighter and the pilot can fire on
+  it from formation; toggling off returns free flight with the ship
+  where the frame left it.
+
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
 - **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', serves,
@@ -4360,6 +4506,41 @@ build once the questions in Part C are answered:
   the port-less Frontier — one of them has to give (DECIDE, Part C).
 - Placed here, after 3.20, because Buy/Sell, wants, hydrogen, and
   biomass all have to exist for production to have anything to produce.
+- **Supply chains, cut-off quadrants, and investing in planets (Brian,
+  ideas11.txt, 2026-09-05 — proposed, awaiting Part C).** Brian's
+  questions, with how each lands on what exists: (1) *How many stations
+  in a 3×3×3 lattice, how many for a union?* — at two stations a
+  quadrant (A.10's template) that is about 54; ideas9's "10 controlled
+  stations form a union" is then roughly a fifth of the galaxy, a corner-
+  to-corner run along one face. Fine as a first number; it is a CFG
+  value the moment unions exist. (2) *Supply chains* — fit 3.11's
+  `serves`/`wants` plus this item's production directly: a station's
+  production units need their inputs (biomass from its quadrant's
+  planet, ore from its fields) and stall without them, so a chain is
+  quadrant-local first and cross-quadrant only through the pilot's
+  hauling (3.20) or, later, automated shuttles. (3) *Do cut-off
+  quadrants lose control/favor faster?* — this is exactly what the two
+  CFG knobs 3.33 wrote and nothing reads yet are for:
+  `favorDecayQuadrantControlled` (0.4) and `favorDecayQuadrantsTouching`
+  (0.25) slow decay for a controlled and a connected quadrant; a
+  quadrant with no route to any other controlled one is simply the
+  un-slowed case — no new rule needed, only the lattice's adjacency.
+  **One catch to flag**: under 3.33 favor only decays at Allied or above,
+  so "cut off decays faster" cannot touch a Trusted station at all;
+  if Brian wants isolation to bite lower, it should erode *control*
+  (this item's investment share), not favor — the cleaner reading
+  anyway, since control is the strategic layer and favor the personal
+  one. (4) *Resource-specific quadrants* — A.10's typed fields per
+  quadrant and 3.12's price levers already give a quadrant a resource
+  identity; the lattice just makes "which ones to get" a map question.
+  (5) *Planets the pilot has invested in supplying their station, favor
+  without visiting* — passive production shipping itself: an invested
+  planet's holding bay empties into its quadrant's station on a timer,
+  each shipment paying `favorPerWantUnit` at that station and counting
+  as a real interaction (a `touchPort`), so 3.33's "favor is remembered
+  by interaction, not by clock" rule holds — the pilot is present by
+  proxy. Every number here is direction, not spec, until Part C is
+  answered.
 
 #### 3.21 Threat escalation, and its decay (Brian)
 
@@ -4854,6 +5035,64 @@ it — none of ideas10.txt has been heard yet:
 - **Decoy confirmation comes at the pop, not the press** (3.37) — "Decoy
   took it." a second after the launch. And: it is possible decoys are
   simply broken; the build proves it first.
+
+**Review (Fable, 2026-09-05) of Brian's `ideas11.txt`** — five concepts,
+checked against what exists. Brian's own worry: "I am starting to get
+ideas that might contradict what we have." Verdict: **nothing here
+contradicts the build; two things contradict the *spec* and both
+resolve cleanly**, one push-back, and a handful of readings to confirm:
+- **No-sound test mode** → fits; written as **3.43**, unsaved on purpose
+  (a saved "everything off" would persist into Brian's own profile in
+  the same browser). Build it first — it makes every later test quiet.
+- **The flight course** → fits everything (beacons, the tick, auto-
+  thrust, the run log — no new machinery). **Push-back**: it belongs in
+  the game, not the lab — the lab has no ship, and Brian's own words
+  ask for "the same controls and environment." Written as **3.41**, a
+  mission-menu item. It is also 3.17's flight tutorial in playable form.
+- **The 9×9×9 / 3×3×3 lattice** → the one spec contradiction, and it
+  resolves: ideas10's three quadrants (1 no trading, 2 economy, 3
+  control) are the three quadrants of ONE lattice edge — cells 0, 3, 6
+  of the home route — so nothing specced for them changes; the other 24
+  are Phase 4/5. Gates are lattice edges (3 at a corner, 6 at the
+  centre); waypoints between quadrants take over the Frontier's old
+  "anomaly"; the cursor is L.1b's grid exactly, route-locked. Written
+  into A.13. "Eight opponents at the corners" collides with ideas9's
+  open "does the computer start with two unions?" — Fable's answer:
+  eight is the ceiling, the count is a difficulty setting.
+- **Supply chains / cut-off decay / planet investment** → fit 3.11 +
+  3.23b, and the cut-off rule turns out to be exactly what
+  `favorDecayQuadrantControlled`/`QuadrantsTouching` (written unread in
+  3.33) already are. **One catch**: 3.33 only decays favor at Allied or
+  above, so isolation can't touch a Trusted station — if it should bite,
+  it should erode *control*, not favor. Planet shipments count as
+  interactions, so 3.33's absence rule holds. Written into 3.23b.
+- **Escort in formation** → not a contradiction, a mode: the freighter
+  already moves (`missionEscortSpeed`); formation makes the leg station-
+  keeping on an audible hull, which is what escort means. Fable thinks
+  yes, it would be better — with one catch, aiming (nose-on lasers vs.
+  arrows that now move position): nose outward by default, 3.38 on top.
+  Written as **3.42**, a toggle, an experiment after Brian has flown 3.38.
+
+**DECIDE (open, from ideas11.txt)**:
+- 3.43: URL flag + `poke`, unsaved — enough, or also a Sound-menu
+  "Everything" line (saved, with the risk above)?
+- 3.41: in the game as a mission-menu item, not the lab — confirmed?
+  Eight gates, radius 150, four audible, +10 s a miss — first numbers.
+- Lattice: Q1 is a **corner** and the three quadrants are one edge —
+  confirmed? Is the centre the base (A.8)? Opponent count as a
+  difficulty setting, ceiling eight? Do the three "tiers" (no trade /
+  economy / control) repeat by distance from home across the other 24,
+  or is every later quadrant a full economy?
+- Cut-off quadrants: erode **control** (not favor, which 3.33 protects
+  below Allied) — agreed?
+- 3.42: Shift+F for formation; up/down as standoff distance (angle
+  already rotates); nose outward by default; `spaceship_cruiser_2r` as
+  the freighter's voice — any of those wrong? Build it before or after
+  the lattice work?
+- Order, Fable's proposal: **3.43 now** (before Brian's playtest, so
+  the tests are quiet) → Brian flies everything since 3.24 → 3.41 →
+  3.42 → quadrant 2 as ordered. The lattice and supply chains stay
+  direction (A.13/3.23b) until Phase 4.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts

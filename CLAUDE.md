@@ -2444,3 +2444,35 @@ checkpoint spanning this round and the two before it (ideas9/ideas10
 chat, ideas11) — not a build task. Nothing in Phase 3's quadrant-2 items
 (3.18/3.14/3.22/3.11/etc.) should be started without further word from
 Brian.
+
+**Round 29 (Fable, docs only)**: Brian's `ideas11.txt` (untracked, like
+every ideas file) reviewed against the build — his own worry was that
+his newer ideas might contradict what exists. Verdict, written into
+SPEC.md Part C: nothing contradicts the *build*; two things contradicted
+the *spec* and both resolve. **The lattice** (a 9×9×9 grid, quadrants on
+a 3×3×3 lattice, travel only along its lines, gates as edges, waypoints
+between, up to eight opposing factions at the corners) is reconciled
+with ideas10's three quadrants by making them ONE lattice edge — cells
+0/3/6 of the home route — so nothing specced for Q1/Q2/Q3 changes; it's
+now A.13 direction. **Supply chains / cut-off quadrants / planet
+investment** land on 3.11 + 3.23b, and the cut-off rule turns out to be
+exactly the two CFG knobs 3.33 wrote unread
+(`favorDecayQuadrantControlled`/`QuadrantsTouching`) — with one catch
+flagged: 3.33 never decays favor below Allied, so isolation should erode
+*control*, not favor. Three items written as proposals, none scheduled:
+**3.43** a silent test mode (`?mute=1` + `poke({mute: true})`, UNSAVED
+on purpose so it can't persist into Brian's own profile — Brian's ask
+was aimed at Sonnet's testing; once built it becomes a standing Working
+agreement here: every test boots muted AND beacons-off), **3.41** the
+flight course (beacons to fly through against the clock, guidance ticks
+on the active gate, a four-deep volume ladder, +10s a miss, its own
+run-log board — with the one push-back that it belongs in the GAME as a
+mission-menu item, not the lab, since the lab has no ship), and **3.42**
+escort in formation (Shift+F toggles a frame on the moving freighter,
+W/S along, arrows around, presets below/above/port/starboard, a real
+freighter engine loop; the catch is aiming — nose outward by default,
+3.38 on top — so it waits until Brian has flown auto-target). Fable's
+proposed order: 3.43 now, then Brian's playtest, then 3.41 → 3.42, then
+quadrant 2 as ordered; the lattice stays Phase 4. Six questions for
+Brian sit in Part C under "DECIDE (open, from ideas11.txt)". Nothing
+built this round.
