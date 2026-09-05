@@ -115,6 +115,15 @@ stations. Every income source feeds credits or a resource.
   long.
 - **Home**: Station Meridian starts Trusted; everyone else starts
   Unknown. The delivery run's fixed sector runs none of this.
+  **Superseded (Brian, ideas10, 2026-09-05): nobody starts at 40** —
+  Meridian is a stranger too; every station is Unknown until earned.
+  Trusted is *permanent* once reached (favor never drops below 40), and
+  decay doesn't start at all until Allied — it only ever pulls a pilot
+  from Allied/Honored back toward Trusted. The "stranger gate" at any
+  station is one combat encounter *or* 20,000 ore donated — the initial
+  hold (3.14) — so the best players can clear quadrant 1 in one fight,
+  carry a full hold through the gate, and buy their way past the
+  stranger gate in quadrant 2 at once. Choices, not one path.
 - Long game (unchanged): control enough stations to form a **union**;
   quadrants end up in unions; the player flips, holds, develops, or
   captures quadrants; an automated war runs; a small local AI model
@@ -170,6 +179,14 @@ stations. Every income source feeds credits or a resource.
   onward — where the next mechanics live (the anomaly instance first;
   Brian has more in mind). The **galactic map and union play open only at
   the gate after Quadrant 2** — pass it and Phase 4 begins.
+  **Revised (Brian, ideas10, 2026-09-05):** three quadrants, each a
+  step. **Quadrant 1** — favor, missions, mining, combat, the contract;
+  no trading. **Quadrant 2** — the economy: ports with prices, wants,
+  production (every POI produces two, wants two), planets as ports,
+  hauling; still safe, no control. **Quadrant 3** — control and rival
+  unions on the same schema, where Phase 4 begins. The gate out of 1
+  opens at Known, so a strong pilot can be in 2 after one fight with a
+  full hold to buy their way in.
 - A pilot leaves Quadrant 1 early: the gate opens **once any station
   trusts them**, for a hydrogen fare. Support — favor and control — is
   gathered quadrant by quadrant; nothing at the galactic scale is
@@ -1911,12 +1928,13 @@ game items are all complete**)
 → **ideas9 next** (Brian, 2026-09-05, after reading 3.23 as built:
 3.33 favor second pass → 3.34 a full stop to dock → the lab second
 pass L.1b/L.4b/L.5b/L.8b → 3.32 reaction mass) → **then Brian flies
-everything since 3.24 before 3.11 starts** → 3.18 containers and
-hydrogen → 3.11 ports and F4 (with the ideas9 steering) →
-3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
-3.20 hauling and biomass → 3.23b control as investment (once Part C's
-ideas9 questions are answered) → 3.21 threat escalation → 3.13 salvage
-gates and the drone swarm → 3.22 the gate and the frontier quadrant. Then
+everything since 3.24** → **quadrant 2 (ideas10: the economy lives
+there, so the gate goes first)**: 3.18 containers and hydrogen (the
+fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
+priced against) → 3.22 the gate and quadrant 2's skeleton → 3.11 ports
+and F4 → 3.19 planets as ports → 3.12 the price levers → 3.20 hauling
+and biomass → 3.21 threat escalation → 3.13 salvage gates and the drone
+swarm → 3.23b control as investment (quadrant 3 — the Phase 4 line). Then
 **Phase 3b**: 3.16 verbosity and the journal, 3.17 tutorials — once the
 world has been flown, so the tutorials teach what is actually there.
 Stop for Brian's ears after 3.10 (the first thing that *moves* — built;
@@ -3428,12 +3446,18 @@ one round, before 3.11, since the economy builds on these numbers.
   control rates wait for control to exist (3.23b) and are written into
   CFG now as `favorDecayQuadrantControlled` / `favorDecayQuadrantsTouching`
   with nothing reading them yet.
-- **The floor is 40.** `favorFloorTiers` goes; once a port's `peakFavor`
-  has reached `favorTrusted`, decay never takes it below `favorTrusted`.
-  Below Trusted, decay runs to 0 as before. (Brian: "favor should not
-  ever go below 40" — read as Trusted being permanent once earned; the
-  one thing to confirm, Part C.) Meridian still starts at 40 and so is
-  simply always Trusted — the "no buffer" worry goes away with the floor.
+- **The floor is 40, and decay starts at 70** (Brian, ideas10). Trusted
+  is permanent: once a port's `peakFavor` has reached `favorTrusted`,
+  favor never drops below it. And decay **doesn't run at all below
+  Allied** — `favorDecayStartsAt` = `favorAllied`; a Known or Trusted
+  pilot never loses a point to absence, an Allied or Honored one drifts
+  back toward 40 at the rates above and stops there. `favorFloorTiers`
+  goes. **Nobody starts at 40**: `ensurePort` no longer special-cases
+  Meridian — home is a stranger like every other station, and a fresh
+  pilot in the quadrant can't dock anywhere until they've earned Trusted
+  somewhere (the tug still lands them at Meridian and docks them, as
+  its arrival always has; `nearestTrustedStationTo` finds nothing on a
+  fresh profile, so every early loss is the long ride home).
 - **Five tiers.** Add `favorHonored` 90. Range bonuses by tier
   (`favorRangeBonus`): Trusted +25 %, Allied +50 %, Honored +50 %
   (`stationRangeFor` reads the tier's bonus instead of Allied-only).
@@ -3444,13 +3468,17 @@ one round, before 3.11, since the economy builds on these numbers.
 - **Numbers.** `favorMission` 8 → **16** (escort, defend, the contract);
   `favorPerWantUnit.ore` 200 → **500** (salvage and alloy stay 4 — a
   full 15,000 hold is now +30, not +75); clearing the quadrant's
-  Contested Zone pays `favorZoneClear` **8** at the nearest station
-  (spoken in the same victory line, never a second `say()`).
+  Contested Zone pays `favorZoneClear` **16** at the nearest station —
+  Known in one fight, the "stranger gate" Brian describes (spoken in the
+  same victory line, never a second `say()`).
 - **Donate ore.** A new line on **both** the comms and transporter menus
   (comms is the point — it's how a stranger becomes Known without a
-  mission): "Donate ore. 500 ore per point of favor; your hold reads N."
-  Enter donates the whole hold for `floor(ore / favorPerWantUnit.ore)`
-  favor and no credits, says the favor and the new tier if it changed.
+  fight): "Donate ore. 2,000 ore per point of favor; your hold reads N."
+  Its own rate, `donateOrePerFavor` **2,000**, not the sale rate — so
+  a full 20,000 hold (3.14's `cargoMax`) is exactly Known: Brian's
+  "20k to skip the first combat encounter." Enter donates the whole hold
+  for `floor(ore / donateOrePerFavor)` favor and no credits, says the
+  favor and the new tier if it changed.
   Refused while the delivery run's or the contract's ore is owed
   (`oreSellBlocked`, same rule as Sell). Salvage and alloy are not
   donated — ore is the currency of standing; this is also 3.23b's
@@ -3552,7 +3580,11 @@ zone) definitely feels it.
   — `missionDestinationPlanet/Field` read `PORTS[name].serves` instead
   of "nearest to the ship," so favor and the missions tell one story.
   The comms menu gains **Prices** and **Wants** here (3.23's comms tier
-  has been Missions, Donate, Close until now).
+  has been Missions, Donate, Close until now). **And (ideas10): these
+  ports are quadrant 2's.** Quadrant 1's two stations never get prices
+  or wants; 3.11, 3.19, 3.12, and 3.20 are built against quadrant 2's
+  hand-authored roster (3.22), so 3.22's gate and quadrant skeleton go
+  in first — see the build order.
 
 #### 3.19 Planets as ports (Brian: land like a station; market and fuel, no shipyard)
 
@@ -3710,9 +3742,13 @@ build once the questions in Part C are answered:
 #### 3.22 The gate and the frontier quadrant (A.13 — Brian)
 
 - **The Jump Gate opens** once any station in the quadrant is at
-  Trusted (Brian: in Phase 3, once one station trusts you). Before that,
-  2.6's sealed text with the reason: "Gate control: transit lane closed
-  to unknown pilots. Earn a station's trust." After: C within its comms
+  **Known** (was Trusted — Fable's push-back on ideas10: with nobody
+  starting at 40, Trusted would cost three encounters or 80,000 ore at
+  one station, and the fast path Brian wants — one fight, one hold,
+  through the gate — needs the gate to open at the stranger gate, not
+  past it; confirm, Part C). Before that, 2.6's sealed text with the
+  reason: "Gate control: transit lane closed to strangers. Make yourself
+  known at a station." After: C within its comms
   range hails it — "Gate control: transit to the Frontier, fare 30
   hydrogen. Confirm?" — Enter pays `gateFareHydrogen` 30 from the hold
   and **transits**: a warp-like flight of `gateTransitS` 12 with the
@@ -3720,7 +3756,19 @@ build once the questions in Part C are answered:
   engaged loop pitched down under a rising discharge), the quadrant swap
   happening under the sound, arriving `warpDropout` 600 out from the far
   gate, facing away. Every transition-save fires on both sides.
-- **The Frontier** (Brian: no ports, one anomaly) — a second hand-authored
+- **Quadrant 2 is the economy, not an empty frontier (Brian, ideas10,
+  supersedes "no ports").** Quadrant 1 doesn't trade — its two stations
+  keep flat prices, favor, missions, the contract. Quadrant 2 is where
+  ports get **prices, wants, and production**: every POI produces two
+  things and wants two, so 3.11, 3.19, 3.12, and 3.20 are *built in
+  quadrant 2*, hand-authored here (its stations and planets are the
+  `PORTS` those items describe; the Meridian/Station Two/Planet A names
+  in them are placeholders for quadrant 2's own). Quadrants 1 and 2 are
+  **safe** — no control, no rival unions. **Quadrant 3** (Phase 4) is
+  where control and the unions' own ships start competing, on the same
+  schema. What stays of the old Frontier here: the richer fields and the
+  anomaly, below.
+- **The rest of the quadrant** — a second hand-authored
   `QUADRANT`: a star, one to three asteroid fields (richer: `cloudOreBudget`
   × 1.5 and iron-rich weighted, the reason to come), one **anomaly** POI
   (A.13: kind `'anomaly'`, placeholder name "the Vortex", a beacon and a
@@ -4066,38 +4114,35 @@ lab's four demos change as L.1b/L.4b/L.5b/L.8b say; **Control is
 rethought** as investment → station levels → passive production into
 holding bays (3.23b), unions at 10 controlled stations gating the base.
 
-**DECIDE** (open, from ideas9 — Fable's questions back, answer by number):
-1. "Favor should not ever go below 40" — read as *Trusted is permanent
-   once reached* (3.33's floor). Or did you mean every station starts at
-   40 and never drops below it, i.e. everyone is Trusted from the start
-   and the Unknown/Known tiers only gate strangers in *new* quadrants?
-2. Your answer on decay was cut off: "decay should not happen until…" —
-   until what? A number of play-hours of absence before it starts (a
-   grace period), until a tier is reached, or until control exists?
-3. Donate ore from **comms** range (the stranger's way in, as written in
-   3.33) — or only from the transporter, which would leave missions as
-   the only way to Known? 3.33 assumes comms.
-4. **Quadrant 2**: 3.22 specs the Frontier with *no ports* (rich fields,
-   one anomaly); ideas9 wants the second quadrant to be where every POI
-   produces two things and wants two things. Is the trading quadrant a
-   *third* one past the Frontier, does the Frontier gain ports, or does
-   the produce-2/want-2 rule belong to the home quadrant's *stations*
-   after all (with production itself held back to quadrant 2)?
-5. Control's **erosion**: with investment and levels replacing the share
-   model, does a station's level (or the pilot's control of it) ever go
-   *down* — to unions, to neglect, to attack — or is it permanent once
-   bought? The 0.4 / 0.25 decay rates you gave assume "controlled" is a
-   state that can be lost.
-6. Honored's "unique or bonus items" — Phase 4, or is there one you want
-   in Phase 3 (a module only Honored stations sell, say)?
-7. The 25 % Honored discount — modules and lasers now, and 3.20's Buy
-   lines later; also on reaction mass and repairs, or purchases only?
-8. Still open from earlier rounds: 3.26's single health per laser family
-   with repair priced off the owned level; the tractor's test-fit flag
-   (off after you've heard it); Rookie's ×2 laser against ships; the
-   repair-crew knockout chance and weights. And the reading checkpoint —
-   everything since 3.24 is unheard; 3.33/3.34/the lab pass/3.32 are
-   the last round before you fly it.
+**Decided (Brian, ideas10, 2026-09-05 — answers to the eight):** (1)
+Trusted is permanent, and **nobody starts at 40** — Meridian included.
+(2) Decay doesn't start until Allied (70); it only ever pulls Allied/
+Honored back toward Trusted. (3) A stranger can donate from comms; the
+stranger gate is one combat encounter or a full 20,000 hold —
+`donateOrePerFavor` 2,000, `favorZoneClear` 16, so both land exactly on
+Known. (4) Three quadrants: 1 no trading, 2 the economy (ports, prices,
+production, safe), 3 control and rival unions (Phase 4) — 3.22 and 3.11
+rewritten accordingly. (5) Control can be lost, mostly to *simulated*
+rival unions running their own ships on missions and mining, not to a
+timer — quadrant 3, Phase 4. (7) The Honored discount covers repairs and
+reaction mass too. (6) and (8) unanswered — below.
+
+**DECIDE** (still open):
+- The gate opens at **Known** (Fable's push-back, written into 3.22):
+  with nobody starting Trusted, a Trusted gate would cost three
+  encounters or 80,000 ore before quadrant 2, and the one-fight-and-a-
+  full-hold fast path Brian wants needs Known. Confirm, or name the
+  tier.
+- Honored's bonus items (6): Phase 4 unless Brian names one.
+- From earlier rounds (8): 3.26's single health per laser family with
+  repair priced off the owned level; the tractor's test-fit flag; Rookie's
+  ×2 laser against ships; the repair-crew knockout chance and weights —
+  all answered by flying, not by asking. Everything since 3.24 is
+  unheard; 3.33/3.34/the lab pass/3.32 are the last round before that.
+- Quadrant 2's roster: how many stations and planets, and what each
+  produces and wants — needed before 3.22 builds. Fable will propose one
+  (a star, two stations, two planets, a gate back and one on, rich
+  fields, the anomaly) unless Brian hands over names and pairs first.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts

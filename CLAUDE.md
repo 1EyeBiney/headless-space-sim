@@ -2019,6 +2019,16 @@ the big one); 3.11 gains "missions follow what a station serves" and
 wanted-only favor. Build order: 3.33 → 3.34 → lab pass → 3.32, then
 **Brian flies everything since 3.24** before 3.11. Eight numbered
 questions for Brian sit in Part C under "DECIDE (open, from ideas9)".
+**Brian answered in chat the same evening (ideas10, in Part C)**: nobody
+starts Trusted, Meridian included (3.33 drops `ensurePort`'s Meridian
+special case); Trusted is permanent and decay only runs at Allied or
+above; a stranger buys Known with a full 20,000 hold (`donateOrePerFavor`
+2,000) or one combat encounter (`favorZoneClear` 16); **three quadrants**
+— 1 no trading, 2 the economy (3.11/3.19/3.12/3.20 are built THERE, so
+3.18 → 3.14 → 3.22 go first), 3 control and rival unions (Phase 4); the
+Honored discount covers repairs and reaction mass. Fable's one push-back,
+written into 3.22 for Brian to confirm: the gate opens at Known, not
+Trusted, or the fast path he wants doesn't exist.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
