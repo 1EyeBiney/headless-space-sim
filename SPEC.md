@@ -122,6 +122,45 @@ stations. Every income source feeds credits or a resource.
   **auto-governed** so resources collect without micromanagement once the
   empire is big. Possibly a farm game on planets. Built in Phase 3 (3.23,
   3.11, 3.19, 3.22) as far as one quadrant and the frontier beyond it.
+- **Favor, second pass (Brian, ideas9, 2026-09-05, after reading 3.23 as
+  built).** Five tiers now, and every tier past Known widens the ranges:
+  Unknown (0) comms · Known (10) the transporter · Trusted (40) docking
+  and **+25 %** to all three ranges · Allied (70) **+50 %** ranges, the
+  price break when 3.20 exists · **Honored (90)** +50 % ranges, **25 %
+  off purchases**, likely unique or bonus items, and decay **halved**.
+  **Favor never goes below 40 once reached** — Trusted is a floor, not a
+  tier you can fall out of (replaces "one tier below the peak"). Decay is
+  only ever in *absence* — no sale, mission, donation, or hail there —
+  and slows with the empire: 1 per play-hour of absence, 0.5 past
+  Honored, 0.4 when every station in the quadrant is controlled, 0.25
+  when controlled quadrants touch. Missions pay **twice** what 3.23
+  gives; selling what a station wants pays **1 per 500 ore** (200 was
+  "too big a jump"); clearing the quadrant's Contested Zone pays favor
+  at the nearest station; and a pilot can **always donate ore** to a
+  station, at any tier — the way a stranger becomes Known without a
+  mission. A new quadrant is meant to be *entered*, not courted: pick an
+  encounter POI at once; beating the combat one grants **quadrant-wide
+  comms** (hail any port from anywhere in that quadrant).
+- **Control, rethought (ideas9).** Brian is questioning the share-vs-
+  unions model: favor unlocks *benefits*; control is **earned by
+  investing** in a station or planet, and what it gives back is
+  **passive production** — the resources a base will need, collected
+  without micromanagement. Stations have **levels** (donating 15,000 ore
+  goes into levelling one); each resource a station produces has a
+  production unit that makes it per play-hour into a **holding bay**
+  that fills and stops (bigger with level, so fewer visits); the pilot
+  collects within transporter range; eventually automated shuttles
+  collect for them. Selling ore straight for credits, donating it for
+  favor, or sinking it into a station's level is the strategic choice
+  at every landing. Production is **not** in the first quadrant; in the
+  second, every POI **produces two things and wants two things**, so a
+  trader earns a side income by travelling (this collides with the
+  Frontier as specced in 3.22 — DECIDE, Part C). Unions form at **10
+  controlled stations** and gate the base; a broken union stops base
+  work until mended. Open: the total station count that makes 10
+  reachable, and whether the computer starts with two unions the
+  player must break (Phase 4/5, Part C). The share/tithe/erosion model
+  stays on paper as an option, not a plan.
 
 ### A.13 Quadrants, gates, and the road to the galactic map (Brian, 2026-09-04 night)
 
@@ -156,6 +195,13 @@ stations. Every income source feeds credits or a resource.
   orientation the game already sets every frame. L.1 is its prototype;
   the lab's elevation demos are how Brian finds out how much height the
   ear can carry before the galaxy is given any.
+- **The cursor is a grid, not a compass (Brian, ideas9).** Having heard
+  L.1's idea, Brian's picture of the galactic map is a **3D coordinate
+  grid** the cursor steps through: arrows for up/down and left/right, W
+  forward, S back, and the **coordinates spoken** as it moves, so the
+  cursor is always on a grid point — not the polar azimuth/elevation/
+  distance steps L.1 has now. "If there are other ways to do this
+  better, I am open." L.1b in the lab is where that gets tried.
 
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
@@ -1861,11 +1907,16 @@ brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
 page, DONE → 3.30 the tractor beam, DONE — **Phase 3L and its three
 game items are all complete**)
 → 3.28 the quadrant's timed contract, DONE
-→ 3.23 favor and the three ranges, PARTIALLY DONE (Control/Invest/the
-tithe/unions deferred to 3.11, next) → 3.18 containers and hydrogen → 3.11 ports and F4 →
+→ 3.23 favor and the three ranges, DONE (Control rethought, now 3.23b)
+→ **ideas9 next** (Brian, 2026-09-05, after reading 3.23 as built:
+3.33 favor second pass → 3.34 a full stop to dock → the lab second
+pass L.1b/L.4b/L.5b/L.8b → 3.32 reaction mass) → **then Brian flies
+everything since 3.24 before 3.11 starts** → 3.18 containers and
+hydrogen → 3.11 ports and F4 (with the ideas9 steering) →
 3.19 planets as ports → 3.14 the cargo limit → 3.12 the price levers →
-3.20 hauling and biomass → 3.21 threat escalation → 3.13 salvage gates
-and the drone swarm → 3.22 the gate and the frontier quadrant. Then
+3.20 hauling and biomass → 3.23b control as investment (once Part C's
+ideas9 questions are answered) → 3.21 threat escalation → 3.13 salvage
+gates and the drone swarm → 3.22 the gate and the frontier quadrant. Then
 **Phase 3b**: 3.16 verbosity and the journal, 3.17 tutorials — once the
 world has been flown, so the tutorials teach what is actually there.
 Stop for Brian's ears after 3.10 (the first thing that *moves* — built;
@@ -2715,6 +2766,42 @@ Stop, confirmed by reading `AudioListener.forwardX/Z` directly before
 and after. Zero console errors throughout every demo. Every number is
 a placeholder for Brian's ear. Not yet heard by Brian.
 
+#### Phase 3L, second pass — Brian's notes after hearing the lab (ideas9, 2026-09-05)
+
+Four changes to demos that exist, one round, all in `soundlab.html`.
+Same shell, same `__lab` hook, same stop-everything rule.
+
+- **L.1b The grid cursor.** L.1's polar explorer becomes (or gains a
+  sibling that is) a **3D grid**: the cursor steps `gridStep` 100 along
+  axes — Left/Right x, Up/Down y (height), **W forward / S back** on z —
+  and each step **speaks the coordinates** ("2 right, 1 up, 3 forward"),
+  so the cursor is always on a grid point; the source sounds from the
+  cursor's position as now, Enter "selects" as now, Home resets to the
+  origin. Shift steps 25. This is the galactic map's cursor (A.13)
+  tried on a grid instead of a compass; Brian is open to a better way
+  if one turns up in the building — say so in the DONE note.
+- **L.4b The flyby, re-cast.** The four **routes** use the *last* four
+  recordings (`propeller_plane5–8`, the 12-second ones, looped); the
+  **stunts** use a **synthesized propeller** — the best the engine's
+  primitives can do (a low sawtooth under a pulsed noise bed, pitch
+  following the stunt's speed), not a recording. Clips 1–4 come off
+  the demo.
+- **L.5b The vortex, back to one group.** The per-vortex selection goes
+  away; the keys shape all vortices together as they did before L.5:
+  Up/Down height, Left/Right speed, Page Up/Down **vertical wobble**,
+  Home/End **tilt in the x-y plane**, **[ / ] fewer / more vortices
+  audible** (1..8). Readback after every change, R resets, as now.
+- **L.8b The room, without the quiz.** Four sounds, from the game's own
+  assets: an asteroid loop, a propeller plane, a mining laser, a vortex.
+  No questions: the room **rotates 90° every 10 seconds**, each turn
+  preceded by the announcement ("Turning left") and, after it, the
+  room's orientation **relative to the original** ("Facing 90 right of
+  where you started; the asteroid is now behind you"). Escape stops.
+- Test: every key in each demo answers; the grid cursor's coordinates
+  read back on every step and reset on Home; the flyby's routes play
+  clips 5–8 and its stunts play no recording; the vortex count changes
+  on the brackets; the room turns every 10 s with both lines.
+
 #### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8) — DONE
 
 - `audio/stations/space_station1–10.mp3` (new, untracked, staged
@@ -3324,6 +3411,112 @@ just be dead, untestable code. Scope actually delivered:
   Every favor/range number is a placeholder for Brian's ear. Not yet
   heard or flown by Brian.
 
+#### 3.33 Favor, second pass (ideas9 — Brian's answers to the 3.23 review, 2026-09-05)
+
+Brian read 3.23 as built (the review in Part C, "ideas9") and answered.
+Everything here is a change to 3.23's own code, not a new system —
+one round, before 3.11, since the economy builds on these numbers.
+
+- **Decay is absence, not time.** `reconcileFavor` must stop stamping
+  `lastVisitHour` on every read; only a real interaction at that port
+  stamps it — a hail, a sale, a donation, a mission accepted or
+  completed there, a docking. Reads apply whatever decay has accrued
+  and leave the stamp alone. (As built, every station is read every
+  frame in the sector, so favor drained everywhere at 1 per play-hour
+  whether the pilot traded there daily or never.) Rates: `favorDecayPerHour`
+  1; `favorDecayHonored` 0.5 past Honored; the 0.4 / 0.25 quadrant-
+  control rates wait for control to exist (3.23b) and are written into
+  CFG now as `favorDecayQuadrantControlled` / `favorDecayQuadrantsTouching`
+  with nothing reading them yet.
+- **The floor is 40.** `favorFloorTiers` goes; once a port's `peakFavor`
+  has reached `favorTrusted`, decay never takes it below `favorTrusted`.
+  Below Trusted, decay runs to 0 as before. (Brian: "favor should not
+  ever go below 40" — read as Trusted being permanent once earned; the
+  one thing to confirm, Part C.) Meridian still starts at 40 and so is
+  simply always Trusted — the "no buffer" worry goes away with the floor.
+- **Five tiers.** Add `favorHonored` 90. Range bonuses by tier
+  (`favorRangeBonus`): Trusted +25 %, Allied +50 %, Honored +50 %
+  (`stationRangeFor` reads the tier's bonus instead of Allied-only).
+  Honored's 25 % purchase discount (`honoredDiscount`) applies to modules
+  and lasers now and to 3.20's Buy lines when they exist; "unique or
+  bonus items" is Phase 4 (Part C). `FAVOR_TIER_WORDS` gains a line for
+  Honored; F2's Station access heading names the tier bonuses.
+- **Numbers.** `favorMission` 8 → **16** (escort, defend, the contract);
+  `favorPerWantUnit.ore` 200 → **500** (salvage and alloy stay 4 — a
+  full 15,000 hold is now +30, not +75); clearing the quadrant's
+  Contested Zone pays `favorZoneClear` **8** at the nearest station
+  (spoken in the same victory line, never a second `say()`).
+- **Donate ore.** A new line on **both** the comms and transporter menus
+  (comms is the point — it's how a stranger becomes Known without a
+  mission): "Donate ore. 500 ore per point of favor; your hold reads N."
+  Enter donates the whole hold for `floor(ore / favorPerWantUnit.ore)`
+  favor and no credits, says the favor and the new tier if it changed.
+  Refused while the delivery run's or the contract's ore is owed
+  (`oreSellBlocked`, same rule as Sell). Salvage and alloy are not
+  donated — ore is the currency of standing; this is also 3.23b's
+  "sink ore into a station" lever in its first form.
+- **Quadrant-wide comms** (`profile.quadrants[q].openComms`): set the
+  first time the quadrant's own Contested Zone is cleared. While set,
+  C on any station from anywhere in the quadrant opens the **comms**
+  menu (hail, missions, donate) — the transporter and docking still
+  need their ranges. The map line says "comms open" on the quadrant's
+  first line; the zone's victory line announces it once. The delivery
+  run's fixed sector never sets it.
+- **The delivery run keeps the new ranges** (Brian: keep) — nothing to
+  change; its Meridian is favor-blind and 2000/600/150 like everyone.
+- Test: absence decay only (two stations, trade at one for an hour,
+  only the other drops); the 40 floor holds from 41 over any stretch
+  and 39 still drains; Honored at 90 widens ranges 50 % and prices
+  modules at 75 %; a mission pays 16; 15,000 ore sold pays +30; a zone
+  clear pays 8 at the nearest station; donation from comms range at a
+  stranger crosses Known and refuses while the contract's ore is owed;
+  the zone clear opens comms and a hail from 10,000 out works.
+
+#### 3.34 A full stop to dock (ideas9)
+
+- Docking and landing need the ship **stopped**: C inside dock range
+  with speed above `dockMaxSpeed` **2** refuses — "Station Two control:
+  come to a full stop to dock. Speed 14." — and does not dock. The
+  stabilizers bring a coasting ship to zero on their own (2.14), so the
+  gesture is *let go of W and wait*, or S to brake, then C again. The
+  hail and the transporter don't care about speed. The tug's own arrival
+  docks as it always has (it stops the ship first). The delivery run
+  gets the same rule — it's the approach Brian wants taught. A new help
+  line and the C key description say it. Test: C at 14 refuses and
+  names the speed; C at 1.5 docks; the same at a planet once 3.19
+  exists.
+
+#### 3.32 Reaction mass matters (ideas9)
+
+Brian: reaction mass should be *earned* in the ordinary course of a
+run — looted from every kill, drawn from dust while vacuuming, paid as
+mission reward — sized so that a clean delivery run (five kills, 15,000
+ore) never spends long on battery, while a sloppy one (a lost fight, a
+rock kicked out and a second cloud, a long thrust out of the no-warp
+zone) definitely feels it.
+
+- **Sources**: every ship kill drops `rcsPerKill` by class
+  (`RCS_PER_KILL`: interceptor 6, corvette 9, cruiser 15 — into the same
+  salvage line: "Salvage plus 3, reaction mass plus 9."); every vacuum
+  tick that collects dust adds `rcsPerDustUnit` 0.002 per unit of dust
+  (about 2 per 1,000 dust — dust is the steady trickle, cores the lump:
+  `rcsPerIceCore` stays); escort/defend/the contract pay `rcsMission` 25
+  on success. All folded into the lines that already speak those events.
+- **The budget, simulated before it's tuned**: a `__sim.runBudget()`
+  test hook (or a Node script over the same numbers) totals a "normal"
+  delivery run — thrust to clear the no-warp zone twice, one combat
+  (five kills), one field to 15,000 (its dust and cores), the approach
+  and stop at Meridian — against `rcsMax` 100 with the stabilizers'
+  own spend (`rcsPerSpeedShed`), and reports the balance. Target: the
+  clean run ends above 25 % without a station fill; the sloppy run (add
+  a second field, a lost fight's tug, 30 s of extra thrust) ends on
+  battery. Tune `RCS_PER_KILL`, `rcsPerDustUnit`, `rcsMission` until
+  both hold, write the numbers into CFG, and hand the two scenarios to
+  Brian to fly — he decides.
+- F3's reaction-mass line names what it's fed by. Test: the two
+  simulated runs land where the target says; a kill's line names the
+  mass; the vacuum's running total rises while dust is collected.
+
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
 - **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', serves,
@@ -3351,6 +3544,15 @@ just be dead, untestable code. Scope actually delivered:
   interior sound differ (Brian is collecting ambience sets —
   `station_interior1` is Meridian's, a second gets a key when it
   exists). Sell lines name the *price* as well as the amount.
+- **Steering from 3.23 as built (Brian, ideas9)**: once `wants` exist,
+  favor from selling applies **only to a wanted category** — 3.33's
+  "every sale counts" was the stand-in; and each station's **missions
+  follow what it serves**: Meridian escorts to the planet it serves and
+  defends the field nearest it, Station Two defends the gate's own field
+  — `missionDestinationPlanet/Field` read `PORTS[name].serves` instead
+  of "nearest to the ship," so favor and the missions tell one story.
+  The comms menu gains **Prices** and **Wants** here (3.23's comms tier
+  has been Missions, Donate, Close until now).
 
 #### 3.19 Planets as ports (Brian: land like a station; market and fuel, no shipyard)
 
@@ -3428,6 +3630,36 @@ just be dead, untestable code. Scope actually delivered:
   biases oppose and loses it same-port; a biomass run from Planet A to
   Meridian pays credits and favor; saturation from a big sale is audible
   on the next Sell line; the hold cap holds.
+
+#### 3.23b Control — investment, levels, production (A.6 second pass; direction, not yet a build spec)
+
+Deferred out of 3.23 (it needed 3.11's wants), then rethought by Brian
+in ideas9 before it was ever built. What's settled: **favor unlocks
+benefits; control is earned by investing** in a station or planet, and
+pays back as **passive production** — the resources a base needs,
+collected without micromanagement. The pieces, in the order they'd
+build once the questions in Part C are answered:
+
+- **Station levels**: `PORTS[name].level` 0..`stationLevelMax`; donating
+  `stationLevelOre` 15,000 ore (3.33's Donate line, with a second
+  choice: "for favor" or "into the station") raises it by one. Level
+  is spoken at the hail ("Station Two, level 2.").
+- **Production units**: each resource a port produces (3.11's `serves`
+  and a new `produces` list) has a unit making `produceRate[res]` per
+  play-hour into a **holding bay** capped at `bayCap[level]` — it fills
+  and stops. Collected by the pilot within transporter range ("Holding
+  bay: 40 hydrogen, 12 biomass. Collect?") — the tithe, in its new form.
+  Bigger bays at higher levels mean fewer visits; automated shuttles
+  that collect for the pilot are later (Phase 4).
+- **Control** itself is what the pilot's investment share of a port's
+  levels is — the measure union play (Phase 4) counts; whether it also
+  erodes, and to whom, is open (Part C).
+- **Where**: not in the home quadrant. Brian wants the second quadrant
+  to be where every POI **produces two things and wants two things**, so
+  a trader earns by travelling. That is the same quadrant 3.22 specs as
+  the port-less Frontier — one of them has to give (DECIDE, Part C).
+- Placed here, after 3.20, because Buy/Sell, wants, hydrogen, and
+  biomass all have to exist for production to have anything to produce.
 
 #### 3.21 Threat escalation, and its decay (Brian)
 
@@ -3814,6 +4046,63 @@ the lock tone (Brian picks in the lab, 2.11); whether shields should
 also drain slowly while raised with nothing hitting them (today they
 only drain by damage absorbed — one number if wanted); the hail and dock
 ranges once the approach has been flown with reaction mass (2.14).
+
+**Decided (Brian, ideas9, 2026-09-05 — answers to Fable's review of
+Phase 3 as built, plus new direction):** sale favor is **500 ore per
+point** ("if you saw that big of a favor jump"); missions pay **twice**
+the favor; clearing the Contested Zone **does** pay favor at the nearest
+station; the delivery run **keeps** the new 2000/600/150 ranges; the
+contract's three calls (mining not gated on the zone, whatever's in the
+hold counts, walking away is free) stand; each station's missions
+**follow what it serves** (3.11); a new quadrant is entered by picking an
+encounter at once, and beating its combat zone opens **quadrant-wide
+comms**; ore can **always be donated** for favor, per station; favor has
+a **fifth tier, Honored at 90** (+50 % ranges, 25 % off purchases, decay
+halved) and Trusted/Allied widen the ranges 25 % / 50 %; **favor never
+goes below 40**; docking needs a **full stop**; reaction mass is looted
+from kills, drawn from dust, and paid by missions, sized so a clean
+delivery run stays off battery and a sloppy one doesn't (3.32); the
+lab's four demos change as L.1b/L.4b/L.5b/L.8b say; **Control is
+rethought** as investment → station levels → passive production into
+holding bays (3.23b), unions at 10 controlled stations gating the base.
+
+**DECIDE** (open, from ideas9 — Fable's questions back, answer by number):
+1. "Favor should not ever go below 40" — read as *Trusted is permanent
+   once reached* (3.33's floor). Or did you mean every station starts at
+   40 and never drops below it, i.e. everyone is Trusted from the start
+   and the Unknown/Known tiers only gate strangers in *new* quadrants?
+2. Your answer on decay was cut off: "decay should not happen until…" —
+   until what? A number of play-hours of absence before it starts (a
+   grace period), until a tier is reached, or until control exists?
+3. Donate ore from **comms** range (the stranger's way in, as written in
+   3.33) — or only from the transporter, which would leave missions as
+   the only way to Known? 3.33 assumes comms.
+4. **Quadrant 2**: 3.22 specs the Frontier with *no ports* (rich fields,
+   one anomaly); ideas9 wants the second quadrant to be where every POI
+   produces two things and wants two things. Is the trading quadrant a
+   *third* one past the Frontier, does the Frontier gain ports, or does
+   the produce-2/want-2 rule belong to the home quadrant's *stations*
+   after all (with production itself held back to quadrant 2)?
+5. Control's **erosion**: with investment and levels replacing the share
+   model, does a station's level (or the pilot's control of it) ever go
+   *down* — to unions, to neglect, to attack — or is it permanent once
+   bought? The 0.4 / 0.25 decay rates you gave assume "controlled" is a
+   state that can be lost.
+6. Honored's "unique or bonus items" — Phase 4, or is there one you want
+   in Phase 3 (a module only Honored stations sell, say)?
+7. The 25 % Honored discount — modules and lasers now, and 3.20's Buy
+   lines later; also on reaction mass and repairs, or purchases only?
+8. Still open from earlier rounds: 3.26's single health per laser family
+   with repair priced off the owned level; the tractor's test-fit flag
+   (off after you've heard it); Rookie's ×2 laser against ships; the
+   repair-crew knockout chance and weights. And the reading checkpoint —
+   everything since 3.24 is unheard; 3.33/3.34/the lab pass/3.32 are
+   the last round before you fly it.
+
+**Open for Phase 4/5 (ideas9, not for now):** the total station count
+that makes a 10-station union reachable; whether the computer starts
+with two unions the player must break; automated collection shuttles;
+what "controlled quadrants touching" means on the galactic map.
 
 ## Deferred (Brian: "not yet")
 

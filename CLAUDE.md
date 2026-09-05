@@ -1999,6 +1999,27 @@ or flown by Brian. Next: SPEC 3.11 (ports, prices, and F4 trading),
 which is what would let Control actually be built afterward — favor and
 the three ranges wait for feedback like everything else in this file.
 
+**Round 24 (Fable, docs only)**: Brian reviewed Phase 3 as built and
+answered in `ideas9.txt` (untracked like every ideas file). Written into
+SPEC.md as: A.6/A.13 addenda (five favor tiers with Honored at 90, favor
+never below 40, decay in absence only, control rethought as investment →
+station levels → passive production, the galactic-map cursor as a grid);
+four new build items — **3.33** favor second pass (the absence-decay fix
+for the bug Fable found in review: `reconcileFavor` stamps the visit on
+every read, so favor drained everywhere at 1/hour regardless of trade;
+mission favor ×2; 500 ore per point; zone-clear favor; Donate ore;
+quadrant-wide comms after the first zone clear), **3.34** a full stop to
+dock, the **lab second pass** (L.1b grid cursor, L.4b clips 5–8 on the
+routes and a synthesized propeller for stunts, L.5b group controls with
+brackets for vortex count, L.8b four assets rotating every 10 s, no
+quiz), **3.32** reaction mass from kills/dust/missions with a simulated
+run budget; **3.23b** Control as investment (direction, after 3.20,
+blocked on Part C's ideas9 questions — quadrant 2 vs the Frontier is
+the big one); 3.11 gains "missions follow what a station serves" and
+wanted-only favor. Build order: 3.33 → 3.34 → lab pass → 3.32, then
+**Brian flies everything since 3.24** before 3.11. Eight numbered
+questions for Brian sit in Part C under "DECIDE (open, from ideas9)".
+
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
 45 that's roughly 1.5 full beams absorbed before disrepair), attack gap
