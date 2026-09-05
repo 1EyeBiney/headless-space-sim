@@ -2679,3 +2679,13 @@ presets replacing the group controls. Proposed order, cheapest first:
 and quadrant 2. Open in Part C: the course geometry, what Z becomes,
 tractor tier numbers, the laser profiles and fit price, F2's no-delay
 switch, the five stats questions. Nothing built.
+**Brian answered two the same evening**: the stats page is read-only;
+and on the course, "cut my requests in half except the radius" —
+spacing 500, radius 250 — with the reason that reframes 3.41: he flies
+the course on **manual thrust** ("for beginners, auto-thrusters probably
+won't be used that much, it's very hard to keep things centered"), so
+the bigger radius is forgiveness for hand-centering, not a shortcut.
+Fable's check still holds at 500/250 (500·sin 25° ≈ 211 < 250, straight
+flight cleans a 25° turn), so 3.49 raises the gentle course's turns to
+35–45° — you must turn, you needn't be precise. Decided, written into
+3.49 and Part C.

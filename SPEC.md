@@ -4678,6 +4678,21 @@ cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L
   gate is 4–6 seconds away at cruise. Or: keep his exact numbers for a
   true beginner course ("gentle", where flying straight IS the lesson)
   and add a second course ("turns", sharper) — DECIDE.
+  **Decided (Brian, 2026-09-05): "cut my requests in half except the
+  radius."** So `courseSpacing` 600 → **500** (closer by 100, not 200)
+  and `courseGateRadius` 150 → **250** (the full +100 stands). And the
+  reason behind the ask, which changes 3.41's own premise: Brian flies
+  the course on **manual thrust** — "for beginners, auto-thrusters
+  probably won't be used that much, it's very hard to keep things
+  centered." The course is a manual-thrust drill first; auto-thrust is
+  the expert's shortcut, not the design condition. The geometry check
+  on the decided numbers: 500·sin 25° ≈ **211**, still inside 250 — so
+  the gentle course's turns must grow for the course to teach turning
+  at all: **35–45°** gives offsets of 287–354, outside the radius, so
+  flying straight misses, while the 250 radius (a ±27° cone at 500
+  spacing) forgives the sloppy centering Brian describes once he HAS
+  turned toward the tick. Both wants held: you must turn, you needn't
+  be precise. Turns raised in `COURSES.gentle` as part of this item.
 - **Chimes**: `course_pass` (a bright rising two-note, UI bus) on a
   clean gate; `course_miss` (a short falling minor pair, not the
   offline buzz) on a miss — each folded into the same tick as the
@@ -4812,8 +4827,8 @@ cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L
   work — a `profile.stats` counter set with a dozen increment sites —
   and it's the part worth deciding on before building anything.
 - **Questions for Brian**: (1) read-only, or also a place to change
-  settings? (Fable: read-only; settings stay in the game's own menus.)
-  (2) Which of the uncounted stats matter enough to add counters for?
+  settings? **Decided (Brian, 2026-09-05): read-only** — settings stay
+  in the game's own menus. (2) Which of the uncounted stats matter enough to add counters for?
   (3) One page with several tables, or one table per section with
   headings? (4) Reached from the mission menu next to Sound Lab, same
   "leaves the page — Back returns" wording? (5) `PROFILE_VERSION`
@@ -5722,8 +5737,16 @@ L.5c. Fable's push-backs, gathered:
   L.5c, cheapest first, all before 3.42 and quadrant 2 — these are play
   feedback on what's built. 3.47 waits for the discussion.
 
-**DECIDE (open, from ideas12.txt)**: the course geometry (3.49 —
-Fable's 400/200/35–45°, or two courses?); what Z becomes, if anything;
+**Decided (Brian, 2026-09-05, on the review above)**: the stats page is
+**read-only**; on the course, "cut my requests in half except the
+radius" — spacing 500 (closer by 100), radius 250 (the full +100) — and
+the course is a **manual-thrust** drill, since beginners won't use
+auto-thrust much and centering by hand is hard (which is what the bigger
+radius is for). Fable's condition to keep it a course at all: the gentle
+turns rise to 35–45°, so 500·sin θ > 250 and flying straight still
+misses — written into 3.49.
+
+**DECIDE (open, from ideas12.txt)**: what Z becomes, if anything;
 the tractor tier numbers; the four laser profiles and the 300+1 fit
 price; F2 switching with no delay; and the five stats-page questions.
 
