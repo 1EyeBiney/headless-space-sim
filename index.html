@@ -276,6 +276,13 @@ var CFG_DEFAULTS = {
     chaffMax: 4,                      // decoys (D); Station Meridian restocks (SPEC 1.8)
     laserMatchupStrong: 1.3,          // family-vs-target multiplier (SPEC 2.12), replaces hullMult/rockMult
     laserMatchupWeak: 0.7,
+    // Laser levels (SPEC 3.26, replaces 2.12's free cycling): a level is
+    // earned at the station, not cycled for free, and wears with use.
+    laserLevelCredits: 200,   // buying level N costs this x N credits
+    laserLevelAlloy: 1,       // and this x N alloy
+    laserWearPerBurst: 1,     // health lost per burst fired, hit or miss, at any level in the family
+    laserWearAlertPcts: [50, 25], // spoken once on each descending crossing (mirrors rcsAlertPcts)
+    laserRepairCreditsPerPoint: 2, // × the owned level, per point of health restored, station only
     enemyChaffFollowUpS: 2,           // Veteran/Ace: a spoofed missile brings the next attack this soon
     missileDamage: 75,
     missileSpeed: 130,                // u/s
@@ -368,13 +375,16 @@ var profile = null;
 // code (an unlikely rollback scenario) keeps its own version stamp —
 // Object.assign already preserves any fields this code doesn't know
 // about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 3;
+var PROFILE_VERSION = 4;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: 0, upgrades: [], chaff: 0, runs: [],
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: 2, cockpit: 2, effects: 2 }, beacons: 'on',
              resources: { salvage: 0, alloy: 0 },
+             // SPEC 3.26: levels are earned at the station, not cycled for
+             // free — one owned level and one health per family.
+             laserLevels: { mining: 1, rapid: 1 }, laserHealth: { mining: 100, rapid: 100 },
              // SPEC 3.10: the session game clock (was simClock, SPEC 2.17,
              // session-only) and the mission cooldowns it now backs — both
              // persist so a reload doesn't silently make everything
@@ -387,13 +397,14 @@ function defaultProfile() {
 
 function loadProfile() {
     profile = defaultProfile();
+    var saved = null;
     try {
         var raw = window.localStorage && localStorage.getItem(PROFILE_KEY);
         if (raw) {
-            var saved = JSON.parse(raw);
+            saved = JSON.parse(raw);
             if (saved && typeof saved === 'object') Object.assign(profile, saved);
         }
-    } catch (e) { /* no persistence this session; profile stays default */ }
+    } catch (e) { saved = null; /* no persistence this session; profile stays default */ }
     var loadedVersion = profile.version || 1;
     // v1 -> v2 (SPEC 2.18): a save from before modules/sound/beacons/
     // resources existed gets every field below backfilled with defaults,
@@ -428,6 +439,38 @@ function loadProfile() {
     });
     if (!profile.quadrants || typeof profile.quadrants !== 'object') profile.quadrants = {};
     if (typeof profile.quadrantId !== 'string') profile.quadrantId = 'home';
+    // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
+    // A pre-4 save's slots held version ids (mining3, etc) directly with no
+    // separate "owned level" concept — the highest version found per family
+    // becomes the owned level so nobody loses a laser they already had;
+    // health starts full. A slot pointing above its own family's owned
+    // level (shouldn't happen going forward — wearLaser clamps it on a
+    // drop) is pulled back down defensively.
+    // NOTE: defaultProfile() already seeds laserLevels/laserHealth with
+    // valid numbers, so a plain "is it missing" check on `profile` can
+    // never tell an old save's absence from a fresh one's default — the
+    // check has to run against the raw `saved` JSON instead (the same
+    // trap SPEC 2.18's version field exists to avoid; this migration
+    // just doesn't have a version field of its own to lean on).
+    LASER_FAMILIES.forEach(function (fam) {
+        var hadLevel = saved && saved.laserLevels && typeof saved.laserLevels[fam.id] === 'number';
+        if (!hadLevel) {
+            var maxV = 1;
+            profile.slots.forEach(function (id) {
+                var L = laserById(id);
+                if (L && L.family === fam.id && L.version > maxV) maxV = L.version;
+            });
+            profile.laserLevels[fam.id] = maxV;
+        }
+        var hadHealth = saved && saved.laserHealth && typeof saved.laserHealth[fam.id] === 'number';
+        if (!hadHealth) profile.laserHealth[fam.id] = 100;
+    });
+    profile.slots = profile.slots.map(function (id) {
+        var L = laserById(id);
+        if (!L) return id;
+        var owned = profile.laserLevels[L.family] || 1;
+        return L.version > owned ? L.family + owned : id;
+    });
     // Never write a version lower than what was actually loaded.
     profile.version = Math.max(loadedVersion, PROFILE_VERSION);
     applyTier(TIERS[profile.tier] ? profile.tier : 0);
@@ -467,15 +510,23 @@ function recordRun(seconds) {
 }
 
 // Lasers (SPEC 1.9, families SPEC 2.12). Slots 1 and 2 are the two laser
-// FAMILIES; each carries all eight versions aboard (a per-family carry
-// limit comes later). Keys 1/2 select their slot, then select again (or
-// Shift) cycles the version within the family — same switch time and clip
-// either way (Brian: decided). A burst is fire-and-forget — it runs every
+// FAMILIES; all eight levels exist per family but SPEC 3.26 makes them
+// earned, not free — a profile owns 1..N of them (profile.laserLevels),
+// bought at the station with credits and alloy. Keys 1/2 select their
+// slot, then select again (or Shift) cycles among owned levels within
+// the family — same switch time and clip either way (Brian: decided).
+// A burst is fire-and-forget — it runs every
 // tick to the end and cannot be stopped — then the slot cools for
 // cooldownS. Damage is a PER-TICK PROFILE, not one number, and the burst
 // length follows each family's own recording (Mining clips run 8 s,
 // Rapid-pulse 5 s) rather than a fixed five ticks. Placeholder per-tick
-// numbers until Brian sets them by ear; version n is tickBase x 1.1^(n-1).
+// numbers until Brian sets them by ear. SPEC 3.26: level n is tickBase x
+// (1 + 0.2*(n-1)) through level 5, then that x 1.1^(n-5) for 6-8 —
+// replaces 2.12's flat 1.1^(n-1) now that levels are earned, not free.
+function laserLevelMult(n) {
+    var base = 1 + 0.2 * (Math.min(n, 5) - 1);
+    return n <= 5 ? base : base * Math.pow(1.1, n - 5);
+}
 var LASER_FAMILIES = [
     { id: 'mining', label: 'mining', tickBase: 15, tickCount: 8, tickS: 1, cooldownS: 3,
       strong: ['iron', 'cruiser'], weak: ['ice', 'interceptor'],
@@ -490,7 +541,7 @@ LASER_FAMILIES.forEach(function (f) { LASER_FAMILIES_BY_ID[f.id] = f; });
 var LASERS = [];
 LASER_FAMILIES.forEach(function (fam) {
     for (var v = 1; v <= 8; v++) {
-        var perTick = Math.round(fam.tickBase * Math.pow(1.1, v - 1));
+        var perTick = Math.round(fam.tickBase * laserLevelMult(v));
         var ticks = [];
         for (var k = 0; k < fam.tickCount; k++) ticks.push(perTick);
         LASERS.push({ id: fam.id + v, family: fam.id, version: v,
@@ -1222,8 +1273,9 @@ var rcs = 0;              // reaction mass, set from CFG.rcsMax
 var rcsBattery = false;   // true once rcs has hit 0 this sortie, until refilled
 var collisionDamage = 0;  // hull lost to collisions since the last dock — billable, not free
 var stationIdx = 0;      // cursor in the top-level station menu
-var stationSubmenu = null;  // null | 'modules' — which list stationMenuKey is browsing
+var stationSubmenu = null;  // null | 'modules' | 'lasers' — which list stationMenuKey is browsing
 var moduleIdx = 0;       // cursor in the Modules submenu
+var laserShopIdx = 0;    // cursor in the Lasers submenu (SPEC 3.26)
 var laserSlot = 0;       // selected slot, 0-based (keys 1-6); fitted lasers live in profile.slots
 var laserReadyAt = [];   // per slot: wall-clock ms when it may fire again
 var laserSwitch = null;  // { slot, until, timer, src, g } while a slot switch is in progress (SPEC 1.14)
@@ -1499,8 +1551,8 @@ var KEY_DESCRIPTIONS = {
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
     s: 'Reverse thruster: hold to actively slow down, about half the push of W. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
-    '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles to the next of its eight versions; shift 1 cycles back. Switching or cycling takes a moment, longer for the heavier slots.'; },
-    '2': 'Select laser slot 2. Shift 1 or shift 2 cycles the version backward.',
+    '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles among owned levels; shift 1 cycles back. Higher levels are bought at the station with credits and alloy, and wear with use — the shipyard repairs them. Switching or cycling takes a moment, longer for the heavier slots.'; },
+    '2': 'Select laser slot 2. Shift 1 or shift 2 cycles among owned levels backward.',
     '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
     f2: 'Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with its matchups, fitted modules, and mass. Arrows read it line by line, Escape closes it.',
@@ -2357,15 +2409,30 @@ function startSlotSwitch(i, L) {
     say(laserSlotText(i) + ', switching.');
 }
 
-// Cycles slot i's laser to the next (dir +1) or previous (dir -1) version
-// within its family, wrapping 1-8, and writes it back into profile.slots.
+// Cycles slot i's laser to the next (dir +1) or previous (dir -1) level
+// within its family, wrapping 1..owned (SPEC 3.26 — levels are earned, so
+// cycling can never reach a level the station hasn't sold yet), and writes
+// it back into profile.slots.
 function cycleLaserVersion(i, dir) {
     var L = laserById(profile.slots[i]);
     if (!L) return null;
-    var newVersion = ((L.version - 1 + dir + 8) % 8) + 1;
+    var owned = profile.laserLevels[L.family] || 1;
+    var newVersion = ((L.version - 1 + dir + owned) % owned) + 1;
     var newId = L.family + newVersion;
     profile.slots[i] = newId;
     return laserById(newId);
+}
+
+// True (and speaks the refusal) if L is fitted above its family's owned
+// level — shouldn't happen in normal play (wearLaser clamps a slot down
+// the instant its level drops), kept as a defensive check per SPEC 3.26.
+function laserUnowned(L) {
+    if (!L) return false;
+    var owned = profile.laserLevels[L.family] || 1;
+    if (L.version <= owned) return false;
+    SIM.cues.play('refusal_dud');
+    say(capFirst(LASER_FAMILIES_BY_ID[L.family].label) + ' laser level ' + L.version + ' is not fitted. The shipyard sells it.');
+    return true;
 }
 
 function selectSlot(i, reverse) {
@@ -2377,6 +2444,7 @@ function selectSlot(i, reverse) {
     }
     if (i === laserSlot) {
         if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+        if (laserUnowned(L)) return;
         L = cycleLaserVersion(i, reverse ? -1 : 1);
         saveProfile();
         startSlotSwitch(i, L);
@@ -2386,6 +2454,7 @@ function selectSlot(i, reverse) {
     laserSlot = i;
     saveProfile();
     if (!L) { SIM.cues.play('refusal_dud'); say(laserSlotText(i) + '. Fit a laser at the station.'); return; }
+    if (laserUnowned(L)) return;
     startSlotSwitch(i, L);
 }
 
@@ -2395,6 +2464,44 @@ function laserStatusText() {
     if (laserSwitch) return laserSlotText(laserSlot) + ', switching, ' + Math.ceil(laserSwitchLeft()) + ' seconds. ';
     var left = laserCooldownLeft(laserSlot);
     return laserSlotText(laserSlot) + (left > 0 ? ', recharging, ' + Math.ceil(left) + ' seconds. ' : ', ready. ');
+}
+
+// SPEC 3.26: every burst fired wears the family's owned level, hit or
+// miss, regardless of which level within it is actually selected (Brian:
+// a deliberately-lower level "wears the same per burst" — only the
+// REPAIR price, not the wear rate, depends on which level is fitted).
+// At zero health the owned level drops by one and resets to full — any
+// slot still pointing at the level that just dropped comes down with it,
+// same as the defensive clamp in loadProfile's v4 migration.
+function wearLaser(famId) {
+    if (!profile) return;
+    var fam = LASER_FAMILIES_BY_ID[famId];
+    var label = capFirst(fam.label) + ' laser';
+    var before = profile.laserHealth[famId];
+    var after = Math.max(0, before - CFG.laserWearPerBurst);
+    profile.laserHealth[famId] = after;
+    var announced = false;
+    for (var i = 0; i < CFG.laserWearAlertPcts.length; i++) {
+        var p = CFG.laserWearAlertPcts[i];
+        if (before > p && after <= p) {
+            say(label + ' at ' + (p === 50 ? 'half' : p + ' percent') + '.');
+            announced = true;
+            break;
+        }
+    }
+    if (!announced && after <= 0) {
+        var owned = profile.laserLevels[famId];
+        if (owned > 1) {
+            profile.laserLevels[famId] = owned - 1;
+            profile.laserHealth[famId] = 100;
+            profile.slots = profile.slots.map(function (id) {
+                var L = laserById(id);
+                return (L && L.family === famId && L.version >= owned) ? famId + (owned - 1) : id;
+            });
+            say(label + ' worn down to level ' + (owned - 1) + '.');
+        }
+    }
+    saveProfile();
 }
 
 function beamQuality() {
@@ -2466,6 +2573,7 @@ function startBeam(tool) {
         SIM.cues.play('refusal_dud');
         return;
     }
+    if (L) wearLaser(L.family);   // SPEC 3.26: committed to firing — every burst wears, hit or miss
     var nodes = null;
     // A fitted laser's voice is its recording, played once through the
     // instrument bus. Aim quality nudges its playback rate a little each
@@ -3744,6 +3852,10 @@ function buildShipLines() {
     if (laserBoostActive()) {
         lines.push('Laser boost active, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left.');
     }
+    LASER_FAMILIES.forEach(function (fam) {
+        lines.push(capFirst(fam.label) + ' laser level ' + profile.laserLevels[fam.id] +
+                   ', health ' + Math.round(profile.laserHealth[fam.id]) + '.');
+    });
     for (var i = 0; i < LASER_SLOTS; i++) {
         var L = profile ? laserById(profile.slots[i]) : null;
         if (!L) { lines.push('Slot ' + (i + 1) + ' is empty.'); continue; }
@@ -4207,6 +4319,12 @@ var STATION_ITEMS = [
                  profile.credits + ' credits.';
       },
       run: function () { openModules(); } },
+    { label: 'Lasers',
+      desc: function () {
+          return 'Mining level ' + profile.laserLevels.mining + ', rapid level ' + profile.laserLevels.rapid + '. ' +
+                 profile.credits + ' credits, ' + profile.resources.alloy + ' alloy.';
+      },
+      run: function () { openLaserShop(); } },
     { label: 'Undock', desc: 'Back out to clear of the station.',
       run: function () { undock(); } }
 ];
@@ -4285,6 +4403,101 @@ function moduleKey(lname) {
     else {
         SIM.audio.blip(220, 80, 0.1);
         say('Up and down arrows browse modules, Enter fits one, Escape returns. ' + MODULES[moduleIdx].name + '.');
+    }
+}
+
+// ---- Lasers submenu (SPEC 3.26) --------------------------------------------
+// Same shell as Modules: one Buy and one Repair line per family. Buying
+// advances the owned level (health resets full); repairing tops up health
+// at the owned level's own price, never both at once.
+var LASER_SHOP = [];
+LASER_FAMILIES.forEach(function (fam) {
+    LASER_SHOP.push({ kind: 'buy', family: fam.id });
+    LASER_SHOP.push({ kind: 'repair', family: fam.id });
+});
+
+function laserShopText(i) {
+    var it = LASER_SHOP[i], fam = LASER_FAMILIES_BY_ID[it.family];
+    var owned = profile.laserLevels[it.family], health = profile.laserHealth[it.family];
+    var label = capFirst(fam.label) + ' laser';
+    if (it.kind === 'buy') {
+        if (owned >= 8) return label + ' fully upgraded, level 8.';
+        var next = owned + 1, cost = CFG.laserLevelCredits * next, alloy = CFG.laserLevelAlloy * next;
+        var afford = profile.credits >= cost && profile.resources.alloy >= alloy;
+        return label + ' level ' + next + '. ' + cost + ' credits, ' + alloy + ' alloy. ' +
+               (afford ? 'You can afford it.'
+                : profile.credits < cost ? 'Need ' + (cost - profile.credits) + ' more credits.'
+                                          : 'Need ' + (alloy - profile.resources.alloy) + ' more alloy.');
+    }
+    if (health >= 100) return 'Repair ' + fam.label + ' laser. Already at full health.';
+    var points = Math.round(100 - health), price = points * CFG.laserRepairCreditsPerPoint * owned;
+    return 'Repair ' + fam.label + ' laser level ' + owned + ', ' + points + ' points, ' + price + ' credits.';
+}
+
+function laserShopReady(i) {
+    var it = LASER_SHOP[i];
+    if (it.kind === 'buy') {
+        var owned = profile.laserLevels[it.family];
+        if (owned >= 8) { say('Already fully upgraded.'); return false; }
+        var next = owned + 1, cost = CFG.laserLevelCredits * next, alloy = CFG.laserLevelAlloy * next;
+        if (profile.credits < cost) {
+            SIM.cues.play('refusal_dud'); say('Not enough credits. Need ' + (cost - profile.credits) + ' more.'); return false;
+        }
+        if (profile.resources.alloy < alloy) {
+            SIM.cues.play('refusal_dud'); say('Not enough alloy. Need ' + (alloy - profile.resources.alloy) + ' more.'); return false;
+        }
+        return true;
+    }
+    if (profile.laserHealth[it.family] >= 100) { say('Already at full health.'); return false; }
+    var points = Math.round(100 - profile.laserHealth[it.family]);
+    var price = points * CFG.laserRepairCreditsPerPoint * profile.laserLevels[it.family];
+    if (profile.credits < price) {
+        SIM.cues.play('refusal_dud'); say('Not enough credits. Need ' + (price - profile.credits) + ' more.'); return false;
+    }
+    return true;
+}
+
+function buyLaserLevel(fam) {
+    var next = profile.laserLevels[fam] + 1;
+    profile.credits -= CFG.laserLevelCredits * next;
+    profile.resources.alloy -= CFG.laserLevelAlloy * next;
+    profile.laserLevels[fam] = next;
+    profile.laserHealth[fam] = 100;
+    saveProfile();
+    menuSelectSound();
+    say(capFirst(LASER_FAMILIES_BY_ID[fam].label) + ' laser level ' + next + ' fitted. ' + profile.credits + ' credits left.');
+}
+
+function repairLaser(fam) {
+    var owned = profile.laserLevels[fam];
+    var points = Math.round(100 - profile.laserHealth[fam]);
+    profile.credits -= points * CFG.laserRepairCreditsPerPoint * owned;
+    profile.laserHealth[fam] = 100;
+    saveProfile();
+    menuSelectSound();
+    say(capFirst(LASER_FAMILIES_BY_ID[fam].label) + ' laser repaired. ' + profile.credits + ' credits left.');
+}
+
+function openLaserShop() {
+    stationSubmenu = 'lasers';
+    laserShopIdx = 0;
+    say('Lasers. Up and down arrows browse, Enter buys or repairs, Escape returns. ' + laserShopText(laserShopIdx));
+}
+
+function laserShopKey(lname) {
+    var n = LASER_SHOP.length;
+    if (lname === 'escape' || lname === 'x') { stationSubmenu = null; say(stationItemText()); return; }
+    if (lname === 'arrowdown') { menuClick(); laserShopIdx = (laserShopIdx + 1) % n; say(laserShopText(laserShopIdx)); }
+    else if (lname === 'arrowup') { menuClick(); laserShopIdx = (laserShopIdx - 1 + n) % n; say(laserShopText(laserShopIdx)); }
+    else if (lname === 'enter' || lname === 'arrowright' || lname === 'arrowleft') {
+        if (!laserShopReady(laserShopIdx)) return;
+        var it = LASER_SHOP[laserShopIdx];
+        if (it.kind === 'buy') buyLaserLevel(it.family); else repairLaser(it.family);
+    }
+    else if (lname === 'tab') { say(laserShopText(laserShopIdx)); }
+    else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse lasers, Enter buys or repairs, Escape returns. ' + laserShopText(laserShopIdx));
     }
 }
 
@@ -4574,6 +4787,7 @@ function updateStationRanges() {
 
 function stationMenuKey(lname) {
     if (stationSubmenu === 'modules') { moduleKey(lname); return; }
+    if (stationSubmenu === 'lasers') { laserShopKey(lname); return; }
     var n = STATION_ITEMS.length;
     if (lname === 'escape' || lname === 'x') { undock(); return; }
     if (lname === 'arrowdown') { menuClick(); stationIdx = (stationIdx + 1) % n; say(stationItemText()); }
@@ -5340,7 +5554,9 @@ window.__sim = {
                                 .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), stations: profile.stations,
-                                  version: profile.version } : null,
+                                  version: profile.version, alloy: profile.resources.alloy,
+                                  laserLevels: Object.assign({}, profile.laserLevels),
+                                  laserHealth: Object.assign({}, profile.laserHealth) } : null,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
                 return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
@@ -5397,6 +5613,9 @@ window.__sim = {
         if (o && o.missionNextStrikeIn !== undefined && mission) mission.nextStrikeIn = o.missionNextStrikeIn;
         if (o && o.missionElapsed !== undefined && mission) mission.elapsed = o.missionElapsed;
         if (o && o.credits !== undefined && profile) profile.credits = o.credits;
+        if (o && o.alloy !== undefined && profile) profile.resources.alloy = o.alloy;
+        if (o && o.laserHealth && profile) Object.assign(profile.laserHealth, o.laserHealth);
+        if (o && o.laserLevels && profile) Object.assign(profile.laserLevels, o.laserLevels);
         if (o && o.clock !== undefined && profile) profile.clock = o.clock;
         if (o && o.depleteField && profile.quadrants[profile.quadrantId]) {
             profile.quadrants[profile.quadrantId].fields.forEach(function (f) {

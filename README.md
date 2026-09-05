@@ -73,12 +73,15 @@ the station, so thrust clear before jumping. Losing your ship no longer
 fails the run outright — a tug is dispatched instead, on the clock, and
 the run's timer keeps running while you wait.
 
-Once docked, a station menu opens: **Sell ore** trades your cargo for
-credits (10 ore per credit), and **Modules** spends them on permanent
+Once docked, a station menu opens: **Sell ore** (and salvage, and alloy)
+trades your cargo for credits, and **Modules** spends them on permanent
 upgrades — a faster shield, a bigger shield pool, a larger missile
 magazine, a bigger warp tank, faster core cooling. Every module adds a
 little mass, and mass is the tradeoff: no friction in space, so a heavier
-ship just turns and thrusts a little slower. Escape undocks.
+ship just turns and thrusts a little slower. **Lasers** is where you buy
+a higher level for either family with credits and alloy, and repair one
+that's worn down — firing any laser wears it a little, hit or miss, and
+enough wear drops it back a level until you pay to fix it. Escape undocks.
 
 The hail (in range but not close enough to dock) also offers **Missions**:
 escort a freighter to Planet Auren, or defend a miner at Field Kappa.
@@ -123,7 +126,7 @@ Right hand on the arrows, left hand on everything else.
 | --- | --- |
 | Arrows | Yaw and pitch |
 | W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
-| 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse) carrying all eight versions; pressing the slot's key again cycles to the next version, Shift+ the key cycles back. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
+| 1-6 | Select a laser slot. Slots 1 and 2 are laser families (mining and rapid-pulse); pressing the slot's key again cycles among the levels you own, Shift+ the key cycles back. Higher levels are bought at the station with credits and alloy, and wear down with use until the shipyard repairs them. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | F2 | Ship status: hull, shields, warp charge, cargo, missiles, decoys, each laser slot with what it's good against, fitted modules, and mass |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |

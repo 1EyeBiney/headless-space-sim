@@ -1827,8 +1827,8 @@ in CFG or a data table for Brian's ear and hands.
 
 **Build order**: 3.10 the quadrant (DONE) → **ideas7 first** (Brian,
 2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
-second pass and kill buffs, DONE → 3.26 laser levels and wear, next →
-3.27 system damage and the repair crew → 3.28 the quadrant's timed
+second pass and kill buffs, DONE → 3.26 laser levels and wear, DONE →
+3.27 system damage and the repair crew, next → 3.28 the quadrant's timed
 contract)
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
@@ -2207,7 +2207,7 @@ timing, damage, buff chances/magnitudes) are all placeholders for
 Brian's ear, same as everything else in Phase 2/3. Not yet heard or
 flown by Brian.
 
-#### 3.26 Laser levels, wear, and repair (ideas7 — replaces 2.12's free cycling)
+#### 3.26 Laser levels, wear, and repair (ideas7 — replaces 2.12's free cycling) — DONE
 
 - **Levels are earned, not cycled.** Each family (mining, rapid) has an
   **owned level** per profile, `profile.laserLevels` `{ mining: 1,
@@ -2242,6 +2242,75 @@ flown by Brian.
   `mining3`) become owned levels — the highest version id found per
   family is the owned level, health 100 — so nobody loses a laser they
   had. `PROFILE_VERSION` → 4.
+
+Built as scoped, with two deliberate simplifications and one real bug
+found and fixed:
+- **One health value per family, not per level.** The spec text names
+  the field `profile.laserHealth { mining, rapid }` — a single number
+  per family — while also saying a deliberately-lower selected level
+  "wears the SAME per burst but costs less to repair." Read literally
+  those two claims don't both fit a per-level health model without
+  either a health array per level (contradicting the given data shape)
+  or an exploit (rack up wear at the top level, downshift to repair
+  cheap, upshift back to a "free" full-health top tier). Built as ONE
+  health tracker per family that always represents the OWNED (top)
+  level — firing ANY selected level, owned or a deliberate downshift,
+  drains that same tracker at the same rate (matching "wears the
+  same"), and the repair price on the shipyard's Lasers line is always
+  `laserRepairCreditsPerPoint x the OWNED level`, matching the spec's
+  own worked example exactly (level 5, 38 points, 380 credits = 2x5x38).
+  There is no cheaper repair at a downshifted level in this build —
+  flagging this explicitly for Brian's ear/decision rather than
+  guessing at an unspecified mechanic.
+- **The shipyard is one flat submenu**, not a per-family sub-sub-menu:
+  `LASER_SHOP` lists a Buy and a Repair line for each of the two
+  families (four lines total) under a new "Lasers" entry on the
+  station menu, same browsable shell as Modules.
+- **A real bug found in testing**: the v3→v4 migration initially never
+  fired. `defaultProfile()` seeds `laserLevels`/`laserHealth` with valid
+  numbers before a saved profile is merged in, so a `typeof
+  profile.laserLevels[fam] !== 'number'` check (the pattern every
+  earlier migration in this file uses) can never tell "the save didn't
+  have this field" from "the default already filled it in" — a seeded
+  v3 save with `slots: ['mining5', 'rapid2']` loaded as `laserLevels:
+  {mining:1, rapid:1}` instead of the intended `{mining:5, rapid:2}`.
+  Fixed by capturing the raw parsed `saved` JSON in a variable visible
+  outside `loadProfile`'s try block and checking THAT for the field's
+  presence, not the already-defaulted `profile`. Re-tested after the
+  fix and confirmed correct.
+
+Machine-tested at a local server: a fresh profile boots to version 4
+with `laserLevels {mining:1, rapid:1}` and `laserHealth {mining:100,
+rapid:100}`; firing a burst drops health by exactly 1 (hit or miss);
+seeded health crossing 50 speaks "Mining laser at half.", crossing 25
+speaks "Mining laser at 25 percent."; forcing health to 0 at an owned
+level of 3 drops it to level 2, resets health to 100, speaks "Mining
+laser worn down to level 2.", and clamps the flying slot from
+`mining3` down to `mining2`; cycling (`1`/Shift+1) wraps strictly
+within 1..owned (confirmed 2→3→1→2 with owned=3, and confirmed it
+CANNOT reach level 2 when owned was dropped to 1 without also fixing
+the slot — correctly refused with "Mining laser level 2 is not
+fitted. The shipyard sells it.", the defensive path exercised
+deliberately via a direct test poke rather than the normal drop
+path); the shipyard's Lasers line correctly lists price/afford text,
+buying deducts the right credits and alloy and resets health to 100,
+repairing deducts `points x 2 x owned level` and resets health to 100,
+and all four refusals (insufficient credits, insufficient alloy,
+already full health, already at level 8) were each confirmed with the
+correct spoken line and no state change; F2 correctly reads "Mining
+laser level N, health N." for both families; the migration bug above
+was found, fixed, and re-confirmed against three seeded profiles (a
+pre-4 save recovering the right owned levels from its slots, a proper
+v4 save with real data left untouched, and a v4 save with a
+deliberately-downshifted slot below its owned level surviving
+migration without being clamped); a plain empty-slot press (slot 3)
+and an ordinary damage tick against a live target were both confirmed
+unaffected (regression). Zero console errors throughout. Numbers
+(level multiplier curve, buy/repair prices, wear rate, alert
+thresholds) are all placeholders for Brian's ear, same as everything
+else in Phase 2/3 — and the single-health-per-family read above is
+flagged for his call specifically, not just the numbers. Not yet
+heard or flown by Brian.
 
 #### 3.27 System damage and the repair crew (ideas7 — un-defers Part C's "subsystem damage")
 

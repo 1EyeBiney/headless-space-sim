@@ -985,6 +985,70 @@ static once tiers exist.
   magazine 8 (`missiles`), count spoken on launch, speed 130 / life 11 s
   (~1400 reach); SEMI-ACTIVE: target must stay inside the missile zone for
   the whole flight (0.5 s grace) or it goes ballistic.
+  **Levels are earned, not cycled (Round 19, SPEC 3.26)**: replaces
+  2.12's free version-cycling. `profile.laserLevels {mining, rapid}` is
+  the OWNED (highest bought) level per family; `profile.laserHealth
+  {mining, rapid}` is a single 0–100 wear tracker per family, not per
+  level — firing ANY selected level (the owned one, or a deliberately
+  lower one via `1`/Shift+1) drains the SAME tracker at the SAME rate
+  (`wearLaser()`, `CFG.laserWearPerBurst` 1, hit or miss, called from
+  `startBeam` the instant a burst is committed to firing). `laserLevelMult(n)`
+  replaces 2.12's flat `1.1^(n-1)`: `1 + 0.2*(n-1)` through level 5,
+  then that × `1.1^(n-5)` for 6–8. `cycleLaserVersion(i, dir)` now wraps
+  1..owned (not 1..8) — cycling can never reach a level the station
+  hasn't sold; `laserUnowned(L)` is a defensive guard (refuses "Mining
+  laser level N is not fitted. The shipyard sells it.") for the case a
+  slot ever points above its family's owned level, which shouldn't
+  happen in normal play since a level-drop clamps every slot pointing
+  at the dropped level back down. At zero health `wearLaser` drops the
+  owned level by one (floor 1), resets health to 100, speaks "Mining
+  laser worn down to level N.", and clamps affected slots; alerts at
+  `CFG.laserWearAlertPcts` [50, 25] mirror the rcs/warp-core alert
+  pattern (before/after crossing, spoken once). A new **Lasers** entry
+  on the station menu (`LASER_SHOP`, `openLaserShop`/`laserShopKey`,
+  same browsable shell as Modules) lists one Buy and one Repair line
+  per family: buying the next level costs `laserLevelCredits` 200 × N
+  credits and `laserLevelAlloy` 1 × N alloy and resets health to 100;
+  repairing costs `laserRepairCreditsPerPoint` 2 × the OWNED level per
+  point restored. **A deliberate simplification, flagged for Brian's
+  call**: the spec text names a single `laserHealth` value per family
+  while also saying a downshifted level "costs less to repair" — those
+  two claims don't both fit a true per-level health model without
+  either contradicting the given data shape or opening an exploit
+  (wear the top level, downshift to repair cheap, upshift back to a
+  free top tier). Built so repair price always keys off the OWNED
+  level, matching the spec's own worked example exactly (level 5, 38
+  points, 380 credits = 2×5×38) — there is no cheaper repair at a
+  downshifted level in this build. F2 gained one line per family
+  ("Mining laser level 5, health 62."). Migration: `PROFILE_VERSION` →
+  4; a pre-4 save's `slots` (which held level ids like `mining3`
+  directly, no separate owned-level concept) becomes the owned level
+  via the highest id found per family, health starting full, so
+  nobody loses a laser they had. **A real bug found in testing**:
+  the migration initially never fired, because `defaultProfile()`
+  already seeds `laserLevels`/`laserHealth` with valid numbers before
+  a saved profile is merged in — a `typeof profile.laserLevels[fam]
+  !== 'number'` check (the pattern every earlier migration in this
+  file uses) can't tell "the save never had this field" from "the
+  default already filled it in", so a seeded v3 save with `slots:
+  ['mining5','rapid2']` loaded as level 1/1 instead of 5/2. Fixed by
+  capturing the raw parsed `saved` JSON in a variable visible outside
+  `loadProfile`'s try block and checking THAT for the field's presence
+  instead of the already-defaulted `profile`. Machine-tested at a
+  local server: wear decrementing by exactly 1 per burst hit or miss;
+  both alert crossings; a forced level-drop (owned 3, health to 0)
+  correctly dropping to level 2, resetting health, and clamping a
+  flying slot from `mining3` to `mining2`; cycling wrapping strictly
+  1..owned; the defensive `laserUnowned` refusal exercised directly;
+  all four shipyard buy/repair paths (afford, need-credits,
+  need-alloy, already-full/already-level-8) with correct prices and
+  state changes; F2's new lines; the migration bug found, fixed, and
+  re-confirmed against a pre-4 seed (recovering 5/2 correctly), an
+  intact v4 seed (left untouched), and a v4 seed with a deliberate
+  downshift below its owned level (surviving migration unclamped);
+  and a plain empty-slot press plus an ordinary damage tick against a
+  live target confirmed unaffected (regression). Zero console errors.
+  Not yet heard or flown by Brian.
 - **Mining**: 3 rock types (Ice soft/splitty, Iron hard/chippy, Stone middle)
   × 4 sizes, HIDDEN per-stage hp rolls. Core ore 3000/6750/4500 (×1.5 as of
   Round 10); all dust ×0.75 via `CFG.debrisScale` in `addDebris`. Laser ticks
@@ -1379,6 +1443,29 @@ and non-stacking extension, the partial-reward math at full and
 damaged hull, and buffs confirmed firing in the standalone Combat
 drill too. Zero console errors. Not yet heard or flown by Brian. Next:
 SPEC 3.26 (laser levels, wear, and repair).
+
+Round 19 (Sonnet) built **SPEC 3.26** (laser levels, wear, and repair)
+— see the "Levels are earned, not cycled (Round 19, SPEC 3.26)" bullet
+above for the full shape: owned levels replace 2.12's free cycling, a
+single per-family wear tracker that drops the owned level at zero
+health, a new station "Lasers" shop for buying levels and repairing
+wear, F2 lines for each family, and a `PROFILE_VERSION` 4 migration.
+One deliberate simplification flagged explicitly for Brian's own call
+(a single health value per family rather than one per level, since the
+spec's own data shape and its "cheaper repair at a lower level" line
+don't both fit without an exploit — repair price always keys off the
+owned level instead) and one real bug found and fixed (the v3→v4
+migration never actually firing, because `defaultProfile()`'s own
+seeded values made a "was this field present" check always true —
+fixed by checking the raw saved JSON instead of the already-defaulted
+profile). Machine-tested end to end at a local server: wear per burst,
+both wear-alert crossings, a forced level-drop with its slot-clamp,
+cycling's 1..owned wrap, the defensive unowned-level refusal, all four
+shipyard buy/repair paths, F2's new lines, the migration bug found and
+re-confirmed against three seeded profiles, and a regression pass on
+an empty slot and ordinary damage output. Zero console errors. Not yet
+heard or flown by Brian. Next: SPEC 3.27 (system damage and the repair
+crew).
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
