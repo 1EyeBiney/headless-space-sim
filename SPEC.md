@@ -171,6 +171,17 @@ stations. Every income source feeds credits or a resource.
   player must break (Phase 4/5, Part C). The share/tithe/erosion model
   stays on paper as an option, not a plan.
 
+- **A stats page outside the shell (Brian, ideas12.txt, 2026-09-05 —
+  discussion, not yet a build).** Game stats in real HTML tables on a
+  standard page, for native screen-reader table navigation the aria-live
+  single voice can't give. Brian: "do not just do this, we need to
+  discuss as this takes us out of the keyboard input trap and on to a
+  standard web page." The Sound Lab already set the precedent (a real
+  navigation from the menu, Back returns); the profile in `localStorage`
+  is the data; the real work is the counters that don't exist yet. See
+  3.47 for what it could show today, what it can't, and the five
+  questions to settle first.
+
 ### A.13 Quadrants, gates, and the road to the galactic map (Brian, 2026-09-04 night)
 
 - **Quadrant 1 is the opening** — the hand-authored home quadrant of
@@ -2063,8 +2074,15 @@ harbour cell, all direction; 3.41/3.42 proposed after the playtest) →
 course, DONE** (Round 31, Sonnet — built ahead of its own "after the
 playtest" note, at Brian's direct request) → **Brian flies everything
 since
-3.24, plus the course** → **3.42 escort in formation, next (an
-experiment, still waiting on 3.38 having been flown)** → **quadrant 2
+3.24, plus the course** → **ideas12.txt, next** (Brian, 2026-09-05, from
+flying: 3.50 the offline buzz → 3.51 Y speaks the totals → 3.45 five
+volume steps and the Beacons line → 3.49 the course second pass (the
+geometry push-back needs Brian's answer first) → 3.44 B is the tractor
+in tiers → 3.48 F2's equipped laser per slot → 3.46 four new laser
+families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
+stats page is a discussion, not scheduled) → **3.42 escort in
+formation (an experiment, still waiting on 3.38 having been flown)** →
+**quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
 fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
@@ -3026,6 +3044,29 @@ working after the fix: starting a second demo correctly silenced the
 first, and TWO separate STOP ALL presses both correctly tore everything
 down. Zero console errors throughout all four demos and the bug fix.
 Not yet heard by Brian.
+
+#### L.5c The vortex as six presets (ideas12.txt) — proposed
+
+- Brian: "rather than individual controls, I'd like to have preset
+  configurations and behaviors for the prims, just use 6 different
+  configurations with variations in speed, rotation, all kinds of
+  things to showcase this, use enough variation to showcase the HRTF."
+- The third shape of this demo (L.5 per-vortex → L.5b one group →
+  L.5c presets), and the simplest: the group controls go; keys **1–6**
+  (or Up/Down) pick a **`VORTEX_PRESETS`** entry, each a named
+  configuration of the eight orbits — count audible, radii, speed
+  multiplier and per-vortex direction, height, sway, tilt — chosen to
+  make one thing each obvious to the ear: *Ring* (all eight, flat, one
+  direction, slow); *Counter* (four each way, same radius — passing
+  each other); *Tilt* (a vertical ring rising and falling in front);
+  *Near and far* (two radii, one tight and fast, one wide and slow);
+  *Storm* (all eight, sway on, fast, tilted); *Solo* (one vortex, wide,
+  slow — the reference). Readback names the preset and its recipe on
+  select; R replays the current one from its start; Escape stops.
+  `__lab.state().vortex` reports the preset index. Nothing else in the
+  lab changes.
+- Test: each key lands its preset with the stated count/direction; the
+  readback names it; switching mid-run ramps rather than pops.
 
 #### L.10 "Be the Way" voices (ideas11, `audio/demo/"be the way vortex demo1.txt"`) — DONE
 
@@ -4561,6 +4602,224 @@ by Brian.
   it from formation; toggling off returns free flight with the ship
   where the frame left it.
 
+#### ideas12.txt — Brian's notes from flying the Round 28–31 build (2026-09-05, 19:14)
+
+Nine notes, written as eight items plus one lab reshape (L.5c). Fable's
+push-backs are in each item and gathered in Part C. Proposed order,
+cheapest first: 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L.5c;
+3.47 is a discussion, not a build, until Brian answers.
+
+#### 3.50 The offline buzz (ideas12.txt) — proposed
+
+- Brian: "a buzz indicator for when a user tries a system that is
+  offline / not available yet." Today every refusal is one of two
+  clicks — `refusal_dud` (a dud, e.g. an empty slot) or `refusal_wait`
+  (recharging/blocked) — so "the laser is offline" and "the laser is
+  recharging" sound the same.
+- A third cue, **`refusal_offline`**: a short low buzz (~0.3 s, a 90 Hz
+  square through a lowpass, UI bus), clearly not a click. Used by every
+  `systemState(...) === 'off'` refusal 3.27 added (laser slot, missiles,
+  decoys, shields, warp, thrust), by "not fitted" (tractor, auto-target,
+  an empty slot), and by "not in this mode" (weapons cold on the course
+  and in the sector, auto-target off on the course). `refusal_dud`
+  stays for empty/spent (no missiles, no decoys, no charges);
+  `refusal_wait` stays for recharging/switching/cooling. One rule to
+  state in the code: **buzz = you can't here or it's broken; click =
+  you can't yet.**
+- Test: each refusal class plays its own cue; the sound lab lists the
+  new one under UI.
+
+#### 3.51 Y speaks the totals (ideas12.txt) — proposed
+
+- Brian: "Y to announce resource totals, starting with credits,
+  hopefully this can be used anywhere, as I was using the station and
+  needed this info." Y is unbound today.
+- One line, credits first: "Credits N. Ore N. Salvage N. Alloy N.
+  Reaction mass N percent. Warp N percent. Missiles N, decoys N."
+  (auto-target charges when fitted). F3 stays the browsable long form;
+  Y is the glance. Works in the raw sim, the mission menu, and — the
+  point — inside every captured-input menu: station, Modules, Lasers,
+  hail, transporter, Missions, the map, F2/F3, the run log. Each of
+  those key handlers gets a `y` pass-through, the way `b` already has
+  one in the Sound list. F12 describes it; help and README list it.
+- Test: Y from the station menu, mid-Modules, mid-hail, and in flight
+  all speak the same line; nothing else in those menus changes.
+
+#### 3.45 Five volume steps (ideas12.txt) — proposed
+
+- Brian: "5 steps of sound volume controls in the sound menu." Today
+  `SOUND_LEVELS` is three (off / quiet 0.35 / full 1).
+- `SOUND_LEVELS` → five: off 0, low 0.15, quiet 0.35, medium 0.65,
+  full 1. `profile.sound` stores level INDEXES, so a saved profile
+  needs a one-time remap (0→0, 1→2, 2→4) keyed off `PROFILE_VERSION`
+  → 8; the Sound menu's Left/Right and its demo sound per step are
+  unchanged. Also lands here: the **Beacons line** 3.44 moves into
+  this menu ("Beacons: on / off / target only", Left/Right cycles,
+  same `beaconMode`/`profile.beacons` underneath).
+- Test: five steps each speak their name and play the category's demo
+  at the new level; an old three-step save loads at the equivalent
+  step; the Beacons line cycles and saves.
+
+#### 3.49 The flight course, second pass (ideas12.txt) — proposed, with a geometry push-back
+
+- Brian: gates closer by 200; trigger range +100; a positive chime for
+  a clean pass and a negative one for a miss; count made vs. missed in
+  the final line; say how the time ranks against the best.
+- **The push-back, with the math.** `courseSpacing` 600 → 400 and
+  `courseGateRadius` 150 → 250 together break the course: a 25° turn
+  over 400 units puts the next gate only 400·sin 25° ≈ **169** units off
+  a straight line — inside a 250 radius — so a pilot who never turns at
+  all "cleans" most of the gentle course. The radius has to stay below
+  the lateral offset the turns create, or the turns have to grow.
+  Fable's proposal, keeping Brian's intent (closer, more forgiving):
+  spacing **400**, radius **200**, and the gentle course's turns raised
+  to **35–45°** (400·sin 35° ≈ 229 > 200, so straight flight misses)
+  — still flyable on auto-thrust, since the arrows turn at 60°/s and a
+  gate is 4–6 seconds away at cruise. Or: keep his exact numbers for a
+  true beginner course ("gentle", where flying straight IS the lesson)
+  and add a second course ("turns", sharper) — DECIDE.
+- **Chimes**: `course_pass` (a bright rising two-note, UI bus) on a
+  clean gate; `course_miss` (a short falling minor pair, not the
+  offline buzz) on a miss — each folded into the same tick as the
+  gate's own spoken line, never a second `say()`.
+- **The final line** gains the tally and the rank: "Course complete.
+  Time 1:42. 7 of 8 gates, 1 missed. 6 seconds off your best." / "…
+  New personal best by 3 seconds." / first run: "… Your first time."
+  `recordCourseRun` returns the previous best (not just a boolean) so
+  the delta can be spoken; `courseState` counts `made`/`missed`.
+- Test: straight flight through the gentle course MISSES at least one
+  gate under the new numbers (the whole point); a clean pass chimes up,
+  a miss chimes down; the final line reads 7/1 and the delta; a second
+  run reports its rank against the first.
+
+#### 3.44 B is the tractor, in tiers; beacons move to the Sound menu (ideas12.txt) — proposed
+
+- Brian: "Use B for Tractor Beam, treat this like lasers in that it
+  will have levels. just use laser switch 5 for when this one switches.
+  Shift B should go backwards down the tiers, but generally the player
+  will just use whichever one is there. Move Beacon sound control into
+  the sound menu."
+- **The rebind.** B was the beacon cycle (SPEC 1.12), Z the tractor
+  (3.30). B becomes the tractor; Z is **unbound** (answers "Z does
+  nothing here"); beacons become a line in the Sound menu (3.45).
+  Cost, stated plainly: the mid-flight beacon toggle goes from one key
+  to Escape → Sound → Left/Right → Escape → Resume. Brian chose B on
+  purpose (B for beam), and the quadrant's own distance cutoff already
+  keeps beacons from being a soup, so Fable accepts it — flagged.
+- **Tiers, like lasers.** `TRACTOR_TIERS` 1–3: tier 1 today's numbers
+  (`tractorPullCore` 20, medium 4, large none); tier 2 medium 12, large
+  3; tier 3 medium 20, large 10, huge 3 — a top-tier tractor moves
+  anything, slowly. Owned tier = `profile.tractorLevel` (1 with the
+  test fit, else the highest `tractor_N` module bought; `tractor_2/3`
+  join MODULES, each requiring the one below, alloy-priced like the
+  repair crew's). **B engages/releases** the tractor at the selected
+  tier — Z's exact job today, moved. **Shift+B steps the selected tier
+  down** (wrapping to the top), for the case Brian named — a delicate
+  core you'd rather not yank — with `laser_switch5` playing at its
+  natural length (2.2 s, SLOT_SWITCH[2]'s own clip) and B refused
+  until it ends, exactly 1.14's mechanism. No wear on the tractor —
+  it isn't a weapon and 3.26's wear was about firing.
+- F2's Tractor heading gains the tier and the selected tier; help,
+  F12, README, and `KEY_DESCRIPTIONS` all change for B, Z, and the
+  beacons' new home.
+- Test: B toggles the tractor as Z did; Shift+B steps 3→2→1→3 with the
+  clip and the refusal mid-switch; a tier-3 pull moves a large rock at
+  10/s; Z says it does nothing; the Sound menu's Beacons line cycles
+  and saves; `beaconKey` is gone from the raw-sim switch.
+
+#### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — proposed
+
+- Brian: "F2 should show the currently equipped laser in that slot and
+  not all the lasers, where the player could switch the laser in that
+  slot if they have the access to it and see the numbers change."
+- Today the Lasers heading reads every FAMILY's level and profile, then
+  every slot's name — two lists to reconcile. Instead: **one block per
+  fitted slot** — "Slot 1: mining laser level 3. 22 per tick, 8 ticks
+  over 8 seconds, 3 second cooldown. Bites iron and cruisers, weak on
+  ice and interceptors. Health 62." — and the family-level lines go.
+  On a slot's line, **Left/Right cycles that slot's level within the
+  owned range** (the same `cycleLaserVersion` 1/Shift+1 use in flight),
+  and the block re-reads with the new numbers. F2 is frozen sim, so no
+  switch delay — but the slot's own `laser_switch` clip still plays,
+  for the feel, at natural length with no refusal window. Weapons cold
+  modes still can't fire it; changing it here is just choosing.
+- Test: Left on slot 1 at level 3 reads level 2's numbers and the
+  clip plays; Right past the owned level wraps; an empty slot's line
+  refuses Left/Right with the buzz (3.50); leaving F2 and firing uses
+  the level chosen there.
+
+#### 3.46 Lasers for slots 3 to 6 — four new families (ideas12.txt) — proposed
+
+- Brian: "I think I have enough laser assets now to wire up slots 3
+  through 6, please verify." **Verified**: `audio/weapons/lasers/` now
+  holds four new sets of eight — `burst_plasma_laser1–8`,
+  `fast_fighter_laser1–8`, `rotary_cannon_laser1–8`,
+  `rugged_mining_laser1–8` (untracked; 32 files, to be staged
+  explicitly, never `git add -A`). Enough for slots 3–6, one family
+  each, eight levels each, exactly the shape 2.12/3.26 already give
+  slots 1 and 2.
+- **Four `LASER_FAMILIES` entries** — profiles are Fable's proposal for
+  Brian's ear, built so each family has a job the others don't:
+  - **Rugged mining** (slot 3): mining's heavy cousin — 6 ticks over
+    9 s, tickBase 22; strong on iron and stone, weak on every ship.
+    A miner's laser, useless in a fight.
+  - **Fast fighter** (slot 4): rapid's cousin — 12 ticks over 4 s,
+    tickBase 5; strong on interceptors and ice, weak on cruisers and
+    iron. The dogfighter.
+  - **Rotary cannon** (slot 5): many small bites — 16 ticks over 6 s,
+    tickBase 4; strong on corvettes, weak on rocks of every kind.
+  - **Burst plasma** (slot 6): three heavy bites front-loaded — 3 ticks
+    over 4.5 s, tickBase 40; strong on cruisers, weak on interceptors.
+  Every clip's real length is measured at build (ffprobe) and each
+  family's burst is fitted to it, the way 2.12 fitted mining/rapid;
+  32 manifest keys; all excluded from nothing (they're game assets,
+  they preload).
+- **The missing piece: fitting a family into an empty slot.** Slots
+  3–6 are empty today with no way to fill them — 3.26's Lasers shop
+  only sells LEVELS of a family you already have. It gains **"Fit
+  [family] in slot N"** lines for each empty slot and each unowned
+  family, `laserFitCredits` 300 + 1 alloy, which sets
+  `profile.slots[N]` to that family's level 1 and
+  `profile.laserLevels[family]` to 1. Per-family levels/health/wear
+  then work unchanged. `STARTING_SLOTS` stays `['mining1', 'rapid1']`.
+- Test: all 32 keys preload; each family fires its own recording at
+  its measured length; the shop fits a family into slot 3 and refuses
+  a second fit of the same family; 3/4/5/6 select and fire; F2 (3.48)
+  shows each; the matchup multipliers apply.
+
+#### 3.47 The stats page — a discussion, not a build (ideas12.txt)
+
+- Brian: "a button that opens a page (probably a new page) that
+  displays the game stats in tables for the screen reader user to
+  navigate using native table navigation techniques on a standard web
+  page. **do not just do this, we need to discuss** as this takes us
+  out of the keyboard input trap and on to a standard web page."
+- Fable's read, for the discussion: **the precedent already exists** —
+  the Sound Lab is exactly this, a standard page reached by a real
+  navigation from the mission menu, with Back (and now a link) to
+  return; nothing about the game's own key-trap shell changes, it
+  simply isn't on that page. A `stats.html` can read `hss_profile`
+  from `localStorage` directly (same origin) — no export step, always
+  current. Native table navigation is the right call for tabular data;
+  the aria-live single voice can't give it and shouldn't try.
+- **What it could show today, from the profile alone**: the three run
+  boards (delivery, contract, course — time, tier, date), favor per
+  port per quadrant (favor, peak, tier), lasers (level, health, per
+  slot), modules owned, credits/salvage/alloy, the game clock. **What
+  it can't, because nothing counts it yet**: kills by class, ore mined,
+  credits earned/spent, deaths, distance flown, time in each mode,
+  gates cleared/missed lifetime, missions by outcome. That's the real
+  work — a `profile.stats` counter set with a dozen increment sites —
+  and it's the part worth deciding on before building anything.
+- **Questions for Brian**: (1) read-only, or also a place to change
+  settings? (Fable: read-only; settings stay in the game's own menus.)
+  (2) Which of the uncounted stats matter enough to add counters for?
+  (3) One page with several tables, or one table per section with
+  headings? (4) Reached from the mission menu next to Sound Lab, same
+  "leaves the page — Back returns" wording? (5) `PROFILE_VERSION`
+  bumps for the counters — fine?
+- Not scheduled. Direction recorded in A.12.
+
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 
 - **`PORTS`** keyed by name: `{ kind: 'station' | 'planet', serves,
@@ -5418,6 +5677,55 @@ resolve cleanly**, one push-back, and a handful of readings to confirm:
   the tests are quiet) → Brian flies everything since 3.24 → 3.41 →
   3.42 → quadrant 2 as ordered. The lattice and supply chains stay
   direction (A.13/3.23b) until Phase 4.
+
+**Review (Fable, 2026-09-05) of Brian's `ideas12.txt`** — nine notes
+from flying the Round 28–31 build, written into Phase 3 as 3.44–3.51 and
+L.5c. Fable's push-backs, gathered:
+- **The flight course numbers (3.49) don't work together.** Closer gates
+  (600→400) AND a bigger trigger (150→250) let a pilot who never turns
+  clean most of the gentle course — a 25° turn over 400 units only
+  offsets the next gate ~169 units, inside 250. Proposal: spacing 400,
+  radius 200, turns 35–45° (offset ≥ 229, so straight flight misses).
+  Or keep Brian's exact numbers as a true beginner course and add a
+  sharper second one. **DECIDE.** Everything else in 3.49 (chimes, the
+  made/missed tally, the rank against best) is as asked.
+- **B for the tractor (3.44) costs the one-key beacon toggle** — beacons
+  become a Sound-menu line, five keys from flight instead of one. Fable
+  accepts (Brian chose B on purpose, and the quadrant's distance cutoff
+  already tames beacons) and flags it; **Z goes unbound** — say if Z
+  should take something.
+- **Tractor tiers (3.44)**: three tiers, `tractor_2/3` as modules, tier
+  3 moves anything slowly; Shift+B steps DOWN with the `laser_switch5`
+  clip and B refused during it (1.14's mechanism); **no wear** — it
+  isn't a weapon. Numbers are placeholders.
+- **Slots 3–6 (3.46)**: verified — four new families of eight are on
+  disk. The missing piece Brian didn't mention: **no way to put a laser
+  into an empty slot exists** — the shop sells levels, not families.
+  3.46 adds "Fit [family] in slot N" (300 credits + 1 alloy). The four
+  profiles (rugged mining / fast fighter / rotary cannon / burst plasma)
+  are Fable's proposal — jobs chosen so no two families overlap.
+- **F2's laser switching (3.48)**: the switch clip plays but with no
+  delay/refusal, since F2 is frozen sim — the delay models hardware
+  mid-fight, not choosing at leisure. Say if it should wait.
+- **The stats page (3.47) is not scheduled** — Brian said to discuss.
+  Fable's read: the Sound Lab is the precedent (a real page, reached
+  from the menu, Back returns), the profile in `localStorage` is the
+  data with no export step, and the real work is the counters that
+  don't exist yet (kills, ore mined, credits earned, deaths, distance).
+  Five questions in 3.47.
+- **Five volume steps (3.45), the offline buzz (3.50), Y for totals
+  (3.51), the vortex presets (L.5c)**: as asked, no push-back. 3.45
+  needs a one-time index remap of saved sound levels
+  (`PROFILE_VERSION` → 8); 3.51 needs a `y` pass-through in every
+  captured-input menu, which is the point of it.
+- **Order** (Fable): 3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 →
+  L.5c, cheapest first, all before 3.42 and quadrant 2 — these are play
+  feedback on what's built. 3.47 waits for the discussion.
+
+**DECIDE (open, from ideas12.txt)**: the course geometry (3.49 —
+Fable's 400/200/35–45°, or two courses?); what Z becomes, if anything;
+the tractor tier numbers; the four laser profiles and the 300+1 fit
+price; F2 switching with no delay; and the five stats-page questions.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts

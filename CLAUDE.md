@@ -2647,3 +2647,35 @@ the build order, the next steps are **Brian flying everything since
 3.24, now including the course**, then **3.42** (escort in formation,
 an experiment still waiting on 3.38 having actually been flown), then
 quadrant 2 as ordered.
+
+**Round 32 (Fable, docs only)**: Brian's `ideas12.txt` (untracked, like
+every ideas file) — nine notes from flying the Round 28–31 build —
+written into SPEC.md as **3.44–3.51 plus L.5c**, all proposed, none
+built: **3.50** an `refusal_offline` buzz distinct from the two clicks
+(buzz = can't here / broken, click = can't yet); **3.51** Y speaks the
+resource totals anywhere, credits first, with a `y` pass-through in
+every captured-input menu; **3.45** five volume steps (a one-time index
+remap of saved levels, `PROFILE_VERSION` → 8) plus the Beacons line
+moving into the Sound menu; **3.49** the flight course second pass
+(closer gates, bigger trigger, pass/miss chimes, a made/missed tally,
+rank against best) — **with a geometry push-back**: 400 spacing + 250
+radius lets a pilot who never turns clean most gates (25° over 400 =
+~169 offset, inside 250), so Fable proposes 400/200 with 35–45° turns,
+or two courses; **3.44** B becomes the tractor in three tiers (Shift+B
+steps down with the `laser_switch5` clip, no wear), Z goes unbound,
+beacons lose their one-key toggle — accepted and flagged; **3.48** F2
+shows the equipped laser per slot and switches it there (clip, no
+delay — F2 is frozen sim); **3.46** four new laser families for slots
+3–6 — **verified**: `burst_plasma`/`fast_fighter`/`rotary_cannon`/
+`rugged_mining` 1–8 are on disk, 32 untracked files — with the missing
+piece Brian didn't mention, a "Fit [family] in slot N" shop line (no
+way to fill an empty slot exists today), and four proposed profiles
+with non-overlapping jobs; **3.47** the stats page — Brian said to
+DISCUSS, not build: Fable's read is that the Sound Lab is the precedent,
+`localStorage` the data, and the real work the counters that don't
+exist yet; five questions in the item; **L.5c** the vortex as six named
+presets replacing the group controls. Proposed order, cheapest first:
+3.50 → 3.51 → 3.45 → 3.49 → 3.44 → 3.48 → 3.46 → L.5c, all before 3.42
+and quadrant 2. Open in Part C: the course geometry, what Z becomes,
+tractor tier numbers, the laser profiles and fit price, F2's no-delay
+switch, the five stats questions. Nothing built.
