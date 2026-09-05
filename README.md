@@ -33,9 +33,10 @@ magazine). It's saved to your browser and remembered next time you play.
 
 The last item on the menu reads back your best delivery-run times, up to
 10, fastest first, with the difficulty and date of each, followed by your
-best times on the quadrant's own timed contract (see below) — a separate
-board, since its legs vary with whatever the sky looks like that trip.
-Also saved to your browser. Finish a run to add to it.
+best times on the quadrant's own timed contract (see below), and then
+your best times on the flight course (see below) — each its own board,
+since none of the three compare meaningfully to each other. Also saved
+to your browser. Finish a run to add to it.
 
 ## Sound
 
@@ -146,6 +147,19 @@ then flies the distance in one continuous run, arriving to the sound of
 the drive winding down. Longer jumps take longer, up to about 12
 seconds. You can still open the mission menu with Escape mid-flight;
 the jump keeps going and you'll hear it arrive.
+
+## The flight course
+
+Eight beacons in a row, teaching the stick. Fly through the active one
+to clear it — a detuned tone tells each gate apart from the last — and
+the next one starts sounding; up to four are ever audible at once, the
+nearest one loudest. The tick and lock tone find the active gate exactly
+the way they find any other target. The clock starts the moment you
+first thrust, not at the menu, and runs until the eighth gate. Flying
+wide of a gate still clears it — no gate ever stops the run — but costs
+10 seconds on the clock, named as it happens. Weapons, shields, and
+auto-target are all off: this one is flown by hand. Enter tries again;
+your best 10 times land in the Run log, their own board.
 
 ## Keys
 

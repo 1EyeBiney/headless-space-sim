@@ -2059,9 +2059,12 @@ DONE) → **ideas11.txt reviewed and largely settled** (Fable, 2026-09-05
 — the cube (A.13), its gates (3.22 addendum), control everywhere but
 offered from Q3 (3.23b), the spoken coordinates and the protected
 harbour cell, all direction; 3.41/3.42 proposed after the playtest) →
-**3.43 silent test mode, DONE** (Round 30, Sonnet) → **Brian flies
-everything since
-3.24** → **quadrant 2
+**3.43 silent test mode, DONE** (Round 30, Sonnet) → **3.41 the flight
+course, DONE** (Round 31, Sonnet — built ahead of its own "after the
+playtest" note, at Brian's direct request) → **Brian flies everything
+since
+3.24, plus the course** → **3.42 escort in formation, next (an
+experiment, still waiting on 3.38 having been flown)** → **quadrant 2
 (ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
 fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
@@ -4398,7 +4401,7 @@ console errors throughout. This is now a standing testing convention
 `?mute=1` to its navigation, in addition to the beacons-off poke. Not
 yet heard or flown by Brian — nothing to hear, by design.
 
-#### 3.41 The flight course — beacons to fly through, against the clock (ideas11.txt) — proposed
+#### 3.41 The flight course — beacons to fly through, against the clock (ideas11.txt) — DONE
 
 - Brian: a stunt/obstacle course that teaches the controls, the way
   visual games do with a flight path and hoops, made audible: beacons
@@ -4443,6 +4446,76 @@ yet heard or flown by Brian — nothing to hear, by design.
   Shift+W; the ladder measured at four audible with the right gains;
   the number spoken once per gate; a deliberate miss adds 10 and moves
   on; the time lands in the Run log and the board sorts.
+
+**DONE (Round 31, Sonnet).** Built exactly as specced, as a fourth mode
+(`'course'`) alongside sector/combat/mining, reached through
+`startMission('course')` like the others. `COURSES` holds one entry
+(`gentle`) as a list of TURNS — how much the path's own heading changes
+before stepping `courseSpacing` (600) forward — rather than raw
+positions, so the shape stays easy to read and re-tune;
+`buildCourseGates()` walks the list once into world positions and each
+gate's own forward vector. Each gate is a `kind: 'poi'` target with
+`poiType: 'course'` — reusing the ENTIRE existing targeting stack
+(lock tone, tick, distance haze, `bearingText`) for free — and its own
+tone in `buildPoiVoice` (one sine per gate, detuned by `500 +
+gateIndex*35` Hz, "slight variations between the tones"). The volume
+ladder (`courseGainFor`) replaces `beaconAudible()`'s on/off for this
+`poiType` only, inside `updateTargeting`'s existing mute-setting line —
+course gates ignore the B key entirely, the ladder is the only thing
+driving their volume. Clearing a gate (`updateCourse`, called from
+`simTick`) is a single geometric check: the dot of the ship's
+gate-relative position against the gate's own forward vector crossing
+from negative to positive means the ship has passed the gate's plane;
+the PERPENDICULAR distance from the gate's own axis at that crossing,
+against `courseGateRadius` (150), decides clean vs. miss. A miss adds
+`courseMissPenaltyS` (10) directly to the clock and is folded into the
+SAME `say()` call that activates the next gate (SPEC 2.15's rule —
+verified this matters: the miss line and the next gate's own number
+would otherwise collide in the same tick). The clock
+(`courseState.elapsed`) only accumulates once `courseState.started`
+flips true, set the first frame real thrust (W or auto-thrust) is
+applied — checked at the exact `k.w` thrust-application site so either
+source counts. Weapons, shields, and auto-target are all refused with
+the sector's own "cold" line (`weaponsCold()`, a new small helper —
+Space/F/D already shared this check with the sector; G did not, and
+GAINED it only for course, since sector's own G has never refused and
+this isn't the place to change that); course gates are excluded from
+Tab's cycling pool (the friendly-exclusion pattern, reused) since the
+active gate is chosen for the pilot, in order, not browsable. Finishing
+sets `won = true` (the same generic Enter-retry and X-to-menu paths
+every other drill already has work unmodified) and calls a new
+`recordCourseRun`, a third best-10 board (`profile.courseRuns`,
+`PROFILE_VERSION` → 7) alongside `runs`/`contractRuns` in the Run log,
+self-labeled so none of the three ever merge or sort together.
+Machine-tested at a local server, entirely via `__sim.step()` and
+direct `poke({pos})` placement at each gate's own computed
+position/forward (two new test-only additions: `poke({yawDeg,
+pitchDeg})` for a later item and `state().course` exposing
+activeIndex/elapsed/started/the live ladder gains/every gate's own
+pos+fwd+cleared flag, needed since flying the actual winding path by
+hand-simulated key input would have been far slower to verify than
+placing the ship precisely): a clean pass at Gate 1 (ship placed 1 unit
+past its plane, centered) advanced to Gate 2 with elapsed still 0; a
+deliberate miss at Gate 2 (placed 300 units off-axis, well past the
+150 radius) produced "Gate 2 missed, plus 10. Gate 3." in one line and
+elapsed jumped to exactly 10; clearing the remaining six gates the same
+way produced "Course complete. Time 10 seconds. New personal best!",
+`won: true`, and a real entry in `profile.courseRuns` (confirmed by
+reading `localStorage` directly); Enter correctly restarted with fresh
+`activeIndex: 0`/`elapsed: 0`; Space/G both refused with the cold line,
+Shift+T refused with its own course-specific line, Tab said "No targets
+remain.", and `I` read "Gate 1 of 8. Clock 0 seconds." in place of the
+generic "targets remain" line. The volume ladder itself was confirmed
+settling to exactly `[1, 0.6, 0.35, 0.2, 0, 0, 0, 0]` after the mute
+node's own ramp had time to land (a snapshot taken too early read
+partial ramp values — not a bug, just `setTargetAtTime`'s asymptotic
+approach, resolved by waiting long enough and re-checking). Zero
+console errors throughout. Every number here — the turn angles, the
+spacing, the radius, the ladder, the miss penalty — is a placeholder
+for Brian to actually fly and judge; the path is gentle enough that
+Brian's own condition (flyable on auto-thrust alone) should hold, but
+that too wants his own ear before it's trusted. Not yet heard or flown
+by Brian.
 
 #### 3.42 Escort in formation — station-keeping on the freighter (ideas11.txt) — proposed experiment
 

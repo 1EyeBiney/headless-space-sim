@@ -1618,6 +1618,65 @@ static once tiers exist.
 - `Q` from encounters: mining any time; combat only when zone cleared
   ("jammed by hostile fire"); drills never. Enter on the encounter map =
   depart (silent return + auto-warp).
+- **The flight course (Round 31, SPEC 3.41, ideas11.txt)**: a fourth
+  mode, `'course'`, alongside sector/combat/mining — reached from the
+  mission menu ("Flight course") through the same `startMission(m)`
+  every other drill uses. `COURSES` (one entry, `gentle`) is a list of
+  TURNS — how much the path's own heading changes before stepping
+  `CFG.courseSpacing` (600) forward — not raw positions, so it stays
+  easy to re-tune; `buildCourseGates()` walks it once into world
+  positions and each gate's own forward vector. Every gate is a `kind:
+  'poi'` target with `poiType: 'course'`, which is the whole trick —
+  it reuses the ENTIRE existing targeting stack (lock tone, tick,
+  distance haze, `bearingText`) for free, needing only its own tone in
+  `buildPoiVoice` (one sine per gate, detuned by index — "slight
+  variations between the tones") and its own volume rule
+  (`courseGainFor`, a 4-deep ladder — `CFG.courseGains` [1, 0.6, 0.35,
+  0.2] — that REPLACES `beaconAudible()`'s on/off for this `poiType`
+  only, inside `updateTargeting`'s existing mute-setting line; course
+  gates ignore the B key entirely). Clearing a gate (`updateCourse`,
+  from `simTick`) is one geometric check: the dot of the ship's
+  gate-relative position against the gate's own forward flipping from
+  negative to positive means the ship crossed the gate's plane; the
+  PERPENDICULAR distance from the gate's axis at that instant, against
+  `CFG.courseGateRadius` (150), decides clean vs. a miss
+  (`CFG.courseMissPenaltyS` 10, folded into the SAME `say()` that
+  activates the next gate — the SPEC 2.15 rule, and it genuinely
+  matters here: the miss line and the next gate's number would
+  otherwise collide in one tick). The clock only counts once
+  `courseState.started` flips true, set the exact frame real thrust (W
+  or auto-thrust) is first applied. Weapons/shields/auto-target are all
+  refused with the sector's own "cold" line via a new `weaponsCold()`
+  helper (Space/F/D already shared that check with the sector; **G did
+  not** — it gained the refusal only for course, since sector's own G
+  has never refused and this wasn't the place to change that); course
+  gates are excluded from Tab's cycling pool (the friendly-exclusion
+  pattern, reused), since the active gate is chosen for the pilot, in
+  order. Finishing sets `won = true` (every existing Enter-retry/X-to-
+  menu path just works, unmodified) and calls a new `recordCourseRun` —
+  a THIRD best-10 board, `profile.courseRuns`, `PROFILE_VERSION` → 7,
+  alongside `runs`/`contractRuns` in the Run log. Two new test-only
+  additions made this provable without hand-flying the actual winding
+  path: `poke({yawDeg, pitchDeg})` (forces the ship's own facing
+  directly) and `state().course` (activeIndex/elapsed/started/the live
+  ladder gains/every gate's own pos+fwd+cleared). Machine-tested at a
+  local server entirely via `__sim.step()` plus direct `poke({pos})`
+  placement at each gate's own computed crossing point: a clean pass
+  advanced cleanly with elapsed still 0; a deliberate 300-unit-off-axis
+  miss produced "Gate 2 missed, plus 10. Gate 3." in one line and
+  elapsed jumped to exactly 10; all eight gates cleared produced "Course
+  complete. Time 10 seconds. New personal best!", `won: true`, and a
+  real `localStorage` entry; Enter correctly restarted fresh; Space/G
+  both refused with the cold line, Shift+T refused with its own course
+  line, Tab said "No targets remain.", and `I` read "Gate 1 of 8. Clock
+  0 seconds." The ladder was confirmed settling to exactly `[1, 0.6,
+  0.35, 0.2, 0, 0, 0, 0]` after the mute node's own ramp landed (an
+  early snapshot read partial values — `setTargetAtTime`'s asymptotic
+  approach, not a bug). Zero console errors throughout. Every number —
+  the turns, the spacing, the radius, the ladder, the miss penalty — is
+  a placeholder for Brian to fly and judge. Built ahead of its own
+  "after the playtest" note in the build order, at Brian's direct
+  request. Not yet heard or flown by Brian.
 
 ## Key map (left-hand doctrine — right hand stays on arrows)
 
@@ -2574,6 +2633,17 @@ navigation there and booted with `state().muted === true` and
 console errors — genuine end-to-end confirmation. Zero console errors
 throughout. This is now a standing test convention — every future test
 script adds `?mute=1` to its navigation, in addition to the beacons-off
-poke. Not yet heard by Brian — nothing to hear, by design. Per the
-build order, the next step is still **Brian flying everything since
-3.24**, the human playtesting checkpoint.
+poke. Not yet heard by Brian — nothing to hear, by design.
+
+**Round 31 (Sonnet) built SPEC 3.41**, the flight course — see the
+"The flight course" bullet above (right after Mining) for the full
+shape. Built ahead of its own place in the build order (originally
+slated for after Brian's playtest of everything since 3.24) at his
+direct request, right after he asked whether it existed yet. Machine-
+tested thoroughly via `__sim.step()` and precise `poke({pos})`
+placement at each gate's own geometry (real flight through the winding
+path would have been far slower to verify), zero console errors. Per
+the build order, the next steps are **Brian flying everything since
+3.24, now including the course**, then **3.42** (escort in formation,
+an experiment still waiting on 3.38 having actually been flown), then
+quadrant 2 as ordered.
