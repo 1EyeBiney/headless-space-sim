@@ -3926,25 +3926,45 @@ system). Every number is a placeholder for Brian's ear.
 - The hull becomes the crew's job **when nothing else is broken** — the
   lowest rung under `REPAIR_PRIORITY`, so a knocked-out system always
   pulls the crew off the hull first and the hull resumes when the
-  systems are whole (3.27's preemption, one rung longer). Rate
-  `repairHullPerS` derived from the crew's own tier, not a second knob:
-  `50 / repairHalfS` hull points a second — stock 90 → ~0.56/s, a
-  100-point hull in about three minutes; the two `repair_crew` modules
-  speed it exactly as they speed everything else (45 → 0.9 min to 50,
-  30 → 1.4/s). No cap: the crew takes the hull back to 100 given time.
-  Docking stays instant. Collision damage repaired by the crew is still
-  BILLED at the next landing (2.14's `collisionDamage` is money owed,
-  not hull) — say so in the DONE note if it feels wrong in play.
+  systems are whole (3.27's preemption, one rung longer). Rate: **half
+  the crew's system rate** (Brian: "hull repairs do not happen at the
+  same rate as other modules/components, let's use 1/2") — systems
+  climb at `50 / repairHalfS` percent a second, so the hull climbs at
+  `25 / repairHalfS` points a second (`repairHullFactor` 0.5, one knob,
+  in case the fraction moves): stock 90 → ~0.28/s, a 100-point hull in
+  about six minutes; the two `repair_crew` modules speed it exactly as
+  they speed everything else (45 → 0.56/s, three minutes; 30 → 0.83/s,
+  two). No cap: the crew takes the hull back to 100 given time. Docking
+  stays instant. Collision damage repaired by the crew is still BILLED
+  at the next landing (2.14's `collisionDamage` is money owed, not
+  hull) — say so in the DONE note if it feels wrong in play.
+- **Hull repair spends reaction mass** (Brian: "repairs use reaction
+  mass or whatever the resource we use for thrusters" — it is reaction
+  mass, 2.14's `rcs`). `repairHullRcsPerPoint` **0.2** — a full 100-point
+  hull costs 20 of the 100-unit tank, so a long fight's patching shows
+  up on F3 and a pilot who fixes everything the slow way pays for it in
+  maneuvering. Drawn through `spendRcs()` so the 50/25 % alerts and the
+  battery flip fire exactly as thrusting does. The crew **stops** hull
+  work at `repairHullRcsFloor` **10** — it never drains the tank past
+  the point where the ship can still turn and brake — saying "Damage
+  control paused: reaction mass low." once, and resumes on its own when
+  a kill, an ice core, or a fill puts mass back. Empty tank (battery)
+  therefore means no hull repair at all. Whether the SYSTEM repairs of
+  3.27 should spend mass too is a Part C question, not built here.
 - Spoken: "Damage control on the hull." once when the crew turns to it
   after a hit; "Hull repaired." at 100 (the 2.13 pattern — a threshold
   crossing, spoken once, no flag). No line per point. F2's Hull heading
-  says whether the crew is on it; the Repair crew heading lists the
-  hull as its idle job.
+  says whether the crew is on it and the mass it has spent this sortie;
+  the Repair crew heading lists the hull as its idle job and the rate.
 - Never during the tug wait (the ship is lost) and never while docked
   (the station does it instantly).
-- Test: hull to 60 with no systems broken → rising at the derived rate,
-  "Hull repaired." once at 100; a knockout mid-repair pulls the crew
-  off (hull frozen) and it resumes after; the modules change the rate.
+- Test: hull to 60 with no systems broken → rising at exactly half the
+  system rate (measure both in one run), reaction mass falling 0.2 a
+  point, "Hull repaired." once at 100; a knockout mid-repair pulls the
+  crew off (hull frozen, mass untouched) and it resumes after; mass
+  poked to 12 → repair runs to the floor at 10 and pauses with the line,
+  a kill's mass resumes it; the modules change the rate and nothing
+  else.
 
 #### 3.38 Auto-target — the stabilizers aim the ship (ideas10.txt)
 
@@ -4627,9 +4647,15 @@ flagged here for Brian to overrule:
   whole problem, and a one-shot slew wouldn't have fixed it. 3 charges a
   sortie, 3 shipyard tiers at 6/4/2 s, a kill-buff roll for a charge —
   all placeholders.
-- **Hull repair has no cap and derives its rate from the crew's tier**
-  (3.36) — ~3 minutes to full at stock. Collision damage the crew
-  repairs is still billed at the next landing.
+- **Hull repair** (3.36) — Brian agreed the five readings and adjusted
+  this one: the hull repairs at **half** the system rate (~6 minutes to
+  full at stock, `repairHullFactor` 0.5) and **spends reaction mass**
+  (`repairHullRcsPerPoint` 0.2, stopping at a 10-unit floor so the ship
+  can always still turn). Still no cap; collision damage the crew
+  repairs is still billed at the next landing. **Still open:** should
+  3.27's SYSTEM repairs spend reaction mass too? Fable's read of
+  "repairs use reaction mass" is the hull item at hand; if Brian meant
+  all crew work, it is one line in `updateRepairCrew` at the same rate.
 - **Decoy confirmation comes at the pop, not the press** (3.37) — "Decoy
   took it." a second after the launch. And: it is possible decoys are
   simply broken; the build proves it first.

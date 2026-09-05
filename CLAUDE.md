@@ -2238,8 +2238,11 @@ after the launch line; **3.35** the tug second pass — 100 starting
 credits, the 50-credit rush repeatable (each halves what's left; a fresh
 pilot buys two), and the countdown reminding a lost pilot of F2/F3 (F4
 once 3.11 exists); **3.36** the repair crew works the hull when no
-system is broken, rate `50 / repairHalfS` per second (the crew modules
-speed it for free), no cap, docking still instant; **3.38** auto-target
+system is broken, at HALF the system rate (`25 / repairHalfS` a second,
+`repairHullFactor` 0.5 — ~6 min to full at stock, the crew modules speed
+it for free), spending reaction mass (`repairHullRcsPerPoint` 0.2,
+pausing at a 10-unit floor), no cap, docking still instant — Brian's own
+adjustment after agreeing the rest; **3.38** auto-target
 on **Shift+T** (rebound from cycle-back — Shift+Tab keeps that; the key
 map above is annotated): the stabilizers slew yaw+pitch onto the
 selected target at a rate set so the worst case (180° behind at
