@@ -5226,7 +5226,28 @@ resolve cleanly**, one push-back, and a handful of readings to confirm:
   1 behind"), and the words stay relative to the centre exactly as Brian
   framed them — his example reads as the vocabulary, not the start
   position. If the origin really should be the start, it needs a word
-  ("Centre.") and a reason to stand there. (2) Step size: with cells at
+  ("Centre.") and a reason to stand there. **Brian's follow-up: what if
+  the start is the centre of the facing plane, and from there 1 right,
+  then 1 down — is that a corner?** Yes. The default view is over the
+  pilot's shoulder — the near face is the "behind" face — so its centre
+  is (0, 0, −1), spoken "1 behind". Right → (1, 0, −1), the midpoint of
+  that face's right-hand edge, a waypoint: "1 right, 1 behind". Down →
+  (1, −1, −1), all three nonzero: a corner, "1 below, 1 right, 1
+  behind" — home's right-hand neighbour (Fable's proposed Q2). Left
+  then Down reaches home instead. From the near face's centre every one
+  of its four corners is exactly two presses; the far face's corners are
+  four; a depth-edge midpoint three. Fable's read: **this is a good
+  start position** — the centre of what you're looking at, every home-
+  face corner two presses away — better than either the cube's centre or
+  the current quadrant, and it resolves push-back (1) if Brian confirms
+  it. It needs one rule: a face centre is a **view position, not a
+  destination** (faces stay unreachable for travel) — the cursor may
+  stand on any of the six face centres and step from one to its four
+  edge midpoints, but Enter there says "Not a destination."; the cube's
+  own centre is never a cursor position. So the valid cursor cells are
+  the 26 non-centre cells, moves are between adjacent valid cells along
+  an axis, and travel happens only from a corner (later: a waypoint).
+  (2) Step size: with cells at
   −1/0/+1 an axis, **one press moves one cell** — corner to midpoint
   (the waypoint, spoken with that axis silent: "1 below, 1 behind"), a
   second press to the far corner. No Shift step needed; Fable's earlier
