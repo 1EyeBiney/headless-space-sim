@@ -275,6 +275,44 @@ stations. Every income source feeds credits or a resource.
   later is the cube's own outer shell, or a second cube — the
   buildable shape is the same either way. What this changes in the
   spec is listed in Part C under the ideas11.txt review.
+  **The cube's coordinates, spoken (Brian, 2026-09-05).** Decided:
+  stations per quadrant are unique, part of each corner's character;
+  the centre is for bases; faces and centre are unreachable for now.
+  The frame: the cube seen from one face is the game's default view,
+  the **centre is the origin**, and every cell is spoken as up to three
+  words in a **fixed order — vertical, lateral, depth**: "1 below" /
+  "1 above", "1 left" / "1 right", "1 behind" / "1 ahead" — **a zero is
+  not spoken**. Brian's own example: from the origin, Left gives "1
+  left"; Down then gives "1 below, 1 left"; S then gives "1 below, 1
+  left, 1 behind" — which is **home**: the player starts in the
+  bottom-left-behind corner. Home's three neighbours are therefore
+  "1 below, 1 right, 1 behind", "1 above, 1 left, 1 behind", and
+  "1 below, 1 left, 1 ahead" — which of those is Q2 and which Q3 is open
+  (Fable's proposal: Q2 is "1 right", the natural first move on the face
+  you're looking at; Q3 "1 above"; "1 ahead" the third, later). The
+  number stays even though every nonzero value is 1 in a 3-cube — it
+  costs one syllable and survives an expansion. The same words should
+  replace L.1b's "up/forward" in the lab so there is one vocabulary.
+  **The cube in the quadrant — gates are semi-realistic (Brian's
+  question, Fable's answer).** Every other POI orbits the star
+  (`ringPos`, `degPerHour`); a gate does not. A gate is infrastructure
+  anchored to its route, not a body — so each of a corner's three gates
+  is **fixed** (`degPerHour` 0) on the outer ring **in the direction of
+  the edge it serves**, in the quadrant's own frame: the gate to the
+  neighbour "1 right" sits on the quadrant's right, the gate to "1
+  above" sits **above the star's plane** — a genuinely elevated POI,
+  which the ear already handles (bearings speak "high"/"low", the tick
+  pitches) — and the gate to "1 ahead" sits ahead. Three gates per
+  corner, not one hub with a menu (Fable's earlier suggestion,
+  withdrawn — a menu teaches nothing; a gate you have to climb to
+  teaches the map). Arriving through a gate puts you at the neighbour's
+  **matching** gate — leave by the right-hand gate, arrive at the
+  left-hand one, the new star now ahead of you — so the geometry of the
+  cube is felt from inside every quadrant. The one mapping lives in one
+  table (`CUBE_AXES`: which world axis is "right", "above", "ahead"),
+  shared by the gates' placement, the galactic cursor's words, and the
+  arrival point. L.9's lighthouse cone finally makes sense on a fixed
+  gate — a beacon marking a route, sweeping.
 
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
@@ -4566,6 +4604,15 @@ build once the questions in Part C are answered:
   of its edges — erodes the pilot's control there; favor is untouched,
   3.33's rules stand. Under the cube (A.13), "controlled quadrant" itself
   needs a definition: a majority of its stations held — DECIDE.
+  **And control exists everywhere, offered only from Q3 (Brian,
+  2026-09-05).** Every quadrant's save carries control state from the
+  start — NPC unions act in it whether or not the pilot can see it —
+  but the Invest line, the tithe, and F4's control readout appear only
+  once the pilot has reached Q3 (`profile.controlUnlocked`, set on first
+  arrival there). So a pilot who later returns to Q1 or Q2 can invest
+  there too, and a pilot arriving in Q3 finds control already contested
+  — ideas9's "does the computer start with unions" answered by
+  construction: yes, and they were working the whole time.
   (4) *Resource-specific quadrants* — A.10's typed fields per
   quadrant and 3.12's price levers already give a quadrant a resource
   identity; the lattice just makes "which ones to get" a map question.
@@ -4683,6 +4730,24 @@ build once the questions in Part C are answered:
   the Frontier has no ports and its fields are typed rich; a loss there
   tows back through the gate at double the wait and lands at Meridian;
   both quadrants save and reload independently.
+
+**Addendum — the cube's gates (Brian's question, Fable's answer,
+2026-09-05; supersedes the one-gate-hub idea in Part C's ideas11.txt
+review).** Under A.13's cube a corner quadrant has **three gates, one
+per edge**, and they are the only POIs that do not orbit: each is fixed
+on the outer ring in the direction of the edge it serves, in the
+quadrant's own frame — the gate to "1 right" on the right, the gate to
+"1 above" above the star's plane (an elevated POI; the ear already
+copes), the gate to "1 ahead" ahead. `QUADRANT` rows for gates carry
+`degPerHour: 0` and an `edge` (`+x`/`+y`/`+z` etc., through one shared
+`CUBE_AXES` table); today's single Jump Gate becomes Q1's gate to Q2,
+repositioned to its edge. **Arrival is at the matching gate**: leave Q1
+by its right-hand gate, arrive at Q2's left-hand gate with Q2's star
+ahead — the cube felt from inside. The fare is per edge, as before. The
+"one Jump Gate offering three destinations" shortcut is withdrawn: a
+menu teaches nothing, a gate you have to fly (or climb) to teaches the
+map. Nothing about the gate-opens-at-Known rule changes. Not yet
+scheduled — this is the shape 3.22 takes when it builds.
 
 #### 3.15 Lazy-load audio — superseded by 2.19
 
@@ -5145,12 +5210,34 @@ resolve cleanly**, one push-back, and a handful of readings to confirm:
     quadrants Brian can tell apart blind, each with its own recording
     on the beacon and its own field/station mix. That is the single
     strongest argument for eight over twenty-seven.
-- **Still open on the cube**: stations per quadrant (four? six? the
-  same for all, or part of each quadrant's character?); "controlled
-  quadrant" = majority of stations — agreed?; the centre as the base;
-  opponent count as a difficulty setting with most corners unaligned;
-  are face centres and the centre reachable at all before Phase 5;
-  which of Q1's three neighbours is Q2 (the economy) and which Q3.
+- **Decided on the cube (Brian, 2026-09-05)**: stations per quadrant
+  are unique, part of each corner's character; the centre is for bases;
+  faces and centre unreachable for now; control exists in every quadrant
+  from the start but is offered only from Q3 (3.23b); coordinates are
+  spoken vertical-lateral-depth with zeros unspoken — "1 below, 1 left,
+  1 behind" is home (A.13); gates are three per corner, fixed, placed in
+  their edge's direction, arrival at the matching gate (3.22 addendum).
+- **Fable's two push-backs on the cursor (open)**: (1) Brian's example
+  starts the cursor at the **origin** (the centre) and walks Left, Down,
+  S to reach home — but the centre is unreachable and isn't a quadrant,
+  so opening the map there puts the cursor on nothing, spoken as
+  nothing. Proposal: the galactic map opens with the cursor **on the
+  quadrant you are in**, speaking its full coordinate ("1 below, 1 left,
+  1 behind"), and the words stay relative to the centre exactly as Brian
+  framed them — his example reads as the vocabulary, not the start
+  position. If the origin really should be the start, it needs a word
+  ("Centre.") and a reason to stand there. (2) Step size: with cells at
+  −1/0/+1 an axis, **one press moves one cell** — corner to midpoint
+  (the waypoint, spoken with that axis silent: "1 below, 1 behind"), a
+  second press to the far corner. No Shift step needed; Fable's earlier
+  "one press a corner, Shift a midpoint" is withdrawn as the more
+  complicated of the two. Off-route directions refuse ("No route.").
+- **Still open**: which neighbour is Q2 — Fable proposes "1 right" (the
+  first natural move on the face you're looking at), Q3 "1 above", "1
+  ahead" later; the majority rule for quadrant control; opponent count
+  as a difficulty setting with most corners unaligned; whether L.1b in
+  the lab adopts the same below/above, left/right, behind/ahead words
+  (Fable: yes, one vocabulary).
 - 3.42: Shift+F for formation; up/down as standoff distance (angle
   already rotates); nose outward by default; `spaceship_cruiser_2r` as
   the freighter's voice — any of those wrong? Build it before or after

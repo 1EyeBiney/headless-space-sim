@@ -2496,3 +2496,26 @@ as the thing cut-off erodes; the galactic cursor gets simpler (corners
 and midpoints only). Still open: stations per quadrant, the majority
 rule, the centre as the base, opponent count as a difficulty setting,
 which neighbour is Q2. Nothing built.
+
+**Round 29, third pass (Fable, docs only)**: Brian settled most of the
+cube — stations per quadrant unique and part of each corner's
+character; the centre for bases; faces/centre unreachable for now;
+**control exists in every quadrant from the start but is offered only
+from Q3** (`profile.controlUnlocked`; NPC unions work unseen before
+that — ideas9's "does the computer start with unions" answered by
+construction). And he set the **spoken coordinate vocabulary**: the
+centre is the origin, cells are spoken vertical → lateral → depth
+("1 below", "1 left", "1 behind"), zeros unspoken, home = "1 below, 1
+left, 1 behind". His question — how do warp gates sit "semi-
+realistically" in a quadrant where every other POI orbits — got the
+answer written into A.13 and a 3.22 addendum: **three fixed gates per
+corner, one per edge, placed on the outer ring in their edge's own
+direction** (the gate to "1 above" is literally above the star's plane,
+an elevated POI the ear already handles), arrival at the neighbour's
+matching gate, one shared `CUBE_AXES` table for placement, cursor words,
+and arrival; the one-gate-hub-with-a-menu idea is withdrawn (a menu
+teaches nothing, a gate you climb to teaches the map). Two push-backs
+open in Part C: the galactic cursor should open on the quadrant you're
+in, not the unreachable centre; and one press should move one cell
+(no Shift step). Still open: which neighbour is Q2 (Fable: "1 right"),
+the majority rule, opponent count. Nothing built.
