@@ -51,6 +51,21 @@ expands.
   `role=application` box for shared height (Up/Down) and a shared speed
   multiplier (Left/Right), Escape stops — Brian's testbed for what the
   HRTF layer can do with moving sources, the seed of a future 3D space.
+  **As of Round 21 (Phase 3L) it's the HRTF laboratory** — the vortex
+  demo gained per-vortex sway/height/offset (see the "Phase 3L" bullet
+  below), and four new demos joined it: the Position Explorer (L.1,
+  fixed-step polar navigation with compass-word readback), the flyby
+  (L.4, Brian's propeller-plane clips on routes and stunts), the
+  spatial room (L.8, a solo-then-turn-then-multiple-choice localization
+  test), and the lighthouse gate (L.9, a directional cone). Shared
+  helpers (`labPolarToPos`, `labNormAz`, `labDescribeAz`/`labDescribeEl`,
+  `LAB_NAMES8`, `labShuffle`, `labResetListener`) sit above all of them;
+  `window.__lab` (`tick(ms)`/`state()`) is this page's test hook, the
+  same role `__sim.step()`/`__sim.state()` play for the game — needed
+  because this pane's own `requestAnimationFrame` proved unreliable in
+  isolation for one-shot timed demos, so every timed demo here runs on
+  an explicit millisecond accumulator rather than diffing
+  `performance.now()` directly.
 - (F2, the ship status screen, SPEC 2.13 — same browsable shell as the run
   log, listing hull/shields/warp/cargo/missiles/chaff, one line per laser
   slot with its family matchup in words, fitted modules, and total mass;
@@ -77,13 +92,15 @@ expands.
   = 16 lasers (Mining ×8, Rapid-pulse ×8, all 16 in the manifest as of
   SPEC 2.12) plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
   masters with served MP3 siblings, all 6 in the manifest — the per-slot
-  switch delay is timed off their original lengths); **`audio/demo/`
+  switch delay is timed off their original lengths); `audio/demo/`
   = `propeller_plane1–8.mp3` (Brian, 2026-09-05, for the lab's flyby
-  L.4 — 1–3 are 5 s, 4 is 8 s, 5–8 are 12 s, all stereo 48k; UNTRACKED
-  until L.4 stages the folder explicitly) and `audio/stations/` =
+  L.4 — 1–3 are 5 s, 4 is 8 s,
+  5–8 are 12 s, all stereo 48k; in the manifest as of Round 21, lab-only,
+  excluded from `AUDIO_PRELOAD`) and `audio/stations/` =
   `space_station1–10.mp3` (same day, for 3.31's recorded station
-  beacons and L.9's gate — number 6 is the gate by Brian's pick;
-  UNTRACKED until those items stage it)**; `audio/Explosions/`
+  beacons and L.9's gate — number 6 is the gate by Brian's pick; all
+  ten in the manifest as of Round 21 and DO preload, real station voices
+  now, not lab-only); `audio/Explosions/`
   = 8 new unintegrated hull-breach/explosion candidates, no manifest key
   yet. `soundlab.html` is the up-to-date "what's connected" checker —
   trust it over this paragraph for the current count. `audio/z.old/`
@@ -1612,41 +1629,60 @@ one measurement — resolved by reading the CFG value directly instead
 of trusting a polluted rate. Zero console errors throughout. Not yet
 heard or flown by Brian.
 
-**The next round is the lab, not 3.28** (Fable, 2026-09-05, docs only —
-nothing built): Brian's `ideas_crazy_7.txt` (a ten-point review of the
-Sound Lab as an HRTF demonstrator) and his answers in `ideas8.txt`
-(both untracked, like every ideas file) are written into SPEC.md as
-**Phase 3L** — only the five items he bracketed: **L.1** the 3D
-Position Explorer (the prototype of a *3D galactic map* browsed by a
-sound cursor, A.13 — the quadrant map stays flat and untouched),
-**L.5** the per-vortex 3D vortex (Up/Down select, Page Up/Down sway,
-Home/End height, brackets slide the orbit centre, Left/Right shared
-speed, R resets, full readback), **L.4** the flyby (his eight
-`audio/demo/propeller_plane` clips — 1–4 loop on set routes, 5–8 are
-one-shot stunts fitted to their 12 s and rotated), **L.8** the room
-(five quiet sounds randomised every run, a solo pass in non-distance
-order, a spoken 90° turn, on-screen multiple-choice questions), and
-**L.9** the lighthouse gate (a directional `PannerNode` cone sweeping
-every 10 s — in the lab AND on the game's Jump Gate, using
-`space_station6.mp3`). The localization game, turn-your-head,
-stereo-vs-3D, breathing radius, audition position, and Doppler are
-deliberately NOT written. Three game items came with it: **3.31**
-recorded station beacons (`audio/stations/space_station1–10` applied
-down the list, Meridian = 1, Station Two = 2, gate = 6, via a
-`beaconAsset` row field), **3.29** the ship page (F2 as the full
-live-number component reference with H/Shift+H and first-letter
-heading jumps), and **3.30** the tractor beam (**Z** — which means the
-zone cycle moves to **Shift+Z**, accepted by default — range 500, a
-core reeled to `vacRange` 300 in 10 s, 4/s on mediums, nothing on
-large/huge, a `tractor_1` module test-fitted via `CFG.tractorTestFit`
-until Brian has heard it). Build order per Brian: L.1 → L.5 → L.4 →
-L.8 → L.9 → 3.31 → 3.29 → 3.30 → then 3.28. Two gotchas for the
-builder, both in SPEC: the `AudioListener` is global, so any lab demo
-that turns the listener (L.8) must reset it on stop or every other demo
-inherits the turn; and the two new audio folders are untracked — stage
-them explicitly, never `git add -A`. Part C carries the decisions and
-the accepted-by-default numbers; every number is a placeholder for
-Brian's ear.
+**Phase 3L was spec'd docs-only by Fable** (2026-09-05): Brian's
+`ideas_crazy_7.txt` (a ten-point review of the Sound Lab as an HRTF
+demonstrator) and his answers in `ideas8.txt` written into SPEC.md as
+only the five items he bracketed, plus three game items they brought
+with them (3.31 station beacons, 3.29 the ship page, 3.30 the tractor
+beam), in the order L.1 → L.5 → L.4 → L.8 → L.9 → 3.31 → 3.29 → 3.30
+→ 3.28.
+
+**Round 21 (Sonnet) built the whole lab round — L.1, L.4, L.5, L.8,
+L.9 — all in `soundlab.html`.** See SPEC.md's Phase 3L for the full
+per-demo shape; in brief: **L.1** the 3D Position Explorer (fixed-step
+azimuth/elevation/distance, compass-word readback, Enter "selects" —
+the prototype of the *galactic map's* own sound cursor, A.13, which
+Brian confirmed is a genuinely new 3D map, NOT the flat quadrant map);
+**L.5** the vortex reshaped to per-vortex sway/height/offset (Up/Down
+select, Page Up/Down/Home/End/`[`/`]` shape the selected one, Left/
+Right the shared speed, R resets, full readback); **L.4** the flyby
+(his eight `propeller_plane` clips — 1–4 loop on four different set
+routes, 5–8 are one-shot stunts built from polar keyframes fitted to
+their measured 12 s, cycling 5→6→7→8→5); **L.8** the spatial room
+(five sounds at randomised positions/distances every run, a solo pass
+in a shuffled non-distance order, a spoken 90° turn that actually
+rotates the `AudioListener`, three on-screen multiple-choice questions
+judged against the post-turn bearing); **L.9** the lighthouse gate,
+lab half (a directional `PannerNode` cone, `space_station6.mp3`,
+10-second sweep) — the game half (the actual Jump Gate) is bundled
+into 3.31 below since it touches the same `buildPoiVoice` code path.
+Every demo now calls the shared `stopAll()` on start (satisfying
+"every demo stops every other"), and `stopAll()` itself now calls a
+new `labResetListener()` unconditionally, so the `AudioListener` —
+global, and only ever turned by L.8 — can never be left facing the
+wrong way for whatever demo runs next. New manifest keys:
+`propeller_plane1–8` (lab-only, excluded from `AUDIO_PRELOAD`) and
+`space_station1–10` (DO preload — real station voices as of 3.31, not
+lab-only); both new audio folders staged explicitly, never `git add -A`.
+**A real gotcha found and fixed, not a game bug**: this sandboxed
+preview pane's `requestAnimationFrame` proved unreliable in isolation
+for every one-shot timed demo (a 12 s stunt could sit frozen past 15
+real seconds with `document.hidden` reading false the whole time) —
+fixed by rebuilding every timed demo around an explicit millisecond
+accumulator (the same shape as the main game's `dt`-based `simTick`)
+instead of diffing `performance.now()` directly, and adding a new
+**`window.__lab`** test hook (`tick(ms)`/`state()`) as this page's own
+equivalent of `__sim.step()`/`__sim.state()` — once driven manually,
+every stunt and the room's turn completed in exactly its configured
+duration. Machine-tested thoroughly end to end (every key in every
+demo, the offset/distance/elevation clamps, 15 consecutive room runs
+confirmed never monotonic by distance, the room's full solo→turn→
+question→score flow with a deliberately mixed right/wrong/right
+answer set producing the correct "2 of 3", the listener confirmed
+reset on every stop). Zero console errors throughout. Every number is
+a placeholder for Brian's ear. Not yet heard by Brian. Next: the three
+game items — 3.31 (recorded station beacons), 3.29 (the ship page),
+3.30 (the tractor beam) — then back to 3.28.
 
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at

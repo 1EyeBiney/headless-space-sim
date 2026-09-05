@@ -48,8 +48,12 @@
 <nav>
     <h2>Quick Navigation</h2>
     <div class="nav-links">
+        <a href="#sec-explorer">Position Explorer (Phase 3L, L.1)</a>
+        <a href="#sec-flyby">Flyby (Phase 3L, L.4)</a>
+        <a href="#sec-room">Spatial audio room (Phase 3L, L.8)</a>
+        <a href="#sec-gate">Lighthouse gate (Phase 3L, L.9)</a>
         <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
-        <a href="#sec-vortex">Vortex orbit demo (ideas6)</a>
+        <a href="#sec-vortex">3D vortex (Phase 3L, L.5)</a>
         <a href="#sec-cues">Discrete cues</a>
         <a href="#sec-prim">Raw primitives</a>
         <a href="#sec-embed">Recordings in the manifest</a>
@@ -57,6 +61,61 @@
         <a class="stop-btn" href="javascript:void(0)" id="stopAllBtn">&#x25A0; STOP ALL</a>
     </div>
 </nav>
+
+<!-- ============================================================ -->
+<h2 class="section-header" style="margin-top:20px;">Phase 3L — the HRTF laboratory</h2>
+<p class="section-note">Brian's ten-point review of this page as an HRTF demonstrator (<code>ideas_crazy_7.txt</code>) and his answers (<code>ideas8.txt</code>) — only the five items he bracketed. Each demo below stops every other one when it starts, and any demo that turns the listener puts it back facing forward on stop, since the <code>AudioListener</code> is global.</p>
+
+<!-- ============================================================ -->
+<h2 id="sec-explorer" class="section-header">Position Explorer (Phase 3L, L.1)</h2>
+<p class="section-note">One continuous sound, moved by fixed steps rather than a continuous orbit — the way to hear exactly what the spatializer can do, and the prototype of the galactic map's own sound cursor (A.13): steer a sound to a point, then "select" it. Start it, then put focus in the box: Left/Right rotate it around you 45° at a time, Up/Down move it 30° above or below, Page Up/Down move it 100 farther or closer, Shift plus any of those is the fine step (15°, 10°, 25), Home resets to dead ahead, Enter "selects" the current position, Escape stops.</p>
+<div class="button-group">
+    <button id="explorerStart">Start the explorer (engine voice)</button>
+    <button id="explorerSwap">Swap voice <span class="desc">Engine loop &#8596; repeating blip — works before or during.</span></button>
+    <button id="explorerStop">Stop the explorer</button>
+</div>
+<div id="explorerArena" tabindex="0" role="application"
+     aria-label="Position explorer controls. Left and right rotate, up and down change elevation, page up and page down change distance, shift for a finer step, Home resets, Enter selects, Escape stops."
+     style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
+    Arrow keys, Page Up/Down, Home, and Enter work here once the explorer is running.
+</div>
+<p id="explorerStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
+
+<!-- ============================================================ -->
+<h2 id="sec-flyby" class="section-header">Flyby (Phase 3L, L.4)</h2>
+<p class="section-note">Brian's eight <code>audio/demo/propeller_plane1&ndash;8.mp3</code> recordings. Planes 1&ndash;4 loop on four different set routes around the listener; planes 5&ndash;8 are one-shot stunts, each fitted to its own length &mdash; a close pass, an overhead dive, a corkscrew, an underneath pass &mdash; cycling one at a time. No Doppler.</p>
+<div class="button-group">
+    <button id="flybyRoutesStart">Start the routes (planes 1-4, looping)</button>
+    <button id="flybyRoutesStop">Stop the routes</button>
+    <button id="flybyStunt">Next stunt (planes 5-8, one at a time)</button>
+</div>
+<p id="flybyStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
+
+<!-- ============================================================ -->
+<h2 id="sec-room" class="section-header">Spatial audio room (Phase 3L, L.8)</h2>
+<p class="section-note">Five quiet, distinct, stationary sounds &mdash; Generator, Beacon, Crackle, Pump, Radio &mdash; placed randomly (position and distance) on every run. Start test solos each one in turn, in an order that is never the order of distance, then turns you 90&deg; (announced first) and asks where things are now.</p>
+<div class="button-group">
+    <button id="roomStart">Start test</button>
+    <button id="roomStop">Stop</button>
+</div>
+<div id="roomArena" role="application" aria-label="Spatial audio room test" style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
+    <p id="roomStatus" aria-live="polite">Press Start test.</p>
+    <div id="roomAnswers" class="button-group"></div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="sec-gate" class="section-header">Lighthouse gate (Phase 3L, L.9)</h2>
+<p class="section-note">A directional source &mdash; <code>PannerNode</code> orientation and a sound cone, loudest when its beam points at you. This is the same voice and the same rotation the game's Jump Gate now uses (<code>space_station6</code>, a 10-second sweep).</p>
+<div class="button-group">
+    <button id="gateStart">Start the lighthouse</button>
+    <button id="gateStop">Stop the lighthouse</button>
+</div>
+<div id="gateArena" tabindex="0" role="application"
+     aria-label="Lighthouse gate controls. Left and right move it around you, page up and page down change the sweep period, Escape stops."
+     style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
+    Left/Right and Page Up/Down work here once the lighthouse is running.
+</div>
+<p id="gateStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
 <!-- ============================================================ -->
 <h2 id="sec-lock" class="section-header">Lock tone candidates (SPEC 2.11)</h2>
@@ -69,16 +128,16 @@
 </div>
 
 <!-- ============================================================ -->
-<h2 id="sec-vortex" class="section-header">Vortex orbit demo (ideas6)</h2>
-<p class="section-note">Brian's eight vortex recordings (<code>audio/quadrant/vortex</code>), each looping on its own HRTF panner and orbiting the listener at its own radius and speed — four one way, four the other. Start it, then put focus in the box: Up and Down raise or lower every orbit, Left and Right slow or speed them all up, Escape stops. The status line below the box reads back each change.</p>
+<h2 id="sec-vortex" class="section-header">3D vortex (ideas6, reshaped by Phase 3L, L.5)</h2>
+<p class="section-note">Brian's eight vortex recordings (<code>audio/quadrant/vortex</code>), each looping on its own HRTF panner and orbiting the listener at its own radius and speed — four one way, four the other. As of L.5 each vortex has its own vertical sway, centre height, and orbit offset, shaped one at a time. Start it, then put focus in the box: Up/Down select a vortex, Page Up/Down change its sway, Home/End change its centre height, [ and ] slide its orbit centre toward or away from you, Left/Right change the shared speed for all eight, R resets every vortex, Escape stops. The status line reads back the selected vortex after every change.</p>
 <div class="button-group">
     <button id="vortexStart">Start the vortex orbit <span class="desc">Loads all eight (about 1.7&nbsp;MB) the first time.</span></button>
     <button id="vortexStop">Stop the vortex orbit</button>
 </div>
 <div id="vortexArena" tabindex="0" role="application"
-     aria-label="Vortex orbit controls. Up and down arrows raise and lower the orbits, left and right slow and speed them, Escape stops."
+     aria-label="Vortex orbit controls. Up and down select a vortex, page up and page down change its sway, Home and End change its height, left and right bracket keys slide its orbit offset, left and right arrows change the shared speed, R resets, Escape stops."
      style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
-    Arrow keys work here once the orbit is running.
+    Arrow keys, Page Up/Down, Home, End, [ and ], and R work here once the orbit is running.
 </div>
 <p id="vortexStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
@@ -143,8 +202,609 @@ function stopAll() {
     activeStopFns.forEach(function (fn) { try { fn(); } catch (e) {} });
     activeStopFns = [];
     document.querySelectorAll('audio').forEach(function (a) { a.pause(); });
+    labResetListener();   // belt-and-suspenders: only L.8 turns the listener, but never leave it turned
 }
 document.getElementById('stopAllBtn').addEventListener('click', stopAll);
+
+// ---- Phase 3L shared helpers ------------------------------------------------
+// Polar-to-world conversion shared by every new demo below: azimuth in
+// degrees (0 = dead ahead, +right), elevation in degrees (0 = level,
+// +above), distance — matching the default AudioListener orientation
+// (forward -z, up +y, right +x), the same convention the game's own aim()
+// uses. This IS the galactic map's future sound cursor math (A.13).
+var LAB_NAMES8 = ['front', 'front-right', 'right', 'rear-right', 'rear', 'rear-left', 'left', 'front-left'];
+function labPolarToPos(azDeg, elDeg, dist) {
+    var az = azDeg * Math.PI / 180, el = elDeg * Math.PI / 180;
+    return {
+        x: Math.sin(az) * Math.cos(el) * dist,
+        y: Math.sin(el) * dist,
+        z: -Math.cos(az) * Math.cos(el) * dist
+    };
+}
+function labNormAz(deg) { return ((deg + 180) % 360 + 360) % 360 - 180; }
+function labDescribeAz(azDeg) {
+    var nearest = Math.round(azDeg / 45);
+    var delta = Math.round(azDeg - nearest * 45);
+    var idx = ((nearest % 8) + 8) % 8;
+    var name = LAB_NAMES8[idx];
+    if (delta === 0) return name;
+    return name + ', ' + Math.abs(delta) + ' ' + (delta > 0 ? 'right' : 'left');
+}
+// Exact lookup for an azimuth already known to land on a 45-degree name
+// (the room test's post-turn bearings always do, since every object sits
+// on one of the 8 points and every turn is exactly 90 degrees).
+function labExactAzName(azDeg) {
+    var idx = ((Math.round(azDeg / 45) % 8) + 8) % 8;
+    return LAB_NAMES8[idx];
+}
+function labDescribeEl(elDeg) {
+    if (elDeg === 90) return 'directly overhead';
+    if (elDeg === -90) return 'directly underneath';
+    if (elDeg === 0) return 'level';
+    return Math.abs(elDeg) + ' ' + (elDeg > 0 ? 'above' : 'below');
+}
+function labDescribe(azDeg, elDeg, dist) {
+    return labDescribeAz(azDeg) + ', ' + labDescribeEl(elDeg) + ', distance ' + Math.round(dist) + '.';
+}
+function labShuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+}
+// The AudioListener is global — only L.8 (the room) turns it, but every
+// demo resets it defensively on a global stop so a demo cut short by
+// STOP ALL, or by another demo starting, never leaves the listener turned.
+function labResetListener() {
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    var L = A.ctx.listener;
+    if (L.forwardX) {
+        L.forwardX.value = 0; L.forwardY.value = 0; L.forwardZ.value = -1;
+        L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
+    } else if (L.setOrientation) {
+        L.setOrientation(0, 0, -1, 0, 1, 0);
+    }
+}
+
+// ---- L.1 Position Explorer (Phase 3L) --------------------------------------
+// One continuous sound moved in fixed steps, not a continuous orbit — the
+// prototype of the galactic map's own sound cursor (A.13): steer a sound
+// to a point, then "select" it.
+var explorer = { az: 0, el: 0, dist: 200, voice: 'engine', panner: null, srcNodes: null, blipTimer: null };
+var explorerArena = document.getElementById('explorerArena');
+var explorerStatus = document.getElementById('explorerStatus');
+function explorerSay(t) { explorerStatus.textContent = t; }
+
+function explorerStopVoice() {
+    if (explorer.blipTimer) { clearTimeout(explorer.blipTimer); explorer.blipTimer = null; }
+    if (explorer.srcNodes) {
+        var n = explorer.srcNodes; explorer.srcNodes = null;
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.2); } catch (e) {}
+        setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+    }
+}
+function explorerStop() {
+    explorerStopVoice();
+    if (explorer.panner) { try { explorer.panner.disconnect(); } catch (e) {} explorer.panner = null; }
+    explorerSay('Explorer stopped.');
+}
+registerStop(explorerStop);
+
+function explorerStartVoice() {
+    var A = SIM.audio;
+    if (!A.ctx || !explorer.panner) return;
+    explorerStopVoice();
+    if (explorer.voice === 'engine') {
+        A.load('ship_corvette_1').then(function (buf) {
+            if (!explorer.panner) return;
+            var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+            var g = A.ctx.createGain(); g.gain.value = 0.0001;
+            src.connect(g); g.connect(explorer.panner);
+            src.start();
+            A.ramp(g.gain, 0.4, 0.3);
+            explorer.srcNodes = { src: src, g: g };
+        });
+    } else {
+        (function beep() {
+            if (!explorer.panner) return;
+            SIM.audio.sfxTone({ type: 'sine', f1: 880, dur: 0.06, vol: 0.3, out: explorer.panner });
+            explorer.blipTimer = setTimeout(beep, 800);
+        })();
+    }
+}
+function explorerUpdatePanner() {
+    if (!explorer.panner) return;
+    SIM.audio.movePanner(explorer.panner, labPolarToPos(explorer.az, explorer.el, explorer.dist));
+}
+function explorerStart() {
+    stopAll();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    explorer.az = 0; explorer.el = 0; explorer.dist = 200;
+    explorer.panner = A.makePanner(labPolarToPos(0, 0, 200));
+    explorer.panner.connect(A.worldBus);
+    explorerStartVoice();
+    explorerArena.focus();
+    explorerSay('Explorer started. ' + labDescribe(0, 0, 200));
+}
+function explorerSwapVoice() {
+    explorer.voice = explorer.voice === 'engine' ? 'blip' : 'engine';
+    if (explorer.panner) explorerStartVoice();
+    explorerSay('Voice: ' + (explorer.voice === 'engine' ? 'engine loop' : 'repeating blip') + '.');
+}
+explorerArena.addEventListener('keydown', function (e) {
+    if (!explorer.panner) return;
+    var k = e.key, shift = e.shiftKey;
+    if (k === 'ArrowLeft')       explorer.az = labNormAz(explorer.az - (shift ? 15 : 45));
+    else if (k === 'ArrowRight') explorer.az = labNormAz(explorer.az + (shift ? 15 : 45));
+    else if (k === 'ArrowUp')    explorer.el = clamp(explorer.el + (shift ? 10 : 30), -90, 90);
+    else if (k === 'ArrowDown')  explorer.el = clamp(explorer.el - (shift ? 10 : 30), -90, 90);
+    else if (k === 'PageUp')     explorer.dist = clamp(explorer.dist + (shift ? 25 : 100), 50, 800);
+    else if (k === 'PageDown')  explorer.dist = clamp(explorer.dist - (shift ? 25 : 100), 50, 800);
+    else if (k === 'Home') {
+        explorer.az = 0; explorer.el = 0; explorer.dist = 200;
+        e.preventDefault();
+        explorerUpdatePanner();
+        explorerSay('Reset. ' + labDescribe(explorer.az, explorer.el, explorer.dist));
+        return;
+    } else if (k === 'Enter') {
+        SIM.cues.play('ready_chime');
+        explorerSay('Selected: ' + labDescribe(explorer.az, explorer.el, explorer.dist));
+        e.preventDefault();
+        return;
+    } else if (k === 'Escape') { explorerStop(); e.preventDefault(); return; }
+    else return;
+    e.preventDefault();
+    explorerUpdatePanner();
+    explorerSay(labDescribe(explorer.az, explorer.el, explorer.dist));
+});
+document.getElementById('explorerStart').addEventListener('click', explorerStart);
+document.getElementById('explorerSwap').addEventListener('click', explorerSwapVoice);
+document.getElementById('explorerStop').addEventListener('click', explorerStop);
+
+// ---- L.4 Flyby (Phase 3L) ---------------------------------------------------
+// Planes 1-4 loop on four different set routes; planes 5-8 are one-shot
+// stunts, each path fitted to its own measured 12 s so the approach, the
+// stunt, and the fly-off land on the audio.
+var FLYBY_ROUTES = [
+    { name: 'racetrack',    asset: 'propeller_plane1', lapS: 14 },
+    { name: 'figure-eight', asset: 'propeller_plane2', lapS: 16 },
+    { name: 'tilted climb', asset: 'propeller_plane3', lapS: 18 },
+    { name: 'wide circuit', asset: 'propeller_plane4', lapS: 20 }
+];
+function flybyRoutePos(routeIdx, t) {
+    if (routeIdx === 0) {
+        // Low racetrack: close in front at 120, far behind at 400, level.
+        return { x: Math.sin(t) * 200, y: 0, z: 140 + Math.cos(t) * 260 };
+    }
+    if (routeIdx === 1) {
+        // Figure-eight crossing directly overhead at 150.
+        return { x: 250 * Math.sin(t), y: 150 * Math.cos(t), z: 250 * Math.sin(t) * Math.cos(t) };
+    }
+    if (routeIdx === 2) {
+        // Tilted circle: below-front up through above-behind and back.
+        return { x: 60 * Math.sin(t * 0.5), y: 300 * Math.sin(t), z: -300 * Math.cos(t) };
+    }
+    // Wide circuit at 350; height flips sign every lap.
+    var lap = Math.floor(t / (Math.PI * 2));
+    var sign = (lap % 2 === 0) ? 1 : -1;
+    var tt = t % (Math.PI * 2);
+    return { x: 350 * Math.cos(tt), y: sign * 80, z: 350 * Math.sin(tt) };
+}
+var FLYBY_STUNTS = [
+    { name: 'Close pass', asset: 'propeller_plane5', kind: 'keyframe',
+      frames: [{ az: -45, el: 0, dist: 600 }, { az: -90, el: 0, dist: 80 }, { az: 135, el: 0, dist: 600 }] },
+    { name: 'Overhead dive', asset: 'propeller_plane6', kind: 'keyframe',
+      frames: [{ az: 0, el: 45, dist: 600 }, { az: 0, el: 90, dist: 60 }, { az: 180, el: -20, dist: 600 }] },
+    { name: 'Corkscrew', asset: 'propeller_plane7', kind: 'corkscrew' },
+    { name: 'Underneath pass', asset: 'propeller_plane8', kind: 'keyframe',
+      frames: [{ az: 0, el: -30, dist: 600 }, { az: 0, el: -90, dist: 60 }, { az: 180, el: 0, dist: 600 }] }
+];
+function flybyKeyframePos(frames, frac) {
+    var seg = frac < 0.5 ? 0 : 1;
+    var localT = seg === 0 ? frac / 0.5 : (frac - 0.5) / 0.5;
+    var ease = localT * localT * (3 - 2 * localT);
+    var a = frames[seg], b = frames[seg + 1];
+    return labPolarToPos(a.az + (b.az - a.az) * ease, a.el + (b.el - a.el) * ease, a.dist + (b.dist - a.dist) * ease);
+}
+function flybyStuntPos(stunt, frac) {
+    if (stunt.kind === 'corkscrew') {
+        return labPolarToPos(frac * 720, 20 * Math.sin(frac * Math.PI * 3), 500 - 400 * Math.sin(Math.PI * frac));
+    }
+    return flybyKeyframePos(stunt.frames, frac);
+}
+var flyby = { routeNodes: [], routePhases: [0, 0, 0, 0], routeRaf: null, routeLast: 0,
+              stuntNode: null, stuntRaf: null, stuntIdx: 0 };
+var flybyStatus = document.getElementById('flybyStatus');
+function flybySay(t) { flybyStatus.textContent = t; }
+
+function flybyRoutesStop() {
+    if (flyby.routeRaf) { cancelAnimationFrame(flyby.routeRaf); flyby.routeRaf = null; }
+    var nodes = flyby.routeNodes; flyby.routeNodes = [];
+    nodes.forEach(function (n) {
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.3); } catch (e) {}
+        setTimeout(function () { try { n.src.stop(); n.p.disconnect(); } catch (e) {} }, 500);
+    });
+    if (nodes.length) flybySay('Routes stopped.');
+}
+function flybyStuntStop() {
+    if (flyby.stuntRaf) { cancelAnimationFrame(flyby.stuntRaf); flyby.stuntRaf = null; }
+    if (flyby.stuntNode) {
+        var n = flyby.stuntNode; flyby.stuntNode = null;
+        try { n.src.stop(); n.p.disconnect(); } catch (e) {}
+    }
+}
+function flybyStop() { flybyRoutesStop(); flybyStuntStop(); }
+registerStop(flybyStop);
+
+function flybyRouteStep(dt) {
+    flyby.routeNodes.forEach(function (n) {
+        flyby.routePhases[n.idx] += (Math.PI * 2 / FLYBY_ROUTES[n.idx].lapS) * dt;
+        SIM.audio.movePanner(n.p, flybyRoutePos(n.idx, flyby.routePhases[n.idx]));
+    });
+}
+function flybyRouteFrame(now) {
+    var dt = Math.min((now - flyby.routeLast) / 1000, 0.1);
+    flyby.routeLast = now;
+    flybyRouteStep(dt);
+    flyby.routeRaf = requestAnimationFrame(flybyRouteFrame);
+}
+function flybyRoutesStart() {
+    stopAll();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    flybySay('Loading routes…');
+    Promise.all(FLYBY_ROUTES.map(function (r) { return A.load(r.asset); })).then(function (bufs) {
+        bufs.forEach(function (buf, i) {
+            var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+            var g = A.ctx.createGain(); g.gain.value = 0.0001;
+            var p = A.makePanner(flybyRoutePos(i, 0));
+            src.connect(g); g.connect(p); p.connect(A.worldBus);
+            src.start(0, Math.random() * buf.duration * 0.5);
+            A.ramp(g.gain, 0.35, 0.5);
+            flyby.routePhases[i] = (i / FLYBY_ROUTES.length) * Math.PI * 2;
+            flyby.routeNodes.push({ src: src, g: g, p: p, idx: i });
+        });
+        flyby.routeLast = performance.now();
+        flyby.routeRaf = requestAnimationFrame(flybyRouteFrame);
+        flybySay('Four routes flying: racetrack, figure-eight, tilted climb, wide circuit.');
+    }).catch(function (err) { flybySay('Load failed: ' + err.message); });
+}
+// Accumulator-based, not now()-diffed: flybyStuntTick(dtMs) is the single
+// source of truth, callable from the real rAF loop OR from __lab.tick()
+// (a manual clock for testing — this sandboxed pane's rAF has proven
+// unreliable in isolation, the same class of issue the main game's
+// __sim.step() exists to work around).
+function flybyStuntTick(dtMs) {
+    var node = flyby.stuntNode;
+    if (!node) return;
+    node.elapsedMs += dtMs;
+    var frac = Math.min(1, node.elapsedMs / node.durMs);
+    SIM.audio.movePanner(node.p, flybyStuntPos(node.stunt, frac));
+    if (frac >= 1) { flybyStuntStop(); flybySay(node.stunt.name + ' complete.'); }
+}
+function flybyStuntFrame(now) {
+    var node = flyby.stuntNode;
+    if (!node) return;
+    var dtMs = now - (node.lastNow || now);
+    node.lastNow = now;
+    flybyStuntTick(dtMs);
+    if (flyby.stuntNode === node) flyby.stuntRaf = requestAnimationFrame(flybyStuntFrame);
+}
+function flybyStunt() {
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    flybyStuntStop();
+    var stunt = FLYBY_STUNTS[flyby.stuntIdx];
+    flyby.stuntIdx = (flyby.stuntIdx + 1) % FLYBY_STUNTS.length;
+    flybySay(stunt.name + '. Twelve seconds.');
+    A.load(stunt.asset).then(function (buf) {
+        var src = A.ctx.createBufferSource(); src.buffer = buf;
+        var g = A.ctx.createGain(); g.gain.value = 0.5;
+        var p = A.makePanner(flybyStuntPos(stunt, 0));
+        src.connect(g); g.connect(p); p.connect(A.worldBus);
+        var node = { src: src, p: p, elapsedMs: 0, durMs: buf.duration * 1000, stunt: stunt, lastNow: performance.now() };
+        flyby.stuntNode = node;
+        src.start();
+        flyby.stuntRaf = requestAnimationFrame(flybyStuntFrame);
+    }).catch(function (err) { flybySay('Load failed: ' + err.message); });
+}
+document.getElementById('flybyRoutesStart').addEventListener('click', flybyRoutesStart);
+document.getElementById('flybyRoutesStop').addEventListener('click', flybyRoutesStop);
+document.getElementById('flybyStunt').addEventListener('click', flybyStunt);
+
+// ---- L.8 Spatial audio room (Phase 3L) --------------------------------------
+var ROOM_OBJECTS = ['Generator', 'Beacon', 'Crackle', 'Pump', 'Radio'];
+var ROOM_AZ = [0, 45, 90, 135, 180, 225, 270, 315];
+var ROOM_EL = [30, 0, -30];
+var ROOM_DIST = [120, 200, 300];
+var room = { nodes: [], positions: [], order: [], turnDir: 1, timer: null, turnRaf: null, turning: null,
+             questions: [], qi: 0, score: 0 };
+var roomStatus = document.getElementById('roomStatus');
+var roomAnswers = document.getElementById('roomAnswers');
+function roomSay(t) { roomStatus.textContent = t; }
+
+function roomBuildVoice(idx, panner) {
+    var A = SIM.audio, g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var oscs = [];
+    function osc(type, freq) { var o = A.ctx.createOscillator(); o.type = type; o.frequency.value = freq; oscs.push(o); return o; }
+    function tremolo(rate, depth, lfoType) {
+        var lfo = osc(lfoType || 'sine', rate);
+        var lg = A.ctx.createGain(); lg.gain.value = depth;
+        lfo.connect(lg); lg.connect(g.gain);
+    }
+    if (idx === 1) { osc('sine', 660).connect(g); tremolo(1.8, 0.5, 'square'); }
+    else if (idx === 2) {
+        var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf; src.loop = true;
+        var bp = A.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 6;
+        src.connect(bp); bp.connect(g); oscs.push(src);
+        tremolo(7, 0.5, 'square');
+    }
+    else if (idx === 3) { osc('sine', 80).connect(g); tremolo(0.6, 0.6); }
+    else if (idx === 4) { osc('triangle', 520).connect(g); tremolo(2.4, 0.55, 'square'); }
+    oscs.forEach(function (o) { o.start(); });
+    g.connect(panner);
+    return { g: g, oscs: oscs, p: panner };
+}
+function roomRandomizePositions() {
+    var azs = labShuffle(ROOM_AZ).slice(0, 5);
+    room.positions = azs.map(function (az) {
+        return { az: az, el: ROOM_EL[Math.floor(Math.random() * 3)], dist: ROOM_DIST[Math.floor(Math.random() * 3)] };
+    });
+}
+function roomIsMonotonic(order) {
+    var ds = order.map(function (i) { return room.positions[i].dist; });
+    var inc = true, dec = true;
+    for (var i = 1; i < ds.length; i++) { if (ds[i] < ds[i - 1]) inc = false; if (ds[i] > ds[i - 1]) dec = false; }
+    return inc || dec;
+}
+function roomShuffleOrder() {
+    var order;
+    do { order = labShuffle([0, 1, 2, 3, 4]); } while (roomIsMonotonic(order));
+    return order;
+}
+function roomBuildAll() {
+    var A = SIM.audio;
+    room.nodes = [];
+    ROOM_OBJECTS.forEach(function (name, i) {
+        var pos = labPolarToPos(room.positions[i].az, room.positions[i].el, room.positions[i].dist);
+        var p = A.makePanner(pos);
+        p.connect(A.worldBus);
+        var node = idx0Voice(i, p);
+        room.nodes[i] = node;
+    });
+    function idx0Voice(i, p) {
+        if (i !== 0) return roomBuildVoice(i, p);
+        var g = A.ctx.createGain(); g.gain.value = 0.0001;
+        g.connect(p);
+        var node = { g: g, oscs: [], p: p };
+        A.load('ship_interceptor_1').then(function (buf) {
+            if (room.nodes[0] !== node) return;
+            var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+            src.connect(g); src.start();
+            node.oscs.push(src);
+        });
+        return node;
+    }
+}
+function roomTeardown() {
+    if (room.timer) { clearTimeout(room.timer); room.timer = null; }
+    if (room.turnRaf) { cancelAnimationFrame(room.turnRaf); room.turnRaf = null; }
+    room.turning = null;
+    room.nodes.forEach(function (n) {
+        try { SIM.audio.ramp(n.g.gain, 0.0001, 0.2); } catch (e) {}
+        setTimeout(function () { try { n.oscs.forEach(function (o) { o.stop(); }); n.g.disconnect(); n.p.disconnect(); } catch (e) {} }, 400);
+    });
+    room.nodes = [];
+}
+function roomStop() {
+    roomTeardown();
+    labResetListener();
+    roomAnswers.innerHTML = '';
+    roomSay('Room test stopped.');
+}
+registerStop(roomStop);
+
+function roomStep(i) {
+    if (i >= room.order.length) { roomAnnounceTurn(); return; }
+    var idx = room.order[i];
+    roomSay(ROOM_OBJECTS[idx] + '.');
+    var node = room.nodes[idx];
+    SIM.audio.ramp(node.g.gain, 0.35, 0.2);
+    room.timer = setTimeout(function () {
+        SIM.audio.ramp(node.g.gain, 0.08, 0.3);
+        room.timer = setTimeout(function () { roomStep(i + 1); }, 700);
+    }, 3000);
+}
+function roomAnnounceTurn() {
+    var dirWord = room.turnDir > 0 ? 'right' : 'left';
+    roomSay('Turning 90 degrees ' + dirWord + '.');
+    room.timer = setTimeout(roomDoTurn, 1000);
+}
+function roomApplyYaw(yaw) {
+    var A = SIM.audio, L = A.ctx.listener;
+    var fx = Math.sin(yaw), fz = -Math.cos(yaw);
+    if (L.forwardX) {
+        L.forwardX.value = fx; L.forwardY.value = 0; L.forwardZ.value = fz;
+        L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
+    } else if (L.setOrientation) { L.setOrientation(fx, 0, fz, 0, 1, 0); }
+}
+// Accumulator-based (see flybyStuntTick's comment) so __lab.tick() can
+// drive it deterministically in this pane.
+function roomTurnTick(dtMs) {
+    var t = room.turning;
+    if (!t) return;
+    t.elapsedMs += dtMs;
+    var frac = Math.min(1, t.elapsedMs / t.durMs);
+    roomApplyYaw(t.toYaw * frac);
+    if (frac >= 1) { room.turning = null; roomStartQuestions(); }
+}
+function roomTurnFrame(now) {
+    var t = room.turning;
+    if (!t) return;
+    var dtMs = now - (t.lastNow || now);
+    t.lastNow = now;
+    roomTurnTick(dtMs);
+    if (room.turning) room.turnRaf = requestAnimationFrame(roomTurnFrame);
+}
+function roomDoTurn() {
+    room.turning = { toYaw: room.turnDir * 90 * Math.PI / 180, elapsedMs: 0, durMs: 1500, lastNow: performance.now() };
+    room.turnRaf = requestAnimationFrame(roomTurnFrame);
+}
+function roomStartQuestions() {
+    var pool = [0, 1, 2, 3, 4];
+    var q1 = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    var q2 = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    room.questions = labShuffle([{ type: 'where', obj: q1 }, { type: 'where', obj: q2 }, { type: 'closest' }]);
+    room.qi = 0; room.score = 0;
+    roomAskQuestion();
+}
+function roomAskQuestion() {
+    if (room.qi >= room.questions.length) {
+        roomAnswers.innerHTML = '';
+        roomSay('Test complete. ' + room.score + ' of ' + room.questions.length + '.');
+        return;
+    }
+    var q = room.questions[room.qi];
+    roomAnswers.innerHTML = '';
+    if (q.type === 'where') {
+        roomSay('Where is the ' + ROOM_OBJECTS[q.obj] + ' now?');
+        LAB_NAMES8.forEach(function (name, i) {
+            var btn = document.createElement('button');
+            btn.textContent = name;
+            btn.addEventListener('click', function () { roomAnswerWhere(q, i * 45); });
+            roomAnswers.appendChild(btn);
+        });
+    } else {
+        roomSay('Which is closest?');
+        ROOM_OBJECTS.forEach(function (name, i) {
+            var btn = document.createElement('button');
+            btn.textContent = name;
+            btn.addEventListener('click', function () { roomAnswerClosest(i); });
+            roomAnswers.appendChild(btn);
+        });
+    }
+    var first = roomAnswers.querySelector('button');
+    if (first) first.focus();
+}
+function roomAnswerWhere(q, chosenDeg) {
+    var yawDeg = room.turnDir * 90;
+    var apparentAz = labNormAz(room.positions[q.obj].az - yawDeg);
+    var correctName = labExactAzName(apparentAz);
+    var chosenName = labExactAzName(chosenDeg);
+    var correct = chosenName === correctName;
+    if (correct) room.score++;
+    roomSay((correct ? 'Correct, ' + correctName + '.'
+                     : 'You chose ' + chosenName + '. The ' + ROOM_OBJECTS[q.obj] + ' is ' + correctName + '.'));
+    room.qi++;
+    setTimeout(roomAskQuestion, 1800);
+}
+function roomAnswerClosest(chosenIdx) {
+    var minDist = Math.min.apply(null, room.positions.map(function (p) { return p.dist; }));
+    var correctIdx = -1;
+    room.positions.forEach(function (p, i) { if (correctIdx < 0 && p.dist === minDist) correctIdx = i; });
+    var correct = chosenIdx === correctIdx;
+    if (correct) room.score++;
+    roomSay((correct ? 'Correct, the ' + ROOM_OBJECTS[correctIdx] + '.'
+                     : 'You chose the ' + ROOM_OBJECTS[chosenIdx] + '. The closest is the ' + ROOM_OBJECTS[correctIdx] + '.'));
+    room.qi++;
+    setTimeout(roomAskQuestion, 1800);
+}
+function roomStart() {
+    stopAll();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    roomTeardown();
+    roomRandomizePositions();
+    room.order = roomShuffleOrder();
+    room.turnDir = Math.random() < 0.5 ? -1 : 1;
+    roomBuildAll();
+    roomAnswers.innerHTML = '';
+    roomSay('Test starting.');
+    room.timer = setTimeout(function () { roomStep(0); }, 1000);
+}
+document.getElementById('roomStart').addEventListener('click', roomStart);
+document.getElementById('roomStop').addEventListener('click', roomStop);
+
+// ---- L.9 Lighthouse gate (Phase 3L) -----------------------------------------
+// PannerNode orientation + a sound cone — nothing else in the game uses
+// this yet. Same voice and rotation the game's Jump Gate now uses.
+var gate = { az: 90, dist: 150, sweepS: 10, phase: 0, panner: null, src: null, g: null, raf: null, last: 0 };
+var gateArena = document.getElementById('gateArena');
+var gateStatus = document.getElementById('gateStatus');
+function gateSay(t) { gateStatus.textContent = t; }
+
+function gateSetOrientation(panner, angleDeg) {
+    var rad = angleDeg * Math.PI / 180;
+    var ox = Math.sin(rad), oz = -Math.cos(rad);
+    if (panner.orientationX) { panner.orientationX.value = ox; panner.orientationY.value = 0; panner.orientationZ.value = oz; }
+    else if (panner.setOrientation) panner.setOrientation(ox, 0, oz);
+}
+function gateStep(dt) {
+    gate.phase += (360 / gate.sweepS) * dt;
+    if (gate.phase >= 360) gate.phase -= 360;
+    gateSetOrientation(gate.panner, gate.phase);
+}
+function gateFrame(now) {
+    var dt = Math.min((now - gate.last) / 1000, 0.1);
+    gate.last = now;
+    gateStep(dt);
+    gate.raf = requestAnimationFrame(gateFrame);
+}
+function gateStop() {
+    if (gate.raf) { cancelAnimationFrame(gate.raf); gate.raf = null; }
+    if (gate.src) {
+        var s = gate.src, g = gate.g, p = gate.panner;
+        gate.src = null; gate.g = null; gate.panner = null;
+        try { SIM.audio.ramp(g.gain, 0.0001, 0.2); } catch (e) {}
+        setTimeout(function () { try { s.stop(); p.disconnect(); } catch (e) {} }, 400);
+    }
+    gateSay('Lighthouse stopped.');
+}
+registerStop(gateStop);
+function gateStart() {
+    stopAll();
+    var A = SIM.audio;
+    if (!A.ctx) return;
+    gate.az = 90; gate.sweepS = 10; gate.phase = 0;
+    A.load('space_station6').then(function (buf) {
+        var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+        var g = A.ctx.createGain(); g.gain.value = 0.0001;
+        var p = A.ctx.createPanner();
+        p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
+        p.refDistance = CFG.refDistance; p.maxDistance = CFG.maxDistance; p.rolloffFactor = CFG.rolloff;
+        p.coneInnerAngle = 60; p.coneOuterAngle = 180; p.coneOuterGain = 0.15;
+        var pos = labPolarToPos(gate.az, 0, gate.dist);
+        if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; }
+        else if (p.setPosition) p.setPosition(pos.x, pos.y, pos.z);
+        src.connect(g); g.connect(p); p.connect(A.worldBus);
+        src.start();
+        A.ramp(g.gain, 0.5, 0.3);
+        gate.src = src; gate.g = g; gate.panner = p;
+        gate.last = performance.now();
+        gate.raf = requestAnimationFrame(gateFrame);
+        gateArena.focus();
+        gateSay('Lighthouse started. Bearing ' + labDescribeAz(gate.az) + ', sweep ' + gate.sweepS + ' seconds.');
+    }).catch(function (err) { gateSay('Load failed: ' + err.message); });
+}
+gateArena.addEventListener('keydown', function (e) {
+    if (!gate.panner) return;
+    var k = e.key;
+    if (k === 'ArrowLeft') gate.az = labNormAz(gate.az - 45);
+    else if (k === 'ArrowRight') gate.az = labNormAz(gate.az + 45);
+    else if (k === 'PageUp') gate.sweepS = clamp(gate.sweepS + 5, 5, 30);
+    else if (k === 'PageDown') gate.sweepS = clamp(gate.sweepS - 5, 5, 30);
+    else if (k === 'Escape') { gateStop(); e.preventDefault(); return; }
+    else return;
+    e.preventDefault();
+    if (k === 'ArrowLeft' || k === 'ArrowRight') SIM.audio.movePanner(gate.panner, labPolarToPos(gate.az, 0, gate.dist));
+    gateSay('Bearing ' + labDescribeAz(gate.az) + ', sweep ' + gate.sweepS + ' seconds.');
+});
+document.getElementById('gateStart').addEventListener('click', gateStart);
+document.getElementById('gateStop').addEventListener('click', gateStop);
 
 // ---- lock tone candidates (SPEC 2.11) --------------------------------------
 var lockTimer = null, lockNodes = null;
@@ -223,17 +883,28 @@ document.getElementById('candB').addEventListener('click', candidateB);
 document.getElementById('candC').addEventListener('click', candidateC);
 document.getElementById('candSolid').addEventListener('click', candidateSolid);
 
-// ---- vortex orbit demo (ideas6) --------------------------------------------
+// ---- 3D vortex demo (ideas6, reshaped by Phase 3L, L.5) --------------------
 // Eight looping sources, each on its own HRTF panner, each on its own
 // circular orbit around the listener (who sits at the origin facing -z,
-// the AudioContext default — this page never moves the listener). A rAF
-// loop advances every angle by its own rate times a shared multiplier, so
-// Left/Right change all eight at once without any of them jumping.
+// the AudioContext default — this demo never moves the listener). As of
+// L.5 each vortex also has its own vertical sway (a slow sine bob at its
+// own rate and phase, so they weave rather than bob together), centre
+// height, and orbit offset (the orbit's centre slid toward the vortex's
+// own starting angle, clamped so the near side never passes within 20 of
+// the listener) — shaped one at a time via Up/Down selection. A rAF loop
+// advances every angle (and every sway phase) by its own rate times the
+// shared speed multiplier, so Left/Right still change all eight at once.
 var VORTEX_ORBITS = [
-    { r: 90,  w:  0.35 }, { r: 120, w: -0.28 }, { r: 150, w:  0.22 }, { r: 180, w: -0.18 },
-    { r: 110, w:  0.50 }, { r: 140, w: -0.40 }, { r: 170, w:  0.30 }, { r: 200, w: -0.25 }
+    { r: 90,  w:  0.35, swayRate: 0.12, swayPhase: 0.0 },
+    { r: 120, w: -0.28, swayRate: 0.15, swayPhase: 0.8 },
+    { r: 150, w:  0.22, swayRate: 0.18, swayPhase: 1.6 },
+    { r: 180, w: -0.18, swayRate: 0.21, swayPhase: 2.4 },
+    { r: 110, w:  0.50, swayRate: 0.24, swayPhase: 3.2 },
+    { r: 140, w: -0.40, swayRate: 0.27, swayPhase: 4.0 },
+    { r: 170, w:  0.30, swayRate: 0.30, swayPhase: 4.8 },
+    { r: 200, w: -0.25, swayRate: 0.13, swayPhase: 5.6 }
 ];
-var vortex = { nodes: [], raf: null, speedMul: 1, height: 0, last: 0 };
+var vortex = { nodes: [], raf: null, speedMul: 1, selected: 0, last: 0 };
 var vortexArena = document.getElementById('vortexArena');
 var vortexStatus = document.getElementById('vortexStatus');
 function vortexSay(t) { vortexStatus.textContent = t; }
@@ -249,22 +920,40 @@ function vortexStop() {
 }
 registerStop(vortexStop);
 
+function vortexStep(dt) {
+    vortex.nodes.forEach(function (n) {
+        n.angle += n.orbit.w * vortex.speedMul * dt;
+        n.swayPhase += n.orbit.swayRate * vortex.speedMul * dt;
+        var cx = Math.cos(n.baseAngle) * n.offset, cz = Math.sin(n.baseAngle) * n.offset;
+        SIM.audio.movePanner(n.p, {
+            x: cx + Math.cos(n.angle) * n.orbit.r,
+            y: n.height + Math.sin(n.swayPhase) * n.sway,
+            z: cz + Math.sin(n.angle) * n.orbit.r
+        });
+    });
+}
 function vortexFrame(now) {
     var dt = Math.min((now - vortex.last) / 1000, 0.1);
     vortex.last = now;
-    vortex.nodes.forEach(function (n) {
-        n.angle += n.orbit.w * vortex.speedMul * dt;
-        SIM.audio.movePanner(n.p, {
-            x: Math.cos(n.angle) * n.orbit.r,
-            y: vortex.height,
-            z: Math.sin(n.angle) * n.orbit.r
-        });
-    });
+    vortexStep(dt);
     vortex.raf = requestAnimationFrame(vortexFrame);
+}
+function vortexReadback() {
+    var n = vortex.nodes[vortex.selected];
+    if (!n) return;
+    vortexSay('Vortex ' + (vortex.selected + 1) + ': height ' + Math.round(n.height) +
+               ', sway ' + Math.round(n.sway) + ', offset ' + Math.round(n.offset) +
+               ', speed times ' + vortex.speedMul.toFixed(2) + '.');
+}
+function vortexSwell(i) {
+    var n = vortex.nodes[i];
+    if (!n) return;
+    SIM.audio.ramp(n.g.gain, 0.55, 0.1);
+    setTimeout(function () { if (vortex.nodes[i] === n) SIM.audio.ramp(n.g.gain, 0.35, 0.4); }, 350);
 }
 
 function vortexStart() {
-    vortexStop();
+    stopAll();
     var A = SIM.audio;
     if (!A.ctx) return;
     var names = [];
@@ -275,16 +964,18 @@ function vortexStart() {
             var orbit = VORTEX_ORBITS[i], angle = i * Math.PI / 4;
             var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
             var g = A.ctx.createGain(); g.gain.value = 0.0001;
-            var p = A.makePanner({ x: Math.cos(angle) * orbit.r, y: vortex.height, z: Math.sin(angle) * orbit.r });
+            var p = A.makePanner({ x: Math.cos(angle) * orbit.r, y: 0, z: Math.sin(angle) * orbit.r });
             src.connect(g); g.connect(p); p.connect(A.worldBus);
             src.start(0, Math.random() * buf.duration * 0.5);   // don't all start on the same beat
             A.ramp(g.gain, 0.35, 0.8);
-            vortex.nodes.push({ src: src, g: g, p: p, orbit: orbit, angle: angle });
+            vortex.nodes.push({ src: src, g: g, p: p, orbit: orbit, angle: angle, baseAngle: angle,
+                                 swayPhase: orbit.swayPhase, height: 0, sway: 0, offset: 0 });
         });
+        vortex.selected = 0;
         vortex.last = performance.now();
         vortex.raf = requestAnimationFrame(vortexFrame);
         vortexArena.focus();
-        vortexSay('Eight vortices orbiting. Height 0, speed times 1. Up and Down for height, Left and Right for speed, Escape stops.');
+        vortexSay('Eight vortices orbiting. Up and Down select one, R resets. Vortex 1 selected.');
     }).catch(function (err) {
         vortexSay('Load failed: ' + err.message);
     });
@@ -293,14 +984,25 @@ function vortexStart() {
 vortexArena.addEventListener('keydown', function (e) {
     if (!vortex.nodes.length) return;
     var k = e.key;
-    if (k === 'ArrowUp')         vortex.height = Math.min(300, vortex.height + 15);
-    else if (k === 'ArrowDown')  vortex.height = Math.max(-300, vortex.height - 15);
-    else if (k === 'ArrowRight') vortex.speedMul = Math.min(8, vortex.speedMul * 1.25);
-    else if (k === 'ArrowLeft')  vortex.speedMul = Math.max(0.125, vortex.speedMul / 1.25);
-    else if (k === 'Escape')     { vortexStop(); e.preventDefault(); return; }
+    var n = vortex.nodes[vortex.selected];
+    if (k === 'ArrowUp') { vortex.selected = (vortex.selected + 1) % vortex.nodes.length; vortexSwell(vortex.selected); vortexReadback(); }
+    else if (k === 'ArrowDown') { vortex.selected = (vortex.selected + vortex.nodes.length - 1) % vortex.nodes.length; vortexSwell(vortex.selected); vortexReadback(); }
+    else if (k === 'PageUp') { n.sway = clamp(n.sway + 20, 0, 200); vortexReadback(); }
+    else if (k === 'PageDown') { n.sway = clamp(n.sway - 20, 0, 200); vortexReadback(); }
+    else if (k === 'Home') { n.height = clamp(n.height + 15, -300, 300); vortexReadback(); }
+    else if (k === 'End') { n.height = clamp(n.height - 15, -300, 300); vortexReadback(); }
+    else if (k === '[') { n.offset = clamp(n.offset - 20, -(n.orbit.r - 20), n.orbit.r - 20); vortexReadback(); }
+    else if (k === ']') { n.offset = clamp(n.offset + 20, -(n.orbit.r - 20), n.orbit.r - 20); vortexReadback(); }
+    else if (k === 'ArrowRight') { vortex.speedMul = Math.min(8, vortex.speedMul * 1.25); vortexReadback(); }
+    else if (k === 'ArrowLeft') { vortex.speedMul = Math.max(0.125, vortex.speedMul / 1.25); vortexReadback(); }
+    else if (k === 'r' || k === 'R') {
+        vortex.nodes.forEach(function (nn) { nn.height = 0; nn.sway = 0; nn.offset = 0; });
+        vortex.speedMul = 1;
+        vortexSay('All vortices reset.');
+    }
+    else if (k === 'Escape') { vortexStop(); e.preventDefault(); return; }
     else return;
     e.preventDefault();
-    vortexSay('Height ' + vortex.height + ', speed times ' + vortex.speedMul.toFixed(2) + '.');
 });
 document.getElementById('vortexStart').addEventListener('click', vortexStart);
 document.getElementById('vortexStop').addEventListener('click', vortexStop);
@@ -450,6 +1152,37 @@ Object.keys(DISK_FILES).forEach(function (group) {
         diskContainer.appendChild(row);
     });
 });
+
+// ---- test hook (harmless in play) ------------------------------------------
+// This pane's requestAnimationFrame has proven unreliable in isolation for
+// the timed Phase 3L demos (the same class of issue __sim.step() works
+// around in the main game) — tick() drives every active demo's own
+// accumulator-based step function directly, bypassing rAF for testing.
+window.__lab = {
+    tick: function (ms) {
+        var dt = ms / 1000;
+        if (vortex.nodes.length) vortexStep(dt);
+        if (flyby.routeNodes.length) flybyRouteStep(dt);
+        if (flyby.stuntNode) flybyStuntTick(ms);
+        if (room.turning) roomTurnTick(ms);
+        if (gate.panner) gateStep(dt);
+    },
+    state: function () {
+        return {
+            explorer: { az: explorer.az, el: explorer.el, dist: explorer.dist,
+                        running: !!explorer.panner, voice: explorer.voice },
+            vortex: { selected: vortex.selected, speedMul: vortex.speedMul, running: vortex.nodes.length,
+                      nodes: vortex.nodes.map(function (n) { return { height: n.height, sway: n.sway, offset: n.offset }; }) },
+            flyby: { routesRunning: flyby.routeNodes.length, stuntRunning: !!flyby.stuntNode,
+                     stuntFrac: flyby.stuntNode ? flyby.stuntNode.elapsedMs / flyby.stuntNode.durMs : null,
+                     stuntIdx: flyby.stuntIdx },
+            room: { running: room.nodes.length, turning: !!room.turning, qi: room.qi, score: room.score,
+                    positions: room.positions, order: room.order, turnDir: room.turnDir,
+                    questions: room.questions },
+            gate: { running: !!gate.panner, az: gate.az, sweepS: gate.sweepS, phase: gate.phase }
+        };
+    }
+};
 
 })();
 </script>

@@ -1854,10 +1854,11 @@ in CFG or a data table for Brian's ear and hands.
 2026-09-05, from flying 3.10: 3.24 the two bugs, DONE → 3.25 the escort
 second pass and kill buffs, DONE → 3.26 laser levels and wear, DONE →
 3.27 system damage and the repair crew, DONE) → **Phase 3L, the lab
-round, next** (Brian, ideas8, 2026-09-05: L.1 the explorer → L.5 the
-3D vortex → L.4 the flyby → L.8 the room → L.9 the lighthouse gate,
-lab and game) → **the three game items it brought with it** (3.31
-recorded station beacons → 3.29 the ship page → 3.30 the tractor beam)
+round, DONE** (Brian, ideas8, 2026-09-05: L.1 the explorer, DONE → L.5
+the 3D vortex, DONE → L.4 the flyby, DONE → L.8 the room, DONE → L.9
+the lighthouse gate, lab half DONE, game half is 3.31) → **the three
+game items it brought with it, next** (3.31 recorded station beacons →
+3.29 the ship page → 3.30 the tractor beam)
 → 3.28 the quadrant's timed contract
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
@@ -2504,7 +2505,7 @@ facing forward when it stops — the `AudioListener` is global, and a
 head-turn left behind would rotate every other demo on the page. Every
 number below is a placeholder for Brian's ear; he tunes in the lab.
 
-#### L.1 The 3D Position Explorer — the galactic map's cursor, prototyped
+#### L.1 The 3D Position Explorer — the galactic map's cursor, prototyped — DONE
 
 - One continuous recognizable sound at a point around the listener:
   default the corvette engine loop (`ship_corvette_1`), a second button
@@ -2528,7 +2529,7 @@ number below is a placeholder for Brian's ear; he tunes in the lab.
   directly overhead and directly underneath are reachable; Home
   resets; Enter speaks the selection; Escape silences.
 
-#### L.5 The true 3D vortex — eight vortices shaped one at a time (Brian's bracket on #5)
+#### L.5 The true 3D vortex — eight vortices shaped one at a time (Brian's bracket on #5) — DONE
 
 - Replaces the shared height with per-vortex shape. Each vortex keeps
   its radius, direction, and rate, and gains: a **centre height**
@@ -2553,7 +2554,7 @@ number below is a placeholder for Brian's ear; he tunes in the lab.
   the starting shape; no panner position ever comes within 20 of the
   origin; Escape stops all eight.
 
-#### L.4 The flyby — planes on routes, planes doing stunts (Brian's bracket on #4)
+#### L.4 The flyby — planes on routes, planes doing stunts (Brian's bracket on #4) — DONE
 
 - Brian's eight `audio/demo/propeller_plane1–8.mp3` (all stereo 48k;
   measured: 1–3 are 5.0 s, 4 is 8.0 s, 5–8 are 12.0 s). Manifest keys
@@ -2586,7 +2587,7 @@ number below is a placeholder for Brian's ear; he tunes in the lab.
   path's end), and the rotation returns to 5 after 8; Escape stops
   everything.
 
-#### L.8 The spatial audio room — five sounds, a solo pass, a turn, a test (Brian's bracket on #8)
+#### L.8 The spatial audio room — five sounds, a solo pass, a turn, a test (Brian's bracket on #8) — DONE
 
 - Five quiet distinct sounds at fixed world positions: **Generator**
   (a ship engine loop), **Beacon** (the station blink), **Crackle**
@@ -2619,7 +2620,7 @@ number below is a placeholder for Brian's ear; he tunes in the lab.
   happens and measures 90° on the listener; every question judges
   against the *turned* bearing; the listener is reset on stop.
 
-#### L.9 The lighthouse gate — a directional source, in the lab and in the game (Brian's bracket on #9)
+#### L.9 The lighthouse gate — a directional source, in the lab and in the game (Brian's bracket on #9) — DONE (lab half; the game's gate cone is 3.31)
 
 - `PannerNode` orientation and cones, which nothing in the game uses
   yet. **The lab demo**: the gate sound at a fixed point 150 to your
@@ -2645,6 +2646,74 @@ number below is a placeholder for Brian's ear; he tunes in the lab.
   (`__sim.state()` exposes the gate's sweep phase), the beacon is still
   audible at the outer-gain floor when pointed away, B mutes it, and
   the delivery run (which has no gate) is untouched.
+
+**The lab round (L.1, L.4, L.5, L.8, L.9) built as scoped above, all in
+`soundlab.html`**, sharing one new block of helpers (`labPolarToPos`,
+`labNormAz`, `labDescribeAz`/`labDescribeEl`, `LAB_NAMES8`, `labShuffle`,
+`labResetListener`) — the polar-to-world conversion IS the galactic
+map's future sound-cursor math (A.13), reused by L.1's cursor and L.4's
+keyframe-based stunt paths alike. `stopAll()` now calls
+`labResetListener()` unconditionally, so any global stop leaves the
+`AudioListener` facing forward regardless of which demo (only L.8 turns
+it) was cut short. Manifest keys added: `propeller_plane1–8` (L.4,
+`audio/demo/`, lab-only, excluded from `AUDIO_PRELOAD`) and
+`space_station1–10` (3.31/L.9, `audio/stations/`, DO preload — real
+station voices in the live game, not lab-only). Both new folders were
+untracked; staged explicitly, never `git add -A`.
+
+**A real gotcha found and fixed while testing, not a game bug**: this
+sandboxed preview pane's `requestAnimationFrame` proved unreliable in
+isolation for every one-shot TIMED demo (the flyby stunts, the room's
+90° turn) — `document.hidden` read `false` throughout, yet a 12-second
+stunt sometimes sat frozen well past 15 real seconds without
+completing. Rather than trust wall-clock waits, every timed demo was
+rebuilt around an explicit **millisecond accumulator** (`elapsedMs` on
+its own node, advanced either by the real rAF loop's measured delta or
+by a manual clock) instead of diffing against `performance.now()`
+directly — the same shape as the main game's `dt`-based `simTick`, and
+exactly why the main game keeps `__sim.step()` as an escape hatch from
+its own rAF. A new **`window.__lab`** test hook (`tick(ms)` drives
+every currently-active demo's accumulator directly, bypassing rAF
+entirely; `state()` exposes each demo's live numbers) is this page's
+equivalent of `__sim.step()`/`__sim.state()`, added for exactly this
+reason. Once ticked manually, every stunt and the room's turn completed
+in exactly its configured duration.
+
+Machine-tested at a local server end to end: **L.1** — every key
+(45°/30°/100 steps, 15°/10°/25 shift-fine steps) changes the readout
+and the panner position, confirmed via repeated presses landing on
+"front, 15 right" (the fine-step case), "directly overhead" and
+"directly underneath" at exactly ±90°, distance clamped at 800, the
+voice swap, and Escape. **L.5** — selecting a vortex swells it and
+wraps correctly (1→2→3, 8→1); Page Up/Down, Home/End, and `[`/`]` only
+ever change the SELECTED vortex's own sway/height/offset (confirmed a
+second vortex starts at all-zero while the first kept its shaped
+values); the offset clamp measured exactly `radius − 20` on two
+different vortices (130 for radius 150, 160 for radius 180); Left/Right
+changed the one shared `speedMul` (confirmed 1.25² = 1.56); R reset
+every vortex AND the shared speed at once; Escape stopped all eight.
+**L.4** — all eight assets load and play; the four routes start and
+stop together; all four stunts were driven to completion via
+`__lab.tick` and confirmed to cycle 5→6→7→8→5 with each announcing its
+name and "Twelve seconds" before playing. **L.9** — the lab's own
+sweep measured exactly a full 360° in 10 seconds via two 5-second manual
+ticks (phase 0→180→0); Left/Right changed its bearing in 45° steps;
+Page Up/Down changed the sweep period; Escape stopped it. **L.8** — 15
+consecutive fresh runs each drew 5 distinct azimuths and a solo order
+that was never monotonic by distance (the "can't be memorised" and
+"never distance order" requirements); the solo sequence (real-timer
+driven, not rAF) named each object correctly; the announced turn
+direction matched the actual 90° listener rotation (confirmed via the
+apparent-bearing math against a listener manually turned left 90°: an
+object originally at azimuth 270 correctly judged as "front" afterward,
+one at 180 as "left"); all three questions (two "where is X now",
+one "which is closest", including a tie broken toward the first match)
+judged correctly against both a right and a wrong answer, producing an
+accurate final score ("2 of 3" confirmed against a deliberately mixed
+correct/wrong/correct run); the listener reset to facing forward on
+Stop, confirmed by reading `AudioListener.forwardX/Z` directly before
+and after. Zero console errors throughout every demo. Every number is
+a placeholder for Brian's ear. Not yet heard by Brian.
 
 #### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8)
 

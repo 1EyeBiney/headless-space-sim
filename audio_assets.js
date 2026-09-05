@@ -93,14 +93,42 @@ window.AUDIO_MANIFEST = {
   vortex5: 'audio/quadrant/vortex/space_vortex5.mp3',
   vortex6: 'audio/quadrant/vortex/space_vortex6.mp3',
   vortex7: 'audio/quadrant/vortex/space_vortex7.mp3',
-  vortex8: 'audio/quadrant/vortex/space_vortex8.mp3'
+  vortex8: 'audio/quadrant/vortex/space_vortex8.mp3',
+
+  // Flyby set (Phase 3L, L.4): Brian's propeller plane recordings. 1-4
+  // loop on set routes, 5-8 are one-shot stunts. Sound lab only.
+  propeller_plane1: 'audio/demo/propeller_plane1.mp3',
+  propeller_plane2: 'audio/demo/propeller_plane2.mp3',
+  propeller_plane3: 'audio/demo/propeller_plane3.mp3',
+  propeller_plane4: 'audio/demo/propeller_plane4.mp3',
+  propeller_plane5: 'audio/demo/propeller_plane5.mp3',
+  propeller_plane6: 'audio/demo/propeller_plane6.mp3',
+  propeller_plane7: 'audio/demo/propeller_plane7.mp3',
+  propeller_plane8: 'audio/demo/propeller_plane8.mp3',
+
+  // Recorded station beacons (SPEC 3.31 / Phase 3L L.9): Brian's ten
+  // space_station recordings, applied down the list to every station as
+  // they're assigned. Number 6 is the Jump Gate's lighthouse beam (L.9).
+  space_station1: 'audio/stations/space_station1.mp3',
+  space_station2: 'audio/stations/space_station2.mp3',
+  space_station3: 'audio/stations/space_station3.mp3',
+  space_station4: 'audio/stations/space_station4.mp3',
+  space_station5: 'audio/stations/space_station5.mp3',
+  space_station6: 'audio/stations/space_station6.mp3',
+  space_station7: 'audio/stations/space_station7.mp3',
+  space_station8: 'audio/stations/space_station8.mp3',
+  space_station9: 'audio/stations/space_station9.mp3',
+  space_station10: 'audio/stations/space_station10.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
 // the demo can reach without a special unlock, so the common path never
 // waits on a first-use fetch. Curated, not "all of AUDIO_MANIFEST": the
-// vortex set is the sound lab's, and the station interior (1.8 MB) is
-// fetched when a sector run starts instead, since only docking plays it.
+// vortex and flyby sets are the sound lab's alone, and the station
+// interior (1.8 MB) is fetched when a sector run starts instead, since
+// only docking plays it. The space_station beacons DO preload — they're
+// real station voices in the live game as of SPEC 3.31, same as the ship
+// engine loops.
 window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
-  return !/^(vortex\d|station_interior)/.test(k);
+  return !/^(vortex\d|propeller_plane\d|station_interior)/.test(k);
 });
