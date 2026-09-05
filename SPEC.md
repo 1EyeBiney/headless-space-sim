@@ -1856,9 +1856,9 @@ second pass and kill buffs, DONE → 3.26 laser levels and wear, DONE →
 3.27 system damage and the repair crew, DONE) → **Phase 3L, the lab
 round, DONE** (Brian, ideas8, 2026-09-05: L.1 the explorer, DONE → L.5
 the 3D vortex, DONE → L.4 the flyby, DONE → L.8 the room, DONE → L.9
-the lighthouse gate, lab half DONE, game half is 3.31) → **the three
-game items it brought with it, next** (3.31 recorded station beacons →
-3.29 the ship page → 3.30 the tractor beam)
+the lighthouse gate, DONE both halves) → **the three game items it
+brought with it** (3.31 recorded station beacons, DONE → 3.29 the ship
+page, next → 3.30 the tractor beam)
 → 3.28 the quadrant's timed contract
 → 3.23 favor,
 control, and the three ranges (touches docking, so it goes in before the
@@ -2715,7 +2715,7 @@ Stop, confirmed by reading `AudioListener.forwardX/Z` directly before
 and after. Zero console errors throughout every demo. Every number is
 a placeholder for Brian's ear. Not yet heard by Brian.
 
-#### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8)
+#### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8) — DONE
 
 - `audio/stations/space_station1–10.mp3` (new, untracked, staged
   explicitly; durations measured on build — number 6 is 8.0 s stereo
@@ -2736,6 +2736,46 @@ a placeholder for Brian's ear. Not yet heard by Brian.
 - Test: both stations and the gate play their recordings from their
   positions; the delivery run's Meridian plays number 1; B and the
   distance cutoff still work; a row without `beaconAsset` still blinks.
+
+Built as scoped, plus L.9's game half (the lab half shipped in the
+prior round): the Jump Gate's `buildPoiVoice` branch gained a cone
+(`gateConeInner`/`Outer`/`OuterGain` — 60°/180°/0.15, the outer floor
+never zero) and `updateTargeting` gained one new step, gated on
+`t.poiType === 'gate'`: advance a per-target `t.gatePhase` by
+`360 / CFG.gateSweepS` degrees per second and write it to the panner's
+`orientationX/Y/Z` (or `setOrientation` on the older API) every frame —
+`updateTargeting` needed a `dt` parameter for this, threaded through
+its two call sites in `simTick`. A recorded beacon REPLACES the
+synthesized voice for that `poiType` entirely rather than layering on
+top of it (`buildPoiVoice` checks `t.beaconAsset` first, before the
+`combat`/`mining`/`station`/`gate`/`star`/planet chain); it loads
+async and is guarded against the target having already been torn down
+by the time the fetch lands (the same `t.nodes !== nodes` staleness
+check used elsewhere in this codebase) so a slow-to-decode asset can
+never start playing into a voice nothing will ever stop. Both
+`makeSectorRoster`'s `demo` branch (`SECTOR_POIS`) and
+`makeQuadrantRoster`'s (`QUADRANT`, via `quadrantPoiList`) thread
+`beaconAsset` from the row onto the target object the same way.
+`__sim.state()` gained a `gate` field (name, sweep phase, whether its
+asset has attached) for testing.
+
+Machine-tested at a local server: both quadrant stations and the gate
+fetched their assigned recordings at boot (confirmed via network
+requests — all ten `space_station` files preload); the gate's sweep
+phase measured exactly 180° after 5 of its 10-second period, confirmed
+via `__sim.step()`-driven ticking, not real-time waits; the delivery
+run's fixed `SECTOR_POIS` roster still lists all four original points
+with Station Meridian among them, sharing the identical `beaconAsset`
+code path already confirmed working for the quadrant; B still cycles
+on/off/target-only correctly with the new asset-based voices (mute
+levels read back at ~0.98 in "on" mode, matching the existing ramp);
+returning to the sector and rebuilding the roster a second time
+produced no errors. Zero console errors throughout. The station/gate
+CFG numbers (the cone angles and outer gain, the 10-second sweep) are
+placeholders for Brian's ear; the asset-to-station assignment beyond
+Meridian/Station Two/the gate is Brian's own to reorder by ear later,
+per his "just start going down the list, I'll say if I want something
+changed" instruction. Not yet heard by Brian.
 
 #### 3.29 The ship page — F2 becomes the full reference (ideas8)
 

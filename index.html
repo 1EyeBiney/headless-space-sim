@@ -270,7 +270,13 @@ var CFG_DEFAULTS = {
     // is what makes a beacon 11,000 out actually SOUND far away.
     beaconRef: 800, beaconMax: 40000, beaconRolloff: 1.2,
     beaconGainScale: 2,
-    stationBeaconScale: 0.5,  // Station Meridian's blinking tone, half volume (Brian: too loud)
+    stationBeaconScale: 0.5,  // Station Meridian's beacon, half volume (Brian: too loud)
+
+    // The Jump Gate's lighthouse beam (Phase 3L, L.9): a directional cone on
+    // its beacon panner, sweeping a full turn every gateSweepS — loudest
+    // when the beam points at you, never silent when it doesn't.
+    gateSweepS: 10,
+    gateConeInner: 60, gateConeOuter: 180, gateConeOuterGain: 0.15,
 
     missileMax: 8,                    // magazine; Station Meridian rearms
     chaffMax: 4,                      // decoys (D); Station Meridian restocks (SPEC 1.8)
@@ -1000,7 +1006,7 @@ var SECTOR_POIS = [
     { name: 'Asteroid Field Kappa', poiType: 'mining',
       desc: 'mining area',   pos: v3(-9500, -800, -2800) },
     { name: 'Station Meridian',     poiType: 'station',
-      desc: 'space station', pos: v3(2000, 0, 7000) },
+      desc: 'space station', pos: v3(2000, 0, 7000), beaconAsset: 'space_station1' },
     { name: 'Planet Auren',         poiType: 'planet',
       desc: 'planet',        pos: v3(-5000, 1500, 9000) }
 ];
@@ -1023,15 +1029,15 @@ var QUADRANT = [
     { name: 'The Star',         poiType: 'star',    desc: 'the star',
       ring: 0,     degPerHour: 0, phaseDeg: 0 },
     { name: 'Station Meridian', poiType: 'station', desc: 'space station',
-      ring: 3500,  degPerHour: 0, phaseDeg: 0 },
+      ring: 3500,  degPerHour: 0, phaseDeg: 0, beaconAsset: 'space_station1' },
     { name: 'Planet A',         poiType: 'planet',  desc: 'planet',
       ring: 6000,  degPerHour: 6, phaseDeg: 90 },
     { name: 'Station Two',      poiType: 'station', desc: 'space station',
-      ring: 9500,  degPerHour: 0, phaseDeg: 180 },
+      ring: 9500,  degPerHour: 0, phaseDeg: 180, beaconAsset: 'space_station2' },
     { name: 'Planet B',         poiType: 'planet',  desc: 'planet',
       ring: 11000, degPerHour: 6, phaseDeg: 270 },
     { name: 'Jump Gate',        poiType: 'gate',    desc: 'jump gate',
-      ring: 14000, degPerHour: 0, phaseDeg: 45 }
+      ring: 14000, degPerHour: 0, phaseDeg: 45, beaconAsset: 'space_station6' }
 ];
 
 // A field's type shapes its rock draw (makeMiningRoster) and is spoken at
@@ -1166,7 +1172,7 @@ function quadrantPoiList() {
     var q = currentQuadrant();
     var list = QUADRANT.map(function (entry) {
         return { kind: 'poi', name: entry.name, poiType: entry.poiType, desc: entry.desc,
-                  pos: ringPos(entry), alive: true };
+                  pos: ringPos(entry), alive: true, beaconAsset: entry.beaconAsset };
     });
     list.push({ kind: 'poi', name: q.zone.name, poiType: 'combat', desc: 'combat area',
                 pos: v3(q.zone.pos.x, q.zone.pos.y, q.zone.pos.z), alive: true });
@@ -1484,7 +1490,7 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'Sector', items: [
         'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
-        'The combat area throbs like a war drum, the mining field rumbles like distant rock, the station sends a clean blinking tone, and the planet is a deep slow drone.',
+        'The combat area throbs like a war drum, the mining field rumbles like distant rock, the station sends its own recorded beacon, and the planet is a deep slow drone.',
         'Q opens the quadrant map: up and down browse the points with bearing and distance, Enter sets one as your nav target, Escape closes.',
         'Tab and T work on beacons too, and the tick guides you onto your nav target just like any other.',
         'H hyperwarps to your nav target and drops you out just beyond calling range — the last stretch is always flown by ear.',
@@ -1802,12 +1808,23 @@ function buildPoiVoice(t) {
     panner.refDistance = CFG.beaconRef;
     panner.maxDistance = CFG.beaconMax;
     panner.rolloffFactor = CFG.beaconRolloff;
+    // Phase 3L, L.9: the gate's beacon is directional — a cone sweeping a
+    // full turn every gateSweepS (updateTargeting), loudest when the beam
+    // points at you. The outer gain floors rather than zeros — silence is
+    // a bug, and B's "target only" mode still has to find it.
+    if (t.poiType === 'gate') {
+        panner.coneInnerAngle = CFG.gateConeInner;
+        panner.coneOuterAngle = CFG.gateConeOuter;
+        panner.coneOuterGain = CFG.gateConeOuterGain;
+        t.gatePhase = 0;
+    }
     // The B key's mute sits after the tremolo — the LFO is summed INTO
     // gain.gain, so zeroing that gain would still swing it by the depth.
     var mute = SIM.audio.ctx.createGain();
     mute.gain.value = beaconAudible(t) ? 1 : 0;
     gain.connect(lp); lp.connect(mute); mute.connect(panner); panner.connect(SIM.audio.worldBus);
     var oscs = [];
+    var nodes = { gain: gain, lp: lp, mute: mute, panner: panner, oscs: oscs };
     function osc(type, freq) {
         var o = SIM.audio.ctx.createOscillator();
         o.type = type; o.frequency.value = freq;
@@ -1818,7 +1835,23 @@ function buildPoiVoice(t) {
         var lo = osc(lfoType || 'sine', rate);
         lo.connect(lg); lg.connect(gain.gain);
     }
-    if (t.poiType === 'combat') {
+    // SPEC 3.31: a recorded beacon REPLACES the synthesized voice below
+    // entirely (it already has its own character) — same gain/lowpass/
+    // mute/panner chain as every synthesized beacon, so B, the distance
+    // haze, and the gate's own cone all still apply. Loads async — guarded
+    // against the target having already been torn down by the time the
+    // fetch lands (stopVoice nulls t.nodes; a stale nodes reference here
+    // means don't start a source nothing will ever stop).
+    if (t.beaconAsset) {
+        SIM.audio.load(t.beaconAsset).then(function (buf) {
+            if (t.nodes !== nodes) return;
+            var src = SIM.audio.ctx.createBufferSource();
+            src.buffer = buf; src.loop = true;
+            src.connect(gain);
+            src.start();
+            oscs.push(src);
+        }).catch(function () {});
+    } else if (t.poiType === 'combat') {
         // Low menacing war-drum throb.
         osc('sawtooth', 70).connect(gain);
         tremolo(1.2, G * 0.6);
@@ -1832,11 +1865,11 @@ function buildPoiVoice(t) {
         tremolo(0.7, G * 0.5);
     } else if (t.poiType === 'station') {
         // Friendly rhythmic nav beacon: clean tone gated on and off.
+        // Placeholder until every station has a beaconAsset (SPEC 3.31).
         osc('sine', 660).connect(gain);
         tremolo(1.8, G, 'square');
     } else if (t.poiType === 'gate') {
-        // SPEC 3.10: deep cyclic hum with a periodic discharge (2.6's own
-        // description) — placeholder until Brian's ear picks something else.
+        // Placeholder until every gate has a beaconAsset (SPEC 3.31).
         osc('sawtooth', 55).connect(gain);
         tremolo(0.15, G * 0.4);
     } else if (t.poiType === 'star') {
@@ -1851,7 +1884,7 @@ function buildPoiVoice(t) {
         tremolo(0.25, G * 0.35);
     }
     oscs.forEach(function (o) { o.start(); });
-    t.nodes = { gain: gain, lp: lp, mute: mute, panner: panner, oscs: oscs };
+    t.nodes = nodes;
 }
 
 // Whether a beacon should sound under the current B setting. The mute
@@ -1912,7 +1945,7 @@ function makeSectorRoster() {
     if (demo) {
         return SECTOR_POIS.map(function (p) {
             var t = { kind: 'poi', name: p.name, poiType: p.poiType, desc: p.desc,
-                      pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true };
+                      pos: v3(p.pos.x, p.pos.y, p.pos.z), alive: true, beaconAsset: p.beaconAsset };
             buildPoiVoice(t);
             return t;
         });
@@ -2193,7 +2226,7 @@ function bearingText(t) {
 }
 
 // Lock hysteresis + per-target front/back lowpass, run every frame.
-function updateTargeting() {
+function updateTargeting(dt) {
     targets.forEach(function (t) {
         if (!t.alive || !t.nodes || !t.nodes.lp) return;   // dust has no filter
         var a = aim(t.pos);
@@ -2209,6 +2242,21 @@ function updateTargeting() {
             // The B key (SPEC 1.12): on / off / selected target only.
             if (t.nodes.mute && SIM.audio.ctx) {
                 t.nodes.mute.gain.setTargetAtTime(beaconAudible(t) ? 1 : 0, SIM.audio.ctx.currentTime, 0.15);
+            }
+            // Phase 3L, L.9: the gate's lighthouse beam sweeps a full turn
+            // every gateSweepS, independent of the listener — loud when it
+            // points at you, faint (never silent) when it doesn't.
+            if (t.poiType === 'gate' && dt) {
+                t.gatePhase = ((t.gatePhase || 0) + (360 / CFG.gateSweepS) * dt) % 360;
+                var rad = t.gatePhase * Math.PI / 180;
+                var ox = Math.sin(rad), oz = -Math.cos(rad);
+                if (t.nodes.panner.orientationX) {
+                    t.nodes.panner.orientationX.value = ox;
+                    t.nodes.panner.orientationY.value = 0;
+                    t.nodes.panner.orientationZ.value = oz;
+                } else if (t.nodes.panner.setOrientation) {
+                    t.nodes.panner.setOrientation(ox, 0, oz);
+                }
             }
         }
         t.nodes.lp.frequency.setTargetAtTime(cutoff, SIM.audio.ctx ? SIM.audio.ctx.currentTime : 0, 0.1);
@@ -5656,7 +5704,7 @@ function simTick(dt) {
         thrusterSync(null); updateStabilizers(0);
         updateWarpFlight(dt);
         updateListener();
-        updateTargeting();
+        updateTargeting(dt);
         updateStatusLine();
         return;
     }
@@ -5725,7 +5773,7 @@ function simTick(dt) {
     // updateEnemies, along with enemy fire.)
 
     updateListener();
-    updateTargeting();
+    updateTargeting(dt);
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
@@ -5847,6 +5895,11 @@ window.__sim = {
             sound: profile ? Object.assign({}, profile.sound) : null,
             beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
                                 .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
+            gate: (function () {
+                var g = targets.filter(function (t) { return t.poiType === 'gate'; })[0];
+                return g ? { name: g.name, phase: Math.round((g.gatePhase || 0) * 10) / 10,
+                             hasAsset: !!(g.nodes && g.nodes.oscs.some(function (o) { return o.buffer; })) } : null;
+            })(),
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), stations: profile.stations,
                                   version: profile.version, alloy: profile.resources.alloy,

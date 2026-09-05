@@ -1684,6 +1684,31 @@ a placeholder for Brian's ear. Not yet heard by Brian. Next: the three
 game items — 3.31 (recorded station beacons), 3.29 (the ship page),
 3.30 (the tractor beam) — then back to 3.28.
 
+**Round 21 also built SPEC 3.31** (recorded station beacons, plus L.9's
+game half): `buildPoiVoice` now checks a new `beaconAsset` field on the
+POI's `QUADRANT`/`SECTOR_POIS` row FIRST, before the old
+`combat`/`mining`/`station`/`gate`/`star`/planet synthesis chain — a
+recording REPLACES the synthesized voice for that entry entirely
+(loads async, guarded against the target having already been torn
+down by the time the fetch lands, the same `t.nodes !== nodes`
+staleness pattern used elsewhere). Station Meridian (both the delivery
+run's fixed sector and the quadrant — one row each, same name) got
+`space_station1`, Station Two `space_station2`, the Jump Gate
+`space_station6`; both roster builders (`makeSectorRoster`'s `demo`
+branch, `makeQuadrantRoster` via `quadrantPoiList`) thread the field
+onto the target object. The Jump Gate's beacon also gained L.9's cone
+(`gateConeInner`/`Outer`/`OuterGain`, `updateTargeting`'s new per-frame
+step advancing `t.gatePhase` by `360/CFG.gateSweepS` degrees a second
+and writing it to the panner's orientation) — `updateTargeting` needed
+a `dt` parameter for this, threaded through its two call sites.
+Machine-tested: all ten station recordings confirmed preloading at
+boot; the gate's sweep phase measured exactly 180° after 5 of its
+10-second period via `__sim.step()`; the delivery run's untouched
+`SECTOR_POIS` roster confirmed sharing the same working code path; B
+still cycles correctly with the new asset-based voices; rebuilding the
+roster on a return to sector produced no errors. Zero console errors.
+Not yet heard by Brian. Next: SPEC 3.29 (the ship page).
+
 Tuning questions still open for play-test: provoked-retaliation fuse (4 s),
 enemy damage pacing (30 per beam, 25 per missile — with the shield pool at
 45 that's roughly 1.5 full beams absorbed before disrepair), attack gap
