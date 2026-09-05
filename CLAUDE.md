@@ -2562,18 +2562,18 @@ Machine-tested at a local server: `poke({mute:true})` measured
 `masterGain.gain.value` dropping from 0.7 to exactly 0 and back on
 `poke({mute:false})`; a live menu navigation confirmed speech
 unaffected while muted; the saved profile was inspected directly and
-carries no trace of mute. **One thing flagged rather than glossed
-over**: this session's browser-preview tool strips query strings from
-every local URL (confirmed via `history.pushState`+reload and via
-`preview_start` with a query string, both landing on the bare origin),
-so `?mute=1` itself couldn't be exercised end-to-end here — confidence
-instead comes from `URLSearchParams('?mute=1').get('mute') === '1'`
-verified directly in Node, plus the fact that the URL path calls the
-exact same `setMuted` already proven via `poke`. Zero console errors.
-This is now a standing test convention — every future test script
-should add `?mute=1` to its navigation, in addition to the beacons-off
-poke; on GitHub Pages, a real navigation reaches the page normally, so
-the query string should work there even though it couldn't be checked
-in this pane. Not yet heard by Brian — nothing to hear, by design. Per
-the build order, the next step is still **Brian flying everything since
+carries no trace of mute. **A local-testing wrinkle, found and then resolved on Pages**: this
+session's browser-preview tool strips query strings from every LOCAL
+static-server URL no matter how it's reached (`navigate`,
+`preview_start`, even `history.pushState`+reload all landed back on the
+bare origin), so `?mute=1` couldn't be exercised against the local
+server. Confirmed it wasn't a code problem by trying the identical URL
+against the live Pages deploy instead: `?mute=1` survived the real
+navigation there and booted with `state().muted === true` and
+`masterGain.gain.value === 0` immediately, speech still working, zero
+console errors — genuine end-to-end confirmation. Zero console errors
+throughout. This is now a standing test convention — every future test
+script adds `?mute=1` to its navigation, in addition to the beacons-off
+poke. Not yet heard by Brian — nothing to hear, by design. Per the
+build order, the next step is still **Brian flying everything since
 3.24**, the human playtesting checkpoint.

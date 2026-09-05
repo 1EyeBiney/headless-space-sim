@@ -4381,21 +4381,22 @@ confirmed after the ramp had time to land; speech (a live menu
 navigation) was confirmed still audible-to-a-screen-reader (the
 `announce` div still updated correctly) while muted; `localStorage`'s
 saved profile was inspected directly and contains no trace of mute
-ever having been touched. **One thing NOT directly provable in this
-environment, flagged rather than glossed over**: this session's browser-
-preview tool strips query strings from every local URL it navigates to
-(confirmed via `history.pushState` + `reload()` as well as
-`preview_start` — both still land on the bare origin), so `?mute=1`
-itself could not be exercised end-to-end here. Confidence instead comes
-from two things: `URLSearchParams('?mute=1').get('mute') === '1'`
-verified directly in Node outside the browser, and the exact same
-`setMuted` function that IS fully proven via `poke` being the only thing
-the URL path calls. Zero console errors. This is now a standing testing
-convention (CLAUDE.md, Working agreements) — every future test script
-should navigate with `?mute=1` in addition to the beacons-off poke,
-though on GitHub Pages (a real navigation, not this tool's own
-sandboxed one) the query string will reach the page normally. Not yet
-heard or flown by Brian — nothing to hear, by design.
+ever having been touched. **A local-testing wrinkle, found and then resolved on Pages**: this
+session's browser-preview tool strips query strings from every LOCAL
+static-server URL regardless of how it's reached (`navigate`,
+`preview_start`, even `history.pushState` + `reload()` all landed back
+on the bare origin) — so `?mute=1` itself couldn't be exercised against
+`localhost:8934`. It was NOT a code problem: the identical URL against
+the live Pages deploy (`?mute=1` is a real navigation there, not this
+pane's own sandboxed one) kept the query string and booted with
+`state().muted === true` and `masterGain.gain.value === 0` from the very
+first read, speech confirmed still working (a menu navigation spoke
+normally) and zero console errors — a genuine end-to-end confirmation,
+just not one available against the local server this round. Zero
+console errors throughout. This is now a standing testing convention
+(CLAUDE.md, Working agreements) — every future test script adds
+`?mute=1` to its navigation, in addition to the beacons-off poke. Not
+yet heard or flown by Brian — nothing to hear, by design.
 
 #### 3.41 The flight course — beacons to fly through, against the clock (ideas11.txt) — proposed
 
