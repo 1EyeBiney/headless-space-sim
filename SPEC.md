@@ -1925,10 +1925,11 @@ page, DONE → 3.30 the tractor beam, DONE — **Phase 3L and its three
 game items are all complete**)
 → 3.28 the quadrant's timed contract, DONE
 → 3.23 favor and the three ranges, DONE (Control rethought, now 3.23b)
-→ **ideas9 next** (Brian, 2026-09-05, after reading 3.23 as built:
-3.33 favor second pass → 3.34 a full stop to dock → the lab second
-pass L.1b/L.4b/L.5b/L.8b → 3.32 reaction mass) → **then Brian flies
-everything since 3.24** → **quadrant 2 (ideas10: the economy lives
+→ **ideas9/ideas10, DONE** (Brian, 2026-09-05, after reading 3.23 as
+built: 3.33 favor second pass, DONE → 3.34 a full stop to dock, DONE →
+the lab second pass L.1b/L.4b/L.5b/L.8b, DONE → 3.32 reaction mass,
+DONE) → **Brian flies everything since 3.24, next** → **quadrant 2
+(ideas10: the economy lives
 there, so the gate goes first)**: 3.18 containers and hydrogen (the
 fare) → 3.14 the cargo limit (the 20,000 hold the stranger gate is
 priced against) → 3.22 the gate and quadrant 2's skeleton → 3.11 ports
@@ -2784,7 +2785,7 @@ Stop, confirmed by reading `AudioListener.forwardX/Z` directly before
 and after. Zero console errors throughout every demo. Every number is
 a placeholder for Brian's ear. Not yet heard by Brian.
 
-#### Phase 3L, second pass — Brian's notes after hearing the lab (ideas9, 2026-09-05)
+#### Phase 3L, second pass — Brian's notes after hearing the lab (ideas9, 2026-09-05) — DONE
 
 Four changes to demos that exist, one round, all in `soundlab.html`.
 Same shell, same `__lab` hook, same stop-everything rule.
@@ -2819,6 +2820,66 @@ Same shell, same `__lab` hook, same stop-everything rule.
   read back on every step and reset on Home; the flyby's routes play
   clips 5–8 and its stunts play no recording; the vortex count changes
   on the brackets; the room turns every 10 s with both lines.
+
+**DONE (Round 25, Sonnet).** All four built as specced, in
+`soundlab.html`. **L.1b**: a new "3D grid cursor" section (`gridStart`/
+`gridStop`/`gridArena`), a sibling to L.1 rather than a replacement —
+both stay in the lab side by side, per Brian's own "or gains a sibling"
+phrasing. Position tracked in raw world units (`gridExplorer.x/y/z`,
+`GRID_STEP` 100, `GRID_STEP_FINE` 25 under Shift); coordinates are read
+back as grid-cell counts **rounded to the nearest coarse cell**, even
+right after a fine Shift step — a deliberate simplification, flagged for
+Brian: a true fractional grid would need either showing a decimal or a
+second finer grid entirely, and rounding was the simplest way to keep
+"always on a grid point" true to the ear without inventing either.
+Confirmed live: `2 right, 1 up, 3 forward` after Right×2/Up×1/W×3,
+matching Brian's own example exactly. **L.4b**: `FLYBY_ROUTES` now
+loads `propeller_plane5–8` (clips 1–4 dropped from the manifest
+reference entirely, still on disk); the stunts' old `A.load(stunt.asset)`
+is gone, replaced by `flybySynthPropellerStart/Update/Stop` — a
+sawtooth oscillator (engine buzz) plus `SIM.audio`'s own shared
+`noiseBuf` through a bandpass filter, pulsed by a slow LFO (the blade-
+chop), both re-targeted every tick by `flybyStuntTick`'s own computed
+speed (straight-line distance moved since the last tick, over real
+elapsed seconds) — a fast, close moment buzzes higher and chops faster
+than a lazy one. Confirmed live: "Close pass. Twelve seconds.
+Synthesized propeller." and a full 12 s completion via `__lab.tick()`.
+**L.5b**: `vortex.nodes` per-node `height/sway/offset` fields are gone;
+one shared `vortexGroup` object drives all eight, with Home/End now a
+**tilt** (0–90°) that rotates the orbital plane from flat (x-z, around
+the listener) toward vertical (x-y, a ring rising and falling in front)
+by blending the `sin(angle)` term between z and y, and `[`/`]` now mute/
+un-mute the group down to N of 8 audible (ramped gain, not stopped —
+orbiting continues silently so un-muting mid-run doesn't restart
+anything). Confirmed live: Up/PageUp/Home/`]` all changed the shared
+readback in one pass ("Height 15, sway 20, tilt 15 degrees... 7 of 8
+audible"), R reset everything. **L.8b**: the five synthesized voices and
+the quiz are gone; `ROOM_ASSETS` now loads four real manifest keys
+(`asteroid1`, `propeller_plane1`, `laser_mining1`, `vortex1`), all
+playing at once from randomized positions; `roomDoTurn`/`roomTurnTick`
+turn the listener 90° in the SAME direction every ~10 s (chosen once at
+Start) and `roomOrientationReport` speaks the listener's own cumulative
+facing relative to the start ("Facing 180 right of where you started")
+plus each asset's new apparent bearing in natural phrasing
+(`ROOM_DIR_PHRASE`, e.g. "The asteroid is now behind you," matching
+Brian's own example) — confirmed live end to end. **A real, pre-
+existing bug found and fixed in this round's own testing, unrelated to
+any of the four items above**: `stopAll()` cleared its own
+`activeStopFns` registry to `[]` after every call, but `registerStop()`
+is only ever called ONCE per demo at page-parse time (a permanent
+registration, not a per-run one) — so the very first `stopAll()` call
+on a fresh page load (fired automatically the instant ANY demo's own
+`xStart()` ran, since every demo calls `stopAll()` first to silence the
+others) permanently emptied the registry, silently breaking BOTH the
+STOP ALL button and "every demo stops every other" for the rest of that
+page's life. Confirmed via a direct repro (`stopAll()` logging 7
+registered functions on its first call, 0 on every call after) and
+fixed by simply never clearing the registry — every stop function is
+already idempotent, so there is nothing to "re-arm." Re-confirmed
+working after the fix: starting a second demo correctly silenced the
+first, and TWO separate STOP ALL presses both correctly tore everything
+down. Zero console errors throughout all four demos and the bug fix.
+Not yet heard by Brian.
 
 #### 3.31 Recorded station beacons — Brian's ten, applied down the list (ideas8) — DONE
 
@@ -3429,7 +3490,7 @@ just be dead, untestable code. Scope actually delivered:
   Every favor/range number is a placeholder for Brian's ear. Not yet
   heard or flown by Brian.
 
-#### 3.33 Favor, second pass (ideas9 — Brian's answers to the 3.23 review, 2026-09-05)
+#### 3.33 Favor, second pass (ideas9 — Brian's answers to the 3.23 review, 2026-09-05) — DONE
 
 Brian read 3.23 as built (the review in Part C, "ideas9") and answered.
 Everything here is a change to 3.23's own code, not a new system —
@@ -3496,11 +3557,78 @@ one round, before 3.11, since the economy builds on these numbers.
   only the other drops); the 40 floor holds from 41 over any stretch
   and 39 still drains; Honored at 90 widens ranges 50 % and prices
   modules at 75 %; a mission pays 16; 15,000 ore sold pays +30; a zone
-  clear pays 8 at the nearest station; donation from comms range at a
+  clear pays 16 at the nearest station; donation from comms range at a
   stranger crosses Known and refuses while the contract's ore is owed;
   the zone clear opens comms and a hail from 10,000 out works.
 
-#### 3.34 A full stop to dock (ideas9)
+**DONE (Round 25, Sonnet), built against ideas9's own numbers, THEN
+Brian's ideas10 answers changed two of them further** (see the note at
+the end). `reconcileFavor` is retired, replaced by a clean read/write
+split: `decayedFavor(port)` is a PURE calculation (never mutates
+`port.favor` or `port.lastVisitHour`) called from every read, including
+`favorOf` and every per-frame range-band check; `touchPort(port)`
+COMMITS whatever decay has accrued and resets the absence clock, called
+only from real interactions — `openHailMenu` (any tier), `dockAtStation`,
+`sellOreAt`/`sellResource` (via a new `touchStationVisit` helper, even
+when the sale is too small to cross a whole favor point), the new
+`donateOreAt`, and mission accept (both escort/defend and the SPEC 3.28
+contract) via `startMissionRun`. `favorFloor(port)` returns
+`CFG.favorTrusted` once `peakFavor` has ever reached it, else 0, and
+BOTH `decayedFavor`'s decay clamp and `writeFavor`'s own gain/loss clamp
+route through it — so the permanent floor holds against a hard loss
+(a mission's `favorFriendlyLost`), not just slow decay, matching
+Brian's literal "favor should not ever go below 40" rather than a
+narrower "decay can't drop it" reading. Five tiers: `FAVOR_TIERS` gained
+`'honored'`, `favorTierMin`/`favorTier` extended, `FAVOR_TIER_WORDS`
+gained a line; `CFG.favorRangeBonus` (`{trusted: .25, allied: .5,
+honored: .5}`) replaces the old Allied-only `alliedRangeBonus`, read by
+`stationRangeFor`. `honoredDiscountAt(poi)` (1, or `1 - honoredDiscount`
+at an Honored station) is threaded through every purchase site: module
+cost (`moduleCost`, credits only — alloy stays full price, the same
+call this project already made for laser levels), `laserLevelCost`/
+`laserRepairCost` (new small helpers, replacing four separate inline
+computations), reaction mass (`TRANSPORTER_ITEMS`' Buy line), and
+collision-damage repair billing inside `dockAtStation`. **Donate ore**:
+a shared `DONATE_ORE_ITEM` object sits in both `COMM_ITEMS` and
+`TRANSPORTER_ITEMS` (comms is the point — a stranger's way in without a
+fight), `donateOreAt(poi)` gives `floor(ore / donateOrePerFavor)` favor
+for the whole hold, no credits, gated by the same `oreSellBlocked()`
+rule Sell already uses. **Quadrant-wide comms**: `destroyTarget()`'s
+zone-clear branch gained a `!demo && sectorHome` block (gated exactly
+like the OLD, since-retired influence bump was — a standalone Combat
+drill has no `sectorHome` and doesn't feed it) that pays
+`favorZoneClear` at `nearestStationTo(sectorHome.pos)` and, the first
+time it happens in a quadrant, sets `profile.quadrants[q].openComms`
+and folds a one-time announcement into the SAME deferred `say()` the
+victory line already uses. `callPoi()`'s outer "too far" check now
+short-circuits for a station when `openComms` is set (comms only —
+transporter and docking still read the real distance below); the map's
+opening line names it once set. **A pre-existing bug fixed in passing,
+same class as 3.23's own mission-favor fix**: `ensurePort` no longer
+special-cases Station Meridian's name at all (SPEC 3.33's "nobody
+starts favored" is now the WHOLE rule, not layered on top of an old
+default). Machine-tested at a local server: a port poked to 80 favor
+with its clock parked 1,000 "hours" in the past read back completely
+stable across three repeated reads (the OLD bug's own signature — it
+would have decayed further on every read); hailing it afterward (a real
+touch) correctly floored the commit at exactly 40 and reported "We
+trust you" with Trusted's own +25% ranges (750/188 from a 600/150
+base); a real 5-ship zone clear (four kills confirmed via real fired
+shots, salvage-and-reaction-mass lines read out live, e.g. "Salvage
+plus 5, reaction mass plus 15") correctly folded "Quadrant-wide comms
+open" into the victory line exactly once, the map's next open echoed
+it, and a hail from 14,240 units out (far past every range, boosted or
+not) succeeded; Donate ore appeared on both menus and paid the right
+favor for a partial (sub-threshold) donation. Zero console errors.
+Built directly against the numbers as Brian settled them across both
+ideas9 and ideas10 (nobody starts at 40, Meridian included;
+`favorZoneClear` 16 to match the doubled mission rate) — this section's
+own bullet list above still shows a stray "8" for the zone-clear number
+from the ideas9-only draft; fixed to 16 just above, matching CFG. Every
+favor/range number is a placeholder for Brian's ear. Not yet heard or
+flown by Brian.
+
+#### 3.34 A full stop to dock (ideas9) — DONE
 
 - Docking and landing need the ship **stopped**: C inside dock range
   with speed above `dockMaxSpeed` **2** refuses — "Station Two control:
@@ -3514,7 +3642,24 @@ one round, before 3.11, since the economy builds on these numbers.
   names the speed; C at 1.5 docks; the same at a planet once 3.19
   exists.
 
-#### 3.32 Reaction mass matters (ideas9)
+**DONE (Round 25, Sonnet).** `CFG.dockMaxSpeed` (2) checked in
+`callPoi()`'s dock-range branch, before the favor-tier check (the more
+basic gate) — `len(ship.vel) > dockMaxSpeed` refuses by name with the
+rounded speed, `dockAtStation` never runs. The hail and transporter
+branches are untouched (no speed read there at all, matching "don't
+care about speed"). The tug's own arrival was already unaffected —
+`tugArrives()` runs through `newGame('sector')` (which zeroes
+`ship.vel` inside `clearMission()`) before calling `dockAtStation`
+directly, bypassing `callPoi()`'s gate entirely, so it never needed a
+change; confirmed by inspection, not just assertion. Help text (the
+Sector section's own "range and standing" line) and `KEY_DESCRIPTIONS.c`
+both updated to mention the stop. Machine-tested at a local server: `C`
+at speed 14 inside dock range refused with "Station Two control: come
+to a full stop to dock. Speed 14." and left the ship undocked; the same
+approach at speed 1 docked normally. Zero console errors. Not yet heard
+or flown by Brian.
+
+#### 3.32 Reaction mass matters (ideas9) — DONE
 
 Brian: reaction mass should be *earned* in the ordinary course of a
 run — looted from every kill, drawn from dust while vacuuming, paid as
@@ -3544,6 +3689,42 @@ zone) definitely feels it.
 - F3's reaction-mass line names what it's fed by. Test: the two
   simulated runs land where the target says; a kill's line names the
   mass; the vacuum's running total rises while dust is collected.
+
+**DONE (Round 25, Sonnet), with one honest limitation flagged up
+front**: `runBudget()` is a rough ESTIMATE built from the CFG numbers
+directly (named assumptions inline: a corvette-average Contested Zone,
+a 0.6 dust fraction of the ore goal, ~40 u/s closing speed out of the
+no-warp zone), not a real physics simulation — actually driving the
+ship through a full timed delivery run via the browser test harness
+would cost far more than this round's budget for a number Brian's own
+text already says is a guess ("we need to guess and just pick some
+numbers and probably have me try it"). `RCS_PER_KILL` (interceptor 6 /
+corvette 9 / cruiser 15, next to `SALVAGE`) and `addKillRcs(shipName)`
+fold into `damageTarget`'s existing kill line ("Salvage plus 3, reaction
+mass plus 9."), never a second `say()`; a silent per-tick trickle from
+`dustTick()` (`amount * CFG.rcsPerDustUnit`, un-spoken on purpose — it's
+fractions of a unit every couple of seconds, and naming it there would
+just be noise on top of the ore count that line already reads, checked
+instead on F3); `CFG.rcsMission` (25) added to both `missionEnd(true)`
+and the SPEC 3.28 contract's own completion, the latter flagged as
+effectively masked in practice — completing the contract always means
+docking, which already refills reaction mass to full a few lines below
+regardless, so the mission-parity line is honest but mostly moot there.
+The OLD `CFG.rcsPerKill` (a flat 5, never actually wired to anything —
+confirmed via a clean grep before removing it) is retired outright, not
+kept alongside the new by-class table. `window.__sim.runBudget(scenario)`
+sits next to `state`/`poke`/`step` on the test hook. Machine-tested at a
+local server: `runBudget('clean')` reports 58% of the tank remaining
+(comfortably above the 25% target, no station fill needed);
+`runBudget('sloppy')` reports 0%, `onBattery: true` — both land exactly
+where the spec's own target says they should. A real 5-ship kill
+sequence confirmed the spoken line and the exact by-class amounts live
+("Salvage plus 2, reaction mass plus 6" for an interceptor, "...plus 5,
+...plus 15" for a cruiser). Zero console errors. Every reaction-mass
+number here — the by-class amounts, the dust rate, the mission bonus,
+and the budget estimator's own assumptions — is a placeholder for
+Brian's ear and, per his own text, for him to actually fly and judge.
+Not yet heard or flown by Brian.
 
 #### 3.11 Ports: stations, prices, and F4 trading (A.10)
 

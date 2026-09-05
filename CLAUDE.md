@@ -1101,6 +1101,106 @@ static once tiers exist.
   buffer, so any decay at all drops it into Known until touched again —
   observed directly in testing, a higher starting value would give it
   real headroom as home. Not yet heard or flown by Brian.
+  **Favor, second pass (Round 25, SPEC 3.33, ideas9/ideas10)**: answers
+  Brian's own review of the Round 23 build above. `reconcileFavor` is
+  gone, split into `decayedFavor(port)` (a PURE calculation, never
+  mutates — called from every read, including the per-frame range-band
+  checks that were the whole bug) and `touchPort(port)` (commits accrued
+  decay and resets the absence clock, called only from a real
+  interaction — hail, dock, sale, donation, mission accept). Decay now
+  only runs at all once favor reaches `favorAllied` (70) —
+  `favorDecayStartsAt` — and `favorFloor(port)` (permanent `favorTrusted`
+  once `peakFavor` ever reaches it) is applied by BOTH the decay clamp
+  and `writeFavor`'s own gain/loss clamp, so the floor holds against a
+  hard loss too, not just decay — Brian's literal "favor should not ever
+  go below 40." `ensurePort` no longer special-cases Station Meridian at
+  all — nobody starts favored. Five tiers (`favorHonored` 90,
+  `CFG.favorRangeBonus` per-tier replacing the old Allied-only bonus,
+  `honoredDiscountAt(poi)` threaded through module/laser/repair/reaction-
+  mass pricing). `favorMission` 8→16, `favorPerWantUnit.ore` 200→500,
+  a revived `favorZoneClear` (16, the old influence-era zone-clear bump
+  SPEC 3.23 had retired, now back with its own rate) paid at
+  `nearestStationTo(sectorHome.pos)` on a real `!demo && sectorHome`
+  zone clear — the SAME event also sets
+  `profile.quadrants[q].openComms` the first time it happens, letting
+  `callPoi()` hail any station from anywhere in the quadrant (comms
+  tier only) once true. A shared `DONATE_ORE_ITEM` (comms AND
+  transporter menus) gives `floor(ore / donateOrePerFavor)` (2,000/pt)
+  favor for the whole hold, no credits — the "20k skips the stranger
+  gate" path Brian described, alongside the zone-clear's own one-fight
+  path. Machine-tested: a port poked to 80 favor with its clock parked
+  1,000 hours in the past read back stable across three repeated reads
+  (the exact signature the OLD bug would have shown — further decay on
+  every read); a real touch afterward correctly floored the commit at
+  40 and reported "We trust you" with Trusted's own ranges; a real
+  5-kill zone clear folded "Quadrant-wide comms open" into the victory
+  line once, and a hail from 14,240 units out then succeeded. Zero
+  console errors. Not yet heard or flown by Brian.
+  **A full stop to dock (Round 25, SPEC 3.34)**: `CFG.dockMaxSpeed` (2)
+  checked in `callPoi()`'s dock branch before the favor check —
+  `len(ship.vel) > dockMaxSpeed` refuses by name with the rounded speed.
+  The tug's own arrival was already safe by construction (`tugArrives()`
+  zeroes velocity via `clearMission()` before calling `dockAtStation`
+  directly, bypassing this gate entirely) — confirmed by inspection.
+  Machine-tested: speed 14 refused, speed 1 docked. Zero console errors.
+  **Reaction mass matters (Round 25, SPEC 3.32)**: `RCS_PER_KILL`
+  (interceptor 6/corvette 9/cruiser 15, next to `SALVAGE`) folds into
+  `damageTarget`'s existing kill line via `addKillRcs`, never a second
+  `say()`; `dustTick()` adds a SILENT per-tick trickle
+  (`amount * CFG.rcsPerDustUnit`, checked on F3 rather than spoken —
+  it's fractions of a unit at a time); `CFG.rcsMission` (25) added to
+  both `missionEnd(true)` and the SPEC 3.28 contract's own completion
+  (flagged as effectively masked there — completing the contract always
+  means docking, which already refills reaction mass to full regardless).
+  The old, never-actually-wired `CFG.rcsPerKill` (flat 5) is retired
+  outright rather than kept alongside the new table. A new
+  `window.__sim.runBudget(scenario)` is a ROUGH, clearly-labeled ESTIMATE
+  from the CFG numbers (not a physics simulation — Brian's own text
+  grants this can't be pinned down exactly), reporting `'clean'` at 58%
+  of the tank remaining and `'sloppy'` at 0% (`onBattery: true`) — both
+  land where the spec's own target says they should. Zero console
+  errors. Every reaction-mass number is a placeholder Brian is meant to
+  fly and judge himself. Not yet heard or flown by Brian.
+  **The lab, second pass (Round 25, Phase 3L L.1b/L.4b/L.5b/L.8b,
+  ideas9)**: a new "3D grid cursor" (`gridStart`/`gridArena`) sits
+  ALONGSIDE L.1's polar explorer, not in place of it — raw world-unit
+  position, `GRID_STEP` 100 (Shift 25), coordinates read back as
+  grid-cell counts ROUNDED to the nearest coarse cell (a deliberate
+  simplification, flagged: a fine Shift-step can leave the cursor off
+  the coarse grid, and rounding was simpler than inventing a second,
+  finer grid). The flyby's `FLYBY_ROUTES` now load `propeller_plane5–8`
+  (1–4 dropped from the demo); the stunts no longer play any recording
+  at all — `flybySynthPropellerStart/Update/Stop` build a sawtooth buzz
+  plus `SIM.audio`'s own shared `noiseBuf` through a bandpass filter,
+  pulsed by an LFO, both re-targeted every tick by the stunt's own
+  computed speed (distance moved since the last tick, over real
+  elapsed time). The vortex's per-node `height/sway/offset` are gone,
+  replaced by one shared `vortexGroup` — Home/End is now a **tilt**
+  (0–90°) rotating the orbital plane from flat (x-z) toward vertical
+  (x-y, blending the `sin(angle)` term between z and y), `[`/`]` mute/
+  un-mute down to N of 8 audible (ramped, not stopped, so un-muting
+  mid-run doesn't restart anything). The room drops its five synthesized
+  voices and its quiz entirely for four real manifest assets (asteroid,
+  propeller plane, mining laser, vortex) playing at once from
+  randomized positions, turning 90° the SAME direction every ~10s and
+  reporting the listener's own cumulative facing relative to the start
+  plus each asset's new bearing in natural phrasing ("The asteroid is
+  now behind you," matching Brian's own example). **A real, pre-existing
+  bug found in this round's own testing, unrelated to any of the four
+  items above**: `stopAll()` cleared its own `activeStopFns` registry
+  after every call, but `registerStop()` is only ever called ONCE per
+  demo at page-parse time (a permanent registration) — so the very
+  first `stopAll()` on a fresh page (fired automatically the instant
+  ANY demo's own `xStart()` ran, since every demo silences the others
+  first) permanently emptied the registry, silently breaking BOTH the
+  STOP ALL button and "every demo stops every other" for the rest of
+  that page's life. Confirmed via a direct repro (7 registered
+  functions logged on the first call, 0 on every call after) and fixed
+  by simply never clearing the registry — every stop function already
+  checks its own state before doing real work, so there's nothing to
+  re-arm. Re-confirmed working after the fix across two separate STOP
+  ALL presses. Zero console errors throughout all four demos and the
+  bug fix. Not yet heard by Brian.
 - **Weapons — lasers (Round 12, SPEC 1.9)**: six slots (`profile.slots`,
   `LASERS` data table), keys `1`-`6`, Shift+1-6 select (`selectSlot(i, reverse)`
   — **Round 18, SPEC 3.24 fix**: Shift+digit never actually worked from a
