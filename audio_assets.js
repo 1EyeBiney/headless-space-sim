@@ -159,11 +159,16 @@ window.AUDIO_MANIFEST = {
   laser_switch5: 'audio/weapons/lasers/laser_switch5.mp3',
   laser_switch6: 'audio/weapons/lasers/laser_switch6.mp3',
 
-  // Tractor beam hum (this round): replaces the synthesized 90Hz tone in
-  // tractorStartHum() with a real recording, same for every tier. Brian's
-  // set ran tractor_beam2-9 (no 1, no tier labels) — this picks the first
-  // on offer; the other 7 stay unwired, auditionable in soundlab.html.
+  // Tractor beam hum: replaces the synthesized 90Hz tone in
+  // tractorStartHum() with a real recording, one per tier as of SPEC 3.52.
+  // Brian's set ran tractor_beam2-9 (no 1, no tier labels); tier 1 keeps
+  // tractor_beam2 (the first on offer), tiers 2/3/4 take the LAST three
+  // (7/8/9) per Brian's own mapping — tractor_beam3-6 stay in reserve,
+  // unwired, auditionable in soundlab.html.
   tractor_beam: 'audio/weapons/tractor_beams/tractor_beam2.mp3',
+  tractor_beam_2: 'audio/weapons/tractor_beams/tractor_beam7.mp3',
+  tractor_beam_3: 'audio/weapons/tractor_beams/tractor_beam8.mp3',
+  tractor_beam_4: 'audio/weapons/tractor_beams/tractor_beam9.mp3',
 
   // Warp (SPEC 1.17/2.10). Engine 1's three phases only; engines 2-6 are
   // on disk under audio/ships/warp/ but not in the manifest yet — no

@@ -160,8 +160,17 @@ wide of a gate still clears it — no gate ever stops the run — but costs
 10 seconds on the clock, named as it happens, and chimes down instead of
 up. Weapons, shields, and auto-target are all off: this one is flown by
 hand. The last gate reads the total time, how many of the eight you
-cleared cleanly, and how that time compares to your best. Enter tries
-again; your best 10 times land in the Run log, their own board.
+cleared cleanly, your average distance off each gate's own centre, and
+how your time compares to your best. Enter tries again; your best 10
+times land in the Run log, their own board.
+
+## Escort and Defend drills
+
+The same two missions a station's Missions list offers, playable
+directly from the mission menu so you can hear them without flying to a
+station first. No station means no favor and no cooldown — they're
+replayable any time, and pay credits on a win the same as the
+station-offered versions do.
 
 ## Keys
 
@@ -178,7 +187,7 @@ Right hand on the arrows, left hand on everything else.
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | D | Decoy. A burst that spoofs the missile coming at you, sending it ballistic at once — no shield needed, and a moment later you hear it pop clear. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
-| B | Tractor beam (mining), tiered like the lasers: pulls the selected rock or core toward you instead of flying to it — B again releases it. Shift+B steps your tier down, wrapping back to the top, for a delicate core you'd rather ease off |
+| B | Tractor beam (mining), tiered like the lasers: pulls the selected rock or core toward you instead of flying to it — B again releases it. A higher tier pulls faster, reaches further, and costs less reaction mass. Firing a laser, the extractor, or the vacuum cuts it off |
 | Tab / T | Cycle targets / report the selected target. Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
 | Shift+T | Auto-target: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. A limited pool, not something you start with |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |

@@ -143,22 +143,23 @@ var CFG_DEFAULTS = {
     cloudRadius: 800,        // a rock past this distance from origin is lost
     rockFriction: 0.85,      // vel *= friction^dt — rocks bleed energy, ~15%/s
     beamPush: 6,             // u/s of shove per laser damage tick, scaled by size
-    vacRange: 300,           // core extractor (E) reach — also the tractor's hold distance (SPEC 3.30)
+    vacRange: 300,           // core extractor (E) reach
     vacArc: 20 * Math.PI / 180,
     vacTickMs: 600,
 
-    // Tractor beam (SPEC 3.30, tiered as of SPEC 3.44): pulls the selected
-    // rock/core toward the ship at a clean fixed rate by size — not a force
-    // fighting momentum, a deliberate simplification (see SPEC.md 3.30).
-    // Not standard gear; tractorTestFit fits everyone with tier 1 (today's
-    // numbers, unchanged) until Brian has heard it, after which owning
-    // tractor_1/2/3 (MODULES) is the only way in — see TRACTOR_TIERS below
-    // for what tiers 2 and 3 add on top of tractorPullCore, which stays
-    // constant across every tier.
+    // Tractor beam (SPEC 3.30, tiered as of SPEC 3.44, second pass SPEC
+    // 3.52): pulls the selected rock/core toward the ship at a clean fixed
+    // rate by size — not a force fighting momentum, a deliberate
+    // simplification (see SPEC.md 3.30). Not standard gear; tractorTestFit
+    // fits everyone with tier 1 until Brian has heard it, after which owning
+    // tractor_1/2/3/4 (MODULES) is the only way in. As of 3.52 there is no
+    // "selected" tier any more — owned IS active (TRACTOR_TIERS below,
+    // tractorLevel() picks the row) — range, pull rate on every size
+    // including core, and reaction-mass cost all scale with it.
     tractorTestFit: true,
-    tractorRange: 500,           // B refuses beyond this
-    tractorPullCore: 20,         // u/s closed on a small rock or a core (500 -> vacRange 300 in 10s), every tier
+    tractorStopDist: 250,        // pulled items stop here, not at vacRange — a real margin, not a coincidence
     tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
+    tractorRcsPerMassUnit: 0.004,   // reaction-mass cost per (rock mass unit x distance closed), before tier costMul
 
     // Auto-target (SPEC 3.38, ideas10.txt): Shift+T hands the stabilizers
     // the selected target — steers the nose onto it, then holds through a
@@ -762,10 +763,10 @@ function recordContractRun(seconds) {
 // SPEC 3.49: returns the PREVIOUS best in seconds (undefined on a first-
 // ever run) rather than a plain boolean, so finishCourse() can speak the
 // actual delta ("N seconds off your best") and not just whether it won.
-function recordCourseRun(seconds) {
+function recordCourseRun(seconds, avgOffset) {
     if (!profile) return undefined;
     var prevBest = profile.courseRuns.length ? profile.courseRuns[0].seconds : undefined;
-    profile.courseRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
+    profile.courseRuns.push({ seconds: seconds, avgOffset: avgOffset, date: new Date().toISOString().slice(0, 10) });
     profile.courseRuns.sort(function (a, b) { return a.seconds - b.seconds; });
     profile.courseRuns = profile.courseRuns.slice(0, 10);
     saveProfile();
@@ -961,19 +962,25 @@ var MODULES = [
       cfg: { repairHalfS: 30 } },
     // SPEC 3.30: tractor beam, tier 1 — not standard gear; CFG.tractorTestFit
     // fits it to every ship for free until Brian has heard it, after which
-    // owning this is the only way. SPEC 3.44 (ideas12.txt) added two more
-    // tiers, each requiring the one below, same test-fit pattern as
-    // auto_target_1/2/3: no cfg override on any of the three — tractorLevel()
+    // owning this is the only way. SPEC 3.44/3.52 added three more tiers,
+    // each requiring the one below, same test-fit pattern as
+    // auto_target_1/2/3: no cfg override on any of the four — tractorLevel()
     // reads ownership directly, since which tier is owned decides which of
-    // TRACTOR_TIERS' three per-size pull rates applies, not a flat override.
+    // TRACTOR_TIERS' rows (pull rate on every size, range, reaction-mass
+    // cost, and which recording plays) applies, not a flat override. There
+    // is no selected tier below the owned one any more (3.52 dropped
+    // Shift+B) — owning a tier makes it strictly better, nothing to trade off.
     { id: 'tractor_1', name: 'tractor beam', cost: 600, mass: 10, alloy: 2,
       desc: 'Pulls a targeted small rock or core toward you instead of flying to it.',
       cfg: {} },
     { id: 'tractor_2', name: 'tractor beam II', cost: 500, mass: 6, alloy: 3, requires: 'tractor_1',
-      desc: 'Pulls a large rock too, and moves a medium one faster.',
+      desc: 'Pulls a large rock too, faster on everything, less reaction mass, longer reach.',
       cfg: {} },
     { id: 'tractor_3', name: 'tractor beam III', cost: 500, mass: 4, alloy: 4, requires: 'tractor_2',
-      desc: 'Pulls anything, even a huge rock — slowly.',
+      desc: 'Pulls a huge rock too, faster still, cheaper still, reaches further still.',
+      cfg: {} },
+    { id: 'tractor_4', name: 'tractor beam IV', cost: 500, mass: 3, alloy: 5, requires: 'tractor_3',
+      desc: 'The best tractor built: fastest, cheapest, and longest reach.',
       cfg: {} },
     // SPEC 3.38 (ideas10.txt): auto-target stabilizers, three tiers, each
     // requiring the one below — same test-fit pattern as the tractor beam:
@@ -1181,11 +1188,15 @@ function activateCourseGate(i, prefix) {
 // flips from behind to ahead) — clean if that crossing point is within
 // courseGateRadius of the gate's own position, a miss (time penalty, but
 // still cleared — the course keeps moving) otherwise.
-function clearCourseGate(clean) {
+function clearCourseGate(clean, lateral) {
     var i = courseState.activeIndex;
     var g = targets[i];
     g.courseCleared = true;
     stopVoice(g);
+    // SPEC 3.53: every crossing's own distance from the gate's axis, clean
+    // or missed — a wide miss counts at its real distance, dragging the
+    // average up same as it should.
+    courseState.offsets.push(lateral);
     var missText = '';
     if (clean) {
         courseState.made++;
@@ -1207,14 +1218,19 @@ function finishCourse(prefix) {
     won = true;
     stopLockTone();
     var seconds = courseState.elapsed;
-    var prevBest = recordCourseRun(seconds);
+    // SPEC 3.53: mean distance off each gate's own axis, clean crossings and
+    // misses both counted at their real distance — read out, never a second
+    // ranked board (time alone still decides personal best).
+    var avgOffset = courseState.offsets.reduce(function (a, b) { return a + b; }, 0) / courseState.offsets.length;
+    var prevBest = recordCourseRun(seconds, avgOffset);
     var tally = courseState.made + ' of ' + targets.length + ' gates' +
                 (courseState.missed ? ', ' + courseState.missed + ' missed' : '') + '. ';
     var rankText;
     if (prevBest === undefined) rankText = 'Your first time.';
     else if (seconds < prevBest) rankText = 'New personal best by ' + fmtTime(prevBest - seconds) + '.';
     else rankText = fmtTime(seconds - prevBest) + ' off your best.';
-    say((prefix || '') + 'Course complete. Time ' + fmtTime(seconds) + '. ' + tally + rankText);
+    say((prefix || '') + 'Course complete. Time ' + fmtTime(seconds) + '. ' + tally +
+        'Average ' + Math.round(avgOffset) + ' off centre. ' + rankText);
 }
 function updateCourse(dt) {
     if (!courseState || won || lost) return;
@@ -1226,7 +1242,7 @@ function updateCourse(dt) {
     var depth = dot(toShip, g.fwd);
     if (depth <= 0) return;   // hasn't reached the gate's plane yet
     var lateral = len(sub(toShip, scale(g.fwd, depth)));
-    clearCourseGate(lateral <= CFG.courseGateRadius);
+    clearCourseGate(lateral <= CFG.courseGateRadius, lateral);
 }
 function courseIntro() {
     return 'Flight course: ' + COURSES[0].name + '. Eight gates, in order. ' +
@@ -1406,12 +1422,19 @@ function missionEnd(success) {
         // mission — was hardcoded to Station Meridian regardless (a
         // pre-existing bug this migration fixes in passing: a mission
         // taken at Station Two always credited Meridian's standing).
-        gainFavor({ name: mission.poiName }, CFG.favorMission);
+        // SPEC 3.54: a menu-launched drill has no station (poiName null) —
+        // nothing to credit, gainFavor's own `poi` guard needs a falsy value,
+        // not an object wrapping a null name.
+        if (mission.poiName) gainFavor({ name: mission.poiName }, CFG.favorMission);
         saveProfile();
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
+            // SPEC 3.54: a menu-launched drill (no poiName) replays on Enter,
+            // same as every other standalone drill — the station-offered
+            // version stays a one-shot, X the only way out.
             say('Mission complete! ' + mission.friendly.name + ' home at ' + Math.round(frac * 100) +
-                ' percent. ' + reward + ' credits earned, reaction mass topped up. X returns to the sector.');
+                ' percent. ' + reward + ' credits earned, reaction mass topped up.' +
+                (mission.poiName ? ' X returns to the sector.' : ' Enter plays again, X for the mission menu.'));
         }, 900);
     } else {
         // SPEC 3.23: missionEnd(false) only ever fires from missionStrike's
@@ -1419,9 +1442,10 @@ function missionEnd(success) {
         // destroyed, the larger of the two favor losses the spec names
         // (favorFriendlyLost, not the plain favorFail an abandoned-but-
         // still-alive mission costs — see clearMission for that one).
-        loseFavor({ name: mission.poiName }, CFG.favorFriendlyLost);
+        if (mission.poiName) loseFavor({ name: mission.poiName }, CFG.favorFriendlyLost);
         setTimeout(function () {
-            say('Mission failed. No reward. X returns to the sector.');
+            say('Mission failed. No reward.' +
+                (mission.poiName ? ' X returns to the sector.' : ' Enter plays again, X for the mission menu.'));
         }, 900);
     }
 }
@@ -2010,7 +2034,7 @@ var HELP_SECTIONS = [
         'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
         'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
         'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
-        function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: your tier decides how much it can move a medium, large, or huge rock, and Shift B steps down to a gentler tier if you would rather ease off a delicate core, wrapping back to the top. It needs the target within ' + CFG.tractorRange + '.'; },
+        function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: a higher tier pulls faster, reaches further, and costs less reaction mass. It needs the target within ' + TRACTOR_TIERS[tractorLevel() - 1].range + '. Firing a laser, the extractor, or the vacuum cuts it off; it refuses while any of those is running.'; },
         'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
         'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
         'Careful: lasering or missiling a finished core shatters it. Most of the ore is lost; only a dust mist remains.',
@@ -2132,7 +2156,7 @@ var KEY_DESCRIPTIONS = {
     f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, left and right cycle a laser slot\'s level right there and re-read it with the new numbers, Escape closes it.',
     f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
-    b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining, at your currently selected tier — tier ' + tractorLevel() + ' owned. Shift B steps the selected tier down, wrapping to the top, for a delicate core you would rather ease off on.'; },
+    b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining — tier ' + tractorLevel() + ' owned, pulling, reaching, and costing reaction mass accordingly. Firing a laser, the extractor, or the vacuum cuts it off.'; },
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, sending it ballistic at once, no shield needed. A moment later you hear it pop clear. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'At the mission menu, jumps to space mining.',
@@ -3417,6 +3441,10 @@ function startBeam(tool) {
         return;
     }
     if (L) wearLaser(L.family);   // SPEC 3.26: committed to firing — every burst wears, hit or miss
+    // SPEC 3.52: any beam tool (laser, extractor, vacuum) committing to fire
+    // cuts an active tractor — silent, the hum stopping is already the
+    // audible tell, no second say() competing with the firing announcement.
+    if (tractor.active) stopTractor();
     var nodes = null;
     // A fitted laser's voice is its recording, played once through the
     // instrument bus. Aim quality nudges its playback rate a little each
@@ -4565,24 +4593,21 @@ function debrisTotal() {
 // velocity the target already carries, so a laser-shoved rock's momentum
 // dies out fast instead of sailing past the pull. Not standard equipment:
 // tractorTestFit fits everyone with tier 1 for free until Brian has heard
-// it; after that, owning tractor_1/2/3 (MODULES) is the only way.
-// Three owned tiers, like the lasers (SPEC 3.44). Core/small always pulls
-// at CFG.tractorPullCore regardless of tier; medium/large/huge scale up
-// per tier — a top-tier tractor moves anything, slowly. Indexed 0..2 for
-// tiers 1..3 (tractorLevel()/tractorTier are the 1-based numbers players
-// hear; TRACTOR_TIERS[tier - 1] is the row).
+// it; after that, owning tractor_1/2/3/4 (MODULES) is the only way.
+// Four owned tiers, like the lasers (SPEC 3.44), reshaped by SPEC 3.52:
+// every size INCLUDING core/small now scales per tier (nothing held back
+// at a flat rate any more), each tier has its own range and reaction-mass
+// cost multiplier, and there is no lower "selected" tier — owned tier IS
+// the active one. Indexed 0..3 for tiers 1..4 (tractorLevel() is the
+// 1-based number players hear; TRACTOR_TIERS[tractorLevel() - 1] the row).
+// Placeholder numbers throughout, Brian's ear decides the real ones.
 var TRACTOR_TIERS = [
-    { medium: 4,  large: 0,  huge: 0 },   // tier 1 (today's numbers, unchanged)
-    { medium: 12, large: 3,  huge: 0 },   // tier 2
-    { medium: 20, large: 10, huge: 3 }    // tier 3
+    { core: 20, medium: 4,  large: 0,  huge: 0, range: 500, costMul: 1.0, asset: 'tractor_beam'   },
+    { core: 26, medium: 12, large: 3,  huge: 0, range: 650, costMul: 0.8, asset: 'tractor_beam_2' },
+    { core: 32, medium: 20, large: 10, huge: 3, range: 800, costMul: 0.6, asset: 'tractor_beam_3' },
+    { core: 40, medium: 28, large: 16, huge: 6, range: 950, costMul: 0.4, asset: 'tractor_beam_4' }
 ];
-var tractor = { active: false, targetIdx: -1, nodes: null };
-// The SELECTED tier (Shift+B steps it down within the owned range,
-// wrapping to the top — "a delicate core you'd rather not yank"); reset to
-// the owned ceiling on every fresh mission/drill start (clearMission), so
-// a pilot who never touches Shift+B always gets their best.
-var tractorTier = 1;
-var tractorSwitch = null;   // { until, timer, src, g } while a Shift+B tier switch is in progress
+var tractor = { active: false, targetIdx: -1, tier: 1, nodes: null };
 
 function tractorFitted() { return CFG.tractorTestFit || ownedModules().indexOf('tractor_1') >= 0; }
 
@@ -4593,31 +4618,41 @@ function tractorLevel() {
     var lvl = 1;
     if (ownedModules().indexOf('tractor_2') >= 0) lvl = 2;
     if (ownedModules().indexOf('tractor_3') >= 0) lvl = 3;
+    if (ownedModules().indexOf('tractor_4') >= 0) lvl = 4;
     return lvl;
 }
 // core and small rock share ROCK_SIZES.length-1 (a core is a collapsed
-// small rock, SPEC 3.30's own "core and small rock" pairing) and always
-// pull at tractorPullCore regardless of tier; medium/large/huge read the
-// SELECTED tier's own row of TRACTOR_TIERS (0 = refuses the pull entirely).
-function tractorPullRateFor(t) {
-    if (t.size >= ROCK_SIZES.length - 1) return CFG.tractorPullCore;
-    var tier = TRACTOR_TIERS[clamp(tractorTier, 1, TRACTOR_TIERS.length) - 1];
+// small rock, SPEC 3.30's own "core and small rock" pairing); every size
+// reads the OWNED tier's own row of TRACTOR_TIERS (0 = refuses the pull
+// entirely — only huge at tier 1/2 today).
+function tractorPullRateFor(t, tier) {
+    tier = tier || TRACTOR_TIERS[tractorLevel() - 1];
+    if (t.size >= ROCK_SIZES.length - 1) return tier.core;
     if (t.size === ROCK_SIZES.length - 2) return tier.medium;
     if (t.size === ROCK_SIZES.length - 3) return tier.large;
     return tier.huge;
 }
-// This round: the hum is Brian's own recording (tractor_beam) looping,
-// replacing the old flat 90Hz sine — the synthesized tone is now only a
-// fallback for the rare case the asset hasn't decoded yet this session.
-function tractorStartHum() {
+// SPEC 3.52: the rock's own mass, independent of which tier is pulling it
+// — a higher tier is a better motor, not a lighter load. Feeds the
+// reaction-mass cost formula in updateTractor.
+function rockMass(t) {
+    if (t.size >= ROCK_SIZES.length - 1) return 1;    // core/small
+    if (t.size === ROCK_SIZES.length - 2) return 3;    // medium
+    if (t.size === ROCK_SIZES.length - 3) return 8;    // large
+    return 20;                                          // huge
+}
+// The hum is Brian's own recording, one per tier (TRACTOR_TIERS[].asset) —
+// the synthesized tone is only a fallback for the rare case the asset
+// hasn't decoded yet this session.
+function tractorStartHum(assetName) {
     if (!SIM.audio.ctx || tractor.nodes) return;
     var A = SIM.audio;
-    if (!A.assetBufs.tractor_beam) A.load('tractor_beam');
+    if (!A.assetBufs[assetName]) A.load(assetName);
     var g = A.ctx.createGain(); g.gain.value = 0.0001;
-    var src, isAsset = !!A.assetBufs.tractor_beam;
+    var src, isAsset = !!A.assetBufs[assetName];
     if (isAsset) {
         src = A.ctx.createBufferSource();
-        src.buffer = A.assetBufs.tractor_beam; src.loop = true;
+        src.buffer = A.assetBufs[assetName]; src.loop = true;
     } else {
         src = A.ctx.createOscillator(); src.type = 'sine'; src.frequency.value = 90;
     }
@@ -4638,99 +4673,70 @@ function stopTractor(reason) {
     tractorStopHum();
     if (reason) say(reason);
 }
-// Seconds left on a Shift+B tier switch in progress (0 = none).
-function tractorSwitchLeft() {
-    return tractorSwitch ? Math.max(0, (tractorSwitch.until - Date.now()) / 1000) : 0;
-}
-function stopTractorSwitch() {
-    if (!tractorSwitch) return;
-    var s = tractorSwitch; tractorSwitch = null;
-    clearTimeout(s.timer);
-    if (s.g) {
-        SIM.audio.ramp(s.g.gain, 0.0001, 0.1);
-        setTimeout(function () { try { s.src.stop(); s.g.disconnect(); } catch (e) {} }, 200);
-    }
-}
-// Shift+B (SPEC 3.44): steps the SELECTED tier down within the owned
-// range, wrapping to the top. Brian: "just use laser switch 5 for when
-// this one switches" — SLOT_SWITCH[2] (laser_switch5, 2.2s) at its own
-// natural length, no time-stretch (this isn't a per-slot delay that varies
-// by weight, just one fixed clip reused). B itself refuses while it plays,
-// exactly 1.14's own laser-slot-switch shape.
-function tractorTierDown() {
-    if (tractorSwitch) { SIM.cues.play('refusal_wait'); say('Tractor switching, ' + Math.ceil(tractorSwitchLeft()) + ' seconds.'); return; }
-    var owned = tractorLevel();
-    var newTier = tractorTier - 1;
-    if (newTier < 1) newTier = owned;
-    tractorTier = newTier;
-    var sw = SLOT_SWITCH[2], secs = sw.s, A = SIM.audio, src = null, g = null;
-    if (A.ctx && !A.assetBufs[sw.asset]) A.load(sw.asset);
-    if (A.ctx && A.assetBufs[sw.asset]) {
-        var buf = A.assetBufs[sw.asset];
-        src = A.ctx.createBufferSource(); src.buffer = buf;   // natural length: no playbackRate stretch
-        g = A.ctx.createGain(); g.gain.value = 0.5;
-        src.connect(g); g.connect(A.uiBus);
-        src.start();
-    } else if (A.ctx) {
-        A.sfxSweep({ f1: 300, f2: 900, f3: 500, dur: secs, vol: 0.12, type: 'sawtooth' });
-    }
-    tractorSwitch = { until: Date.now() + secs * 1000, src: src, g: g, timer: null };
-    tractorSwitch.timer = setTimeout(function () {
-        tractorSwitch = null;
-        if (!running) return;
-        SIM.cues.play('slot_select');
-        say('Tractor tier ' + tractorTier + '.');
-    }, secs * 1000);
-    say('Tractor tier ' + tractorTier + ', switching.');
-}
 function tractorKey() {
-    if (tractorSwitch) { SIM.cues.play('refusal_wait'); say('Tractor switching, ' + Math.ceil(tractorSwitchLeft()) + ' seconds.'); return; }
     if (tractor.active) { stopTractor('Tractor released.'); return; }
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The tractor beam only works while mining.'); return; }
     if (!tractorFitted()) { SIM.cues.play('refusal_offline'); say('No tractor beam fitted. The shipyard sells it.'); return; }
-    var t = targets[selected];
-    if (!t || !t.alive || t.kind !== 'rock') { say('No rock selected. Tab cycles targets.'); return; }
-    var dist = len(sub(t.pos, ship.pos));
-    if (dist > CFG.tractorRange) {
-        SIM.cues.play('refusal_dud');
-        say('Too far for the tractor. Distance ' + round10(dist) + ', reach ' + CFG.tractorRange + '.');
+    // SPEC 3.52: tractor and every beam tool (laser, extractor, vacuum) are
+    // mutually exclusive — a beam already running refuses B, the same
+    // shape a burst already refuses G. The other direction (a beam cutting
+    // an active tractor) lives in startBeam() instead.
+    if (beam) {
+        SIM.cues.play('refusal_wait');
+        say('Beam in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Tractor after.');
         return;
     }
-    if (tractorPullRateFor(t) <= 0) {
+    var t = targets[selected];
+    if (!t || !t.alive || t.kind !== 'rock') { say('No rock selected. Tab cycles targets.'); return; }
+    var tier = TRACTOR_TIERS[tractorLevel() - 1];
+    var dist = len(sub(t.pos, ship.pos));
+    if (dist > tier.range) {
+        SIM.cues.play('refusal_dud');
+        say('Too far for the tractor. Distance ' + round10(dist) + ', reach ' + tier.range + '.');
+        return;
+    }
+    if (tractorPullRateFor(t, tier) <= 0) {
         SIM.cues.play('refusal_offline');   // SPEC 3.50: a hard capability mismatch, not a spent resource
         say('Too massive for this tractor.');
         return;
     }
-    tractor.active = true; tractor.targetIdx = selected;
-    tractorStartHum();
+    tractor.active = true; tractor.targetIdx = selected; tractor.tier = tractorLevel();
+    tractorStartHum(tier.asset);
     say('Tractor engaged on ' + t.name + '.');
 }
 // Runs every frame in mining mode (simTick). A pure kinematic pull — see
 // the section comment above for why this doesn't model a real force.
+// SPEC 3.52: reaction mass is spent for the actual WORK done (rock mass x
+// distance closed x tier efficiency), not a flat per-second draw — a flat
+// draw made every tier cost MORE than just flying the same distance
+// (checked against rcsThrustPerS/rcsPerSpeedShed), the opposite of the
+// design goal ("skilled usage should be better than just using thrusters").
 function updateTractor(dt) {
     if (!tractor.active) return;
     var t = targets[tractor.targetIdx];
     if (!t || !t.alive || t.kind !== 'rock') { stopTractor('Tractor lost its target.'); return; }
+    var tier = TRACTOR_TIERS[tractor.tier - 1];
     var rel = sub(ship.pos, t.pos);
     var dist = len(rel);
     // A tiny tolerance, not a strict <=: closeAmount below clamps to exactly
-    // (dist - vacRange) as that gap shrinks, and the resulting position's
-    // own distance can land a hair above vacRange by floating-point noise,
-    // never quite tripping a strict equality.
-    if (dist <= CFG.vacRange + 0.5) { stopTractor('In extractor range.'); return; }
-    if (dist > CFG.tractorRange * 1.5) { stopTractor('Tractor lost its target.'); return; }
+    // (dist - tractorStopDist) as that gap shrinks, and the resulting
+    // position's own distance can land a hair above it by floating-point
+    // noise, never quite tripping a strict equality.
+    if (dist <= CFG.tractorStopDist + 0.5) { stopTractor('In extractor range.'); return; }
+    if (dist > tier.range * 1.5) { stopTractor('Tractor lost its target.'); return; }
     t.vel = scale(t.vel, Math.pow(CFG.tractorDamp, dt));
-    var pullRate = tractorPullRateFor(t);
+    var pullRate = tractorPullRateFor(t, tier);
     var dir = scale(rel, 1 / dist);
-    var closeAmount = Math.min(pullRate * dt, dist - CFG.vacRange);
+    var closeAmount = Math.min(pullRate * dt, dist - CFG.tractorStopDist);
     t.pos = add(t.pos, scale(dir, closeAmount));
+    spendRcs(rockMass(t) * closeAmount * CFG.tractorRcsPerMassUnit * tier.costMul);
     if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
     if (tractor.nodes) {
         // Pitch/rate rises as the target closes — the recording's
-        // playbackRate climbs to ~2.9x at vacRange (same ratio the old
-        // synthesized 90->260Hz tone used); the oscillator fallback still
-        // ramps its own frequency the original way.
-        var frac = clamp(1 - (dist - CFG.vacRange) / (CFG.tractorRange - CFG.vacRange), 0, 1);
+        // playbackRate climbs to ~2.9x at the stop distance (same ratio the
+        // old synthesized 90->260Hz tone used); the oscillator fallback
+        // still ramps its own frequency the original way.
+        var frac = clamp(1 - (dist - CFG.tractorStopDist) / (tier.range - CFG.tractorStopDist), 0, 1);
         if (tractor.nodes.isAsset) SIM.audio.ramp(tractor.nodes.src.playbackRate, 1 + frac * 1.89, 0.2);
         else SIM.audio.ramp(tractor.nodes.src.frequency, 90 + frac * 170, 0.2);
     }
@@ -5062,7 +5068,11 @@ function runLogItems() {
     // like the contract's own, so none of the three ever merge or sort
     // against each other.
     return items.concat(profile.courseRuns.map(function (r, i) {
-        return 'Flight course number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
+        // SPEC 3.53: older entries (before the accuracy readout) have no
+        // avgOffset — omit the clause rather than speak "undefined".
+        return 'Flight course number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
+               (typeof r.avgOffset === 'number' ? ', average ' + Math.round(r.avgOffset) + ' off centre' : '') +
+               ', ' + r.date + '.';
     }));
 }
 
@@ -5309,14 +5319,14 @@ function buildShipLines() {
 
     if (tractorFitted()) {
         heading('Tractor beam');
-        var tOwned = tractorLevel(), tSel = TRACTOR_TIERS[clamp(tractorTier, 1, TRACTOR_TIERS.length) - 1];
-        line('Tier ' + tOwned + ' owned, tier ' + tractorTier + ' selected.' +
+        var tOwned = tractorLevel(), tRow = TRACTOR_TIERS[tOwned - 1];
+        line('Tier ' + tOwned + ' owned.' +
              (ownedModules().indexOf('tractor_1') < 0 ? ' Test fit.' : ''));
-        line('Pull ' + CFG.tractorPullCore + ' a second on a small rock or a core, ' +
-             tSel.medium + ' on a medium, ' +
-             (tSel.large > 0 ? tSel.large + ' on a large, ' : 'none on a large, ') +
-             (tSel.huge > 0 ? tSel.huge + ' on a huge.' : 'none on a huge.'));
-        line('Range ' + CFG.tractorRange + '.');
+        line('Pull ' + tRow.core + ' a second on a small rock or a core, ' +
+             tRow.medium + ' on a medium, ' +
+             (tRow.large > 0 ? tRow.large + ' on a large, ' : 'none on a large, ') +
+             (tRow.huge > 0 ? tRow.huge + ' on a huge.' : 'none on a huge.'));
+        line('Range ' + tRow.range + '. Costs reaction mass per unit of mass moved.');
     }
 
     if (autoTargetFitted()) {
@@ -6585,6 +6595,26 @@ function startMissionRun(kind) {
     say((kind === 'escort' ? 'Escort accepted. ' : 'Defend accepted. ') + missionIntro());
 }
 
+// SPEC 3.54: the same escort/defend machinery as startMissionRun, but from
+// the mission menu directly — no station, so no sectorHome to snapshot, no
+// cooldown, no touchStationVisit, and poiName is null (which is what tells
+// missionEnd/clearMission to skip the favor bump/loss, and what tells the
+// Enter handler above to let this one replay). Mirrors startMission's own
+// reset of ore/hull/missiles/chaff/rcs/collision damage/systems.
+function startMissionDrill(kind) {
+    menuOpen = false;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    autoTargetCharges = CFG.autoTargetCharges;
+    refillRcs(); collisionDamage = 0; repairAllSystems();
+    var spec = {
+        kind: kind, elapsed: 0, wavesSent: 0, ended: false, poiName: null,
+        nextStrikeIn: CFG.missionStrikeGapMinS + Math.random() * (CFG.missionStrikeGapMaxS - CFG.missionStrikeGapMinS),
+        waveTimes: kind === 'escort' ? CFG.missionEscortWaveTimes.slice() : CFG.missionDefendWaveTimes.slice()
+    };
+    newGame('combat', spec);
+    say((kind === 'escort' ? 'Escort drill. ' : 'Defend drill. ') + missionIntro());
+}
+
 function hailItemText() {
     var it = activeHailItems()[hailMenu.idx];
     return itemLabel(it) + '. ' + itemDesc(it);
@@ -7321,15 +7351,11 @@ function onKeyDown(e) {
         cycleZone();
         return;
     }
-    // Shift+B (SPEC 3.44): steps the tractor's SELECTED tier down. Same
-    // shape as Shift+Z above — tractorTierDown()/tractorKey() already
-    // refuse on their own terms (wrong mode, not fitted, mid-switch), so
-    // this isn't gated on tug/mission/over() either.
-    if (e.shiftKey && lname === 'b') {
-        if (e.repeat) return;
-        tractorTierDown();
-        return;
-    }
+    // Shift+B (SPEC 3.44) is retired as of SPEC 3.52 — there's no lower
+    // "selected" tier to step down to any more, only the owned one, so
+    // Shift+B needs no special handling at all: it simply falls through to
+    // plain B's own case below (lname is 'b' regardless of shift), which is
+    // harmless — engage/release doesn't care how the key arrived.
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
     // 'w' and would otherwise just be a held thrust key. SPEC 3.38 rebinds
     // Shift+T specifically from cycle-back to auto-target; Shift+Tab keeps
@@ -7428,10 +7454,18 @@ function onKeyDown(e) {
             if (tug) {
                 payTugFee();
             } else if (mission && over()) {
-                // SPEC 2.17: a mission (won or failed) never Enter-replays —
-                // it's offered once per station per cooldown from the hail
-                // menu, not farmable in place. X is the only way out.
-                say('Mission ' + (mission.success ? 'complete' : 'over') + '. X returns to the sector.');
+                if (mission.poiName) {
+                    // SPEC 2.17: a station-offered mission never Enter-replays
+                    // — it's offered once per station per cooldown from the
+                    // hail menu, not farmable in place. X is the only way out.
+                    say('Mission ' + (mission.success ? 'complete' : 'over') + '. X returns to the sector.');
+                } else {
+                    // SPEC 3.54: a menu-launched drill (no station, no
+                    // poiName) DOES replay on Enter, same as Combat training —
+                    // a fresh run of the same kind, not farmable-for-favor
+                    // since there's no favor to farm.
+                    startMissionDrill(mission.kind);
+                }
             } else if (over()) {
                 // A fresh drill run from the menu starts a fresh hold and a
                 // full magazine; a replay inside a sector run keeps the
@@ -7446,7 +7480,7 @@ function onKeyDown(e) {
                 if (lost || !sectorHome) { hull = CFG.shipHull; repairAllSystems(); }
                 newGame();
                 if (mode === 'course') {
-                    courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0 };
+                    courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0, offsets: [] };
                     activateCourseGate(0, courseIntro());
                 } else {
                     say(mode === 'mining' ? miningIntro() : combatIntro());
@@ -7737,7 +7771,7 @@ window.__sim = {
             tractor: { active: tractor.active, fitted: tractorFitted(),
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
                        dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null,
-                       owned: tractorLevel(), tier: tractorTier, switching: Math.round(tractorSwitchLeft() * 10) / 10 },
+                       owned: tractorLevel() },
             autoTarget: { active: !!autoTarget, holding: autoTarget ? autoTarget.holding : false,
                           holdRemaining: autoTarget ? Math.round(autoTarget.holdRemaining * 10) / 10 : null,
                           charges: autoTargetCharges, tier: autoTargetTier(),
@@ -7906,12 +7940,10 @@ function clearMission() {
     // instead (favorFriendlyLost); the timed contract has no equivalent
     // penalty for walking away from it early, deliberately — it's a
     // self-paced errand, not a mission with something at stake.
-    if (mission && !mission.ended) loseFavor({ name: mission.poiName }, CFG.favorFail);
+    if (mission && !mission.ended && mission.poiName) loseFavor({ name: mission.poiName }, CFG.favorFail);
     targets.forEach(stopVoice);
     killMissile();
     stopTractor();
-    stopTractorSwitch();
-    tractorTier = tractorLevel();   // SPEC 3.44: every fresh start snaps back to the best owned tier
     stopBeam(true);
     thrusterSync(null);
     stopLockTone();
@@ -8007,6 +8039,16 @@ var MENU_ITEMS = [
     { label: 'Flight course',
       desc: 'Eight beacons to fly through in order, against the clock. Weapons cold, teaches the controls.',
       run: function () { startMission('course'); } },
+    // SPEC 3.54: the same missions offered from a station's hail menu,
+    // playable directly so a pilot can hear them without flying to a
+    // station first. No sectorHome, no favor, no cooldown, credits kept,
+    // Enter replays after either outcome — see startMissionDrill.
+    { label: 'Escort drill',
+      desc: 'Stay near a freighter and clear the drones that engage you, for ' + CFG.missionEscortLegS + ' seconds. A drill: no station, no favor, replayable.',
+      run: function () { startMissionDrill('escort'); } },
+    { label: 'Defend drill',
+      desc: 'Defend a miner from two waves of raiders. A drill: no station, no favor, replayable.',
+      run: function () { startMissionDrill('defend'); } },
     { label: 'Help',
       desc: 'The help screen. F1 also opens it anywhere.',
       run: function () { openHelp(); } },
@@ -8104,7 +8146,7 @@ function startMission(m) {
     // SPEC 3.41: courseState is set AFTER newGame() (which calls
     // clearMission(), itself nulling courseState out) — not before.
     if (m === 'course') {
-        courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0 };
+        courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0, offsets: [] };
         activateCourseGate(0, courseIntro());
     } else {
         say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());

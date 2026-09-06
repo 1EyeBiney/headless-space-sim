@@ -3177,3 +3177,74 @@ carry the individual resolutions. Docs only — no code touched. Next:
 build in order, per "apply these and continue on the spec" — **3.54**
 (Escort/Defend drills on the mission menu) → **3.53** (course accuracy
 readout) → **3.52** (the tractor beam second pass, as now finalized).
+
+**Round 39 (Sonnet, 2026-09-06): built 3.54, 3.53, and 3.52, in that
+order, per Round 38's own build order.** **3.54**: two new
+`MENU_ITEMS`, Escort drill and Defend drill, each calling a new
+`startMissionDrill(kind)` — the same mission-spec shape
+`startMissionRun` builds for a station-offered mission, minus the
+station-specific setup (no `hailMenu.poi`, no `sectorHome` snapshot,
+`poiName: null`). `missionEnd`'s favor bump/loss and `clearMission`'s
+abandon-penalty all gained an `if (mission.poiName)` guard — without
+it, `gainFavor`/`loseFavor`'s existing truthy-object check would have
+silently written favor to a bogus port keyed by the literal string
+"null". The Enter-after-a-win handler now branches on `poiName`: a
+drill replays (calls `startMissionDrill` again), a station-offered
+mission still refuses exactly as before. **3.53**: `updateCourse`
+already computed each crossing's own perpendicular distance from the
+gate's axis (`lateral`) and threw it away — now pushed into
+`courseState.offsets[]` every gate, clean or missed, and the final line
+adds "average N off centre" (mean of all eight), stored as `avgOffset`
+on the `courseRuns` entry and spoken by the Run log too. Skipped the
+optional "best gate" line Brian's own spec flagged as "if wanted" — not
+asked for directly, easy to add later. **3.52**: the biggest of the
+three — `TRACTOR_TIERS` grew from three tiers to four, each with its
+own core/medium/large/huge pull rate, range, reaction-mass cost
+multiplier, and recording (`tractor_beam`/`_2`/`_3`/`_4`, three new
+`audio_assets.js` manifest keys pointing at `tractor_beam7/8/9.mp3`,
+confirmed already on disk); Shift+B, `tractorTier` (the old "selected"
+concept), `tractorSwitch`, and every function built only to support
+switching between tiers (`tractorTierDown`, `stopTractorSwitch`,
+`tractorSwitchLeft`) are gone outright — owned tier IS the active tier
+now, and Shift+B falls through harmlessly to plain B's own case (same
+`lname`, lowercased, either way). Reaction-mass cost is now work-based
+(`rockMass(t) × distance closed × 0.004 × tier.costMul`, spent via the
+existing `spendRcs()`) rather than a flat per-second draw, fixing the
+inverted economics Fable's Round 37 evaluation found. `CFG.tractorStopDist`
+(250) replaces `vacRange` (300) as the pull's own stop distance;
+`vacRange` itself is untouched everywhere else. The beam/tractor
+exclusion is now mutual and covers every beam tool: `startBeam(tool)`
+cuts an active tractor silently the instant it commits to firing
+(laser, extractor, or vacuum, not lasers alone), and engaging B while
+any of those is running refuses with "Beam in progress, N seconds.
+Tractor after." A fourth `tractor_4` module joined `MODULES`. Every
+call site referencing the retired flat `CFG.tractorRange`/
+`CFG.tractorPullCore` or the selected-tier concept — the F12 explore
+text, F1 help, the F2 ship-screen heading, the `poke`/`state` test
+hooks, `clearMission` — was found via a full-file grep and updated;
+README.md's own key-list entry for B was updated too. All three items
+machine-tested at a local server via `__sim.step()`/`poke()` rather
+than hand-flying (real, checkable numbers beat "it sounded right"):
+the escort drill's win path measured credits 100→400 and confirmed the
+drill-specific "Enter plays again" line, then confirmed replaying
+fresh, then confirmed abandoning mid-run doesn't crash; the flight
+course's average-off-centre measured exactly 81 (matching a hand
+calculation from seven 50-unit offsets and one deliberate 300-unit
+miss) and confirmed round-tripping through both the live announcement
+and the saved Run log; the tractor's tier-1 core pull measured exactly
+1 rcs spent over its full 500→250 pull (the ~1.0 target hit exactly,
+not just asserted), the range refusal read the tier's own 500 by name,
+firing a laser cut an active tractor silently, engaging the tractor
+while a laser burst was running refused by name, and Shift+B was
+confirmed falling through to plain B twice (once refusing correctly on
+a non-rock selection, once engaging normally). Zero console errors
+throughout any of the three items. Every tractor number is still a
+placeholder for Brian's ear — this pass was about the mechanics (cost
+shape, stop distance, per-tier range, the mutual exclusion, no
+switching), not the tuning. Nothing from this round has been heard or
+flown by Brian yet. Next per the build order: **3.55** (the
+distress-call tow — not yet built, still just specced) is next in
+line, but per the standing rule nothing past what Brian has explicitly
+asked for should be started without further word from him — the
+quadrant-2 items (3.18/3.14/3.22/3.11/etc.) stay off-limits until he's
+flown everything since 3.24, including this round.

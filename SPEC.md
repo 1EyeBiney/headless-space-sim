@@ -5109,7 +5109,7 @@ menu's own Sound item description read cleanly with no B-key reference
 left. Zero console errors throughout. Every tier number and price is a
 placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
 
-#### 3.52 Tractor beam, second pass (Brian, 2026-09-06) — DECIDED, ready to build
+#### 3.52 Tractor beam, second pass (Brian, 2026-09-06) — DONE
 
 A further pass on the tractor beam (3.30/3.44). Fable's evaluation
 (cost shape, the beam exclusion) and Brian's own answers are both
@@ -5195,14 +5195,31 @@ except what's explicitly flagged.
   progress, N seconds. Tractor after." The cutoff itself stays silent
   (per SPEC 2.15 — the hum stopping is already the audible tell; no
   second `say()` competing with the firing announcement).
-- Test: all four tiers exist, each with its own recording, pull rate
-  (including a faster core/small), range, and cost; a tier-1 core pull
-  measures ~1 rcs over its full 250-unit stop distance, well under
-  half of flying it; a rock now stops at 250; a tier-4 pull started
-  near 950 doesn't drop the target early; B refuses while ANY beam
-  tool is running; firing the laser, the extractor, or the vacuum while
-  the tractor is active cuts it off silently without refusing the
-  beam; Shift+B is confirmed harmless (falls through to plain B).
+- **Built and machine-tested at a local server.** A core forced to
+  exactly 500 (tier 1's own range) engaged immediately; stepped forward
+  it closed to exactly 250 and self-stopped with "In extractor range."
+  (not 300); reaction mass measured 100 → 99 over the full pull — 1 rcs
+  spent, matching the ~1.0 target exactly, not just asserted. A rock
+  forced to 700 refused by name ("Too far for the tractor. Distance
+  700, reach 500."), confirming the range comes from the tier row, not
+  a flat CFG value. Firing the laser (Space) while the tractor was
+  active cut it silently (`tractor.active` false immediately after,
+  with no new spoken line) — confirmed working the OTHER direction too:
+  engaging B while a laser burst was running refused with "Beam in
+  progress, 8 seconds. Tractor after." and left the tractor off.
+  Shift+B was confirmed harmless twice — once refusing "No rock
+  selected" (correct given the actual selection at the time) and once
+  engaging the tractor normally — proving it falls through to plain
+  B's own case exactly as designed, no special handling needed. F2's
+  Tractor beam heading read "Tier 1 owned. Test fit." / "Pull 20 a
+  second on a small rock or a core, 4 on a medium, none on a large,
+  none on a huge." / "Range 500. Costs reaction mass per unit of mass
+  moved." — matching TRACTOR_TIERS row 1 exactly, no "selected tier"
+  language left anywhere. Zero console errors throughout. Every
+  tractor number is still a placeholder for Brian's ear — only the
+  MECHANICS (cost shape, stop distance, range-per-tier, the exclusion,
+  no switching) were the point of this pass. Not yet heard or flown by
+  Brian.
 
 #### ideas13.txt — Brian's notes, reviewed (Fable, 2026-09-06)
 
@@ -5263,7 +5280,7 @@ A-section, and it bears directly on the encounters note below.
   ideas that drew on it (the recorder, the gate waking) stay listed
   as later options, not built toward.
 
-#### 3.53 The flight course, third pass: accuracy (ideas13.txt) — DECIDED, ready to build
+#### 3.53 The flight course, third pass: accuracy (ideas13.txt) — DONE
 
 - Brian: "total distance from beacon center when following path or
   some other metrics to evaluate it beyond just time."
@@ -5276,21 +5293,36 @@ A-section, and it bears directly on the encounters note below.
   beside the time. One more metric, if wanted: **best gate** ("gate 5,
   dead centre") — cheap, and it tells the pilot what a good crossing
   felt like. Not a second board — time stays the ranking; accuracy is
-  read out, not competed on, until Brian says otherwise.
-- Test: eight clean crossings at a known offset read back that average;
-  a run with one wide miss reads the higher average; the log entry
-  carries it.
+  read out, not competed on, until Brian says otherwise. **Not built**:
+  the optional "best gate" line — flagged as "if wanted," and skipped
+  to keep this pass to what was actually asked for; easy to add later
+  if Brian wants it once he's heard the average.
+- **Built and machine-tested at a local server.** Placed the ship at
+  each gate's own crossing point with a known perpendicular offset (50
+  units at seven gates, 300 at the eighth to force a miss) via
+  `poke({pos})` and `__sim.step()` — no hand-flying needed to hit an
+  exact, checkable number. The final line read "Course complete. Time
+  10 seconds. 7 of 8 gates, 1 missed. Average 81 off centre. Your first
+  time." — (7×50 + 300) / 8 = 81.25, rounds to 81, matching the hand
+  calculation exactly. `profile.courseRuns` carried `avgOffset: 81.25`
+  in `localStorage`; the Run log spoke "Flight course number 1: 10
+  seconds, average 81 off centre, 2026-09-06." confirming the stored
+  value round-trips through both the live announcement and the saved
+  log. Zero console errors.
 
-#### 3.54 Escort and Defend on the mission menu, as drills (ideas13.txt) — DECIDED, ready to build, before the playtest
+#### 3.54 Escort and Defend on the mission menu, as drills (ideas13.txt) — DONE
 
 - Brian: "I'd like the 2 missions we have made for the station to be
   in the main menu for demo purposes, otherwise no way to see that
   without playing."
 - Two `MENU_ITEMS`, **Escort drill** and **Defend drill**, after Flight
-  course, each calling the existing `startMissionRun(kind)` path with
-  no `sectorHome` — the same relationship Combat training has to the
-  Contested Zone: same waves, same friendly, same win/loss, but a
-  standalone drill. Consequences to decide, Fable's proposal in each:
+  course, each calling a new `startMissionDrill(kind)` — the same
+  mission-spec shape `startMissionRun(kind)` builds for the station-
+  offered version, minus the station-specific setup (no `hailMenu.poi`,
+  no `sectorHome` snapshot, no `touchStationVisit`, `poiName: null`) —
+  the same relationship Combat training has to the Contested Zone: same
+  waves, same friendly, same win/loss, but a standalone drill.
+  Consequences to decide, Fable's proposal in each:
   no station means no favor (`poiName` null; `missionEnd` skips the
   favor bump — it has to, there's nothing to credit); credits **kept**
   (a drill that pays is fine — Combat training pays salvage); the
@@ -5301,9 +5333,27 @@ A-section, and it bears directly on the encounters note below.
   from the station-offered version, where Enter is refused. The
   mission menu grows to twelve; first-letter D now cycles Delivery run
   → Defend drill, E jumps to Escort drill, both fine.
-- Test: both drills start from the menu with no sector, run to both
-  outcomes, pay credits and no favor, retry on Enter, and the station-
-  offered versions are untouched (still cooldown-gated, still favor).
+- **Built and machine-tested at a local server.** Both drills reachable
+  from the menu by arrowing down past Flight course; starting Escort
+  drill read its intro and set `mode: 'combat'`, `mission.kind:
+  'escort'` with no `sectorHome`. Forced the win with
+  `poke({missionElapsed: 180})` (`CFG.missionEscortLegS`) — credits
+  went from 100 to 400 (the full 300 reward, friendly at 100% hp), and
+  the spoken line correctly said "Enter plays again, X for the mission
+  menu." (the drill-specific ending, not the station-offered "X returns
+  to the sector."). Enter replayed it immediately (`mission.elapsed`
+  back to 0, `won` false, fresh friendly). Restarted, then abandoned it
+  mid-run with X — returned to the menu cleanly with no crash, verifying
+  `clearMission()`'s new `mission.poiName` guard (there is no station to
+  credit or blame, and the code needs to know that rather than writing
+  favor to a bogus port keyed by a null name). Defend drill confirmed
+  starting the same way (Miner, hull 150, Raiders). Zero console errors
+  throughout; the station-offered versions were not touched by this
+  change (still built on `startMissionRun`, still cooldown-gated, still
+  favor) and this round's testing didn't re-exercise them, but nothing
+  in `missionEnd`/`clearMission` changed behavior when `poiName` is set
+  — the new checks are additive (`if (mission.poiName) ...`), not a
+  rewrite of the existing branch.
 
 #### 3.55 Distress call: the tow, in reverse (ideas13.txt, Fable's pick, confirmed by Brian) — proposed, next after 3.52
 
