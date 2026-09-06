@@ -2074,14 +2074,15 @@ harbour cell, all direction; 3.41/3.42 proposed after the playtest) →
 course, DONE** (Round 31, Sonnet — built ahead of its own "after the
 playtest" note, at Brian's direct request) → **Brian flies everything
 since
-3.24, plus the course** → **ideas12.txt** (Brian, 2026-09-05, from
+3.24, plus the course** → **ideas12.txt, DONE** (Brian, 2026-09-05, from
 flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals, DONE
 → 3.45 five volume steps and the Beacons line, DONE → 3.49 the course
 second pass, DONE → 3.44 B is the tractor in tiers, DONE → 3.48 F2's
 equipped laser per slot, DONE → 3.46 four new laser families for slots
-3–6, DONE** (all seven, Round 33, Sonnet) **→ next: L.5c** the vortex
-as six presets; 3.47 the
-stats page is a discussion, not scheduled) → **3.42 escort in
+3–6, DONE → L.5c the vortex as six presets, DONE** (all eight, Round 33,
+Sonnet; 3.47 the
+stats page stays a discussion, not scheduled) → **Brian flies/hears
+everything since 3.24** → **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
 (ideas10: the economy lives
@@ -3046,7 +3047,7 @@ first, and TWO separate STOP ALL presses both correctly tore everything
 down. Zero console errors throughout all four demos and the bug fix.
 Not yet heard by Brian.
 
-#### L.5c The vortex as six presets (ideas12.txt) — proposed
+#### L.5c The vortex as six presets (ideas12.txt) — DONE
 
 - Brian: "rather than individual controls, I'd like to have preset
   configurations and behaviors for the prims, just use 6 different
@@ -3068,6 +3069,57 @@ Not yet heard by Brian.
   lab changes.
 - Test: each key lands its preset with the stated count/direction; the
   readback names it; switching mid-run ramps rather than pops.
+
+**DONE (Round 33, Sonnet).** `soundlab.html`'s vortex demo, previously
+L.5b's one shared group of live-adjustable knobs, is replaced with
+`VORTEX_PRESETS` — six entries, each a full 8-slot `{r, w}` orbit table
+plus its own height/sway/tiltDeg/speedMul/audible-count, matching the
+six recipes exactly as specced (Ring/Counter/Tilt/Near and far/Storm/
+Solo). The 8 audio nodes are created once in `vortexStart()` and never
+recreated by a preset switch — `vortexApplyPreset(idx)` just retargets
+each node's own `.orbit` object and ramps the shared group fields
+(gain for the new audible count included), so the underlying loops
+never restart; only their orbital path and the shared height/sway/tilt
+change, which is what makes switching mid-run smooth rather than a
+pop. Keys 1–6 pick a preset directly, Up/Down step through them
+wrapping at both ends, R resets every node's angle and the shared sway
+phase back to each preset's own starting layout and re-applies it
+(replaying the choreography without touching the underlying loop
+playback), Escape stops as before. The old height/sway/tilt/speed/
+audible-count live-adjustment keys (arrows, Page Up/Down, Home/End, `[`/
+`]`) are gone along with the group-controls model itself, per Brian's
+own ask; the on-page copy, the `role="application"` aria-label, and the
+table-of-contents link were all updated to describe the preset picker
+instead. `__lab.state().vortex` gained `presetIdx`/`presetName`
+alongside its existing (now preset-derived, not independently settable)
+height/sway/tiltDeg/speedMul/audibleCount fields. The neighboring "Be
+the Way" section's own blurb, which used to describe itself relative to
+"the vortex demo above" being one shared group, was updated too, since
+that comparison stopped being true — "Be the Way" is the one demo that
+still has live per-voice controls now. **One real snag hit purely in
+testing, not a bug**: this session's own local-server preview needed the
+lab's "Start audio" button clicked via its real `id` (`startBtn`)
+rather than a stale coordinate-based ref, which had silently landed
+nowhere useful and left `SIM.audio.ctx` null — `vortexStart()`'s own
+`if (!A.ctx) return;` guard then failed completely silently (no status
+text, no error), which is exactly the right behavior for that guard but
+made the mistake momentarily look like a real bug before the actual
+cause (the click never reaching the button) was found. Machine-tested
+at a local server via `document.getElementById(...).click()` and real
+`keydown` dispatches into `vortexArena`: all six presets confirmed
+selecting the correct name, description, and resolved
+height/sway/tiltDeg/audibleCount (Solo measured `audibleCount:1`, Storm
+`sway:90`/`tiltDeg:45`, Tilt `tiltDeg:90`); Up/Down confirmed wrapping
+Ring↔Solo at both ends; the node count stayed at a constant 8 across
+every single preset switch (direct confirmation nothing restarts);
+`__lab.tick(2000)` advanced the orbit with no error; R replayed the
+current preset with the correct spoken confirmation; Escape and the
+Stop button both correctly tore down to 0 running nodes; a full
+second start/stop cycle confirmed nothing was left broken by the
+first. Zero console errors throughout. This closes out every
+ideas12.txt item — the next step per the standing build order is
+Brian actually flying/hearing everything shipped since 3.24, a human
+playtesting checkpoint, before 3.42 or quadrant 2.
 
 #### L.10 "Be the Way" voices (ideas11, `audio/demo/"be the way vortex demo1.txt"`) — DONE
 

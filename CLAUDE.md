@@ -2891,6 +2891,32 @@ numbers. Firing wasn't exercised in live combat this round (weapons
 are cold in the open sector, and it's a data-only addition riding on
 completely unchanged firing code) — confidence comes from F2 already
 confirming the exact values `beamTick`/`startBeam` would read. Zero
-console errors. Not yet heard or flown by Brian. Next: L.5c (the
-vortex demo becomes six named presets), still ahead of 3.42 and
-quadrant 2.
+console errors. Not yet heard or flown by Brian.
+
+**Round 33 (Sonnet) also built L.5c, completing every ideas12.txt
+item.** `soundlab.html`'s vortex demo drops L.5b's one shared group of
+live-adjustable knobs (height/sway/tilt/speed/audible-count via arrows,
+Page Up/Down, Home/End, `[`/`]`) for six hand-authored
+`VORTEX_PRESETS` — Ring, Counter, Tilt, Near and far, Storm, Solo —
+picked with keys 1–6 or Up/Down (wrapping), R replays the current one,
+Escape stops. The 8 audio nodes are created once and never recreated
+by a preset switch — only each node's own orbit table and the shared
+group fields retarget, which is what makes switching mid-run ramp
+smoothly instead of popping or restarting, per Brian's own test
+requirement. `__lab.state().vortex` gained `presetIdx`/`presetName`.
+**One real snag, purely a testing artifact, not a bug**: this session's
+own click on the lab's "Start audio" button used a stale coordinate-
+based ref that landed nowhere, leaving `SIM.audio.ctx` null —
+`vortexStart()`'s existing `if (!A.ctx) return;` guard then failed
+completely silently (correct behavior for that guard, but no status
+text or error either), which briefly looked like a real bug until the
+actual cause (clicking the button by its real `id` instead) was found.
+Machine-tested at a local server: all six presets confirmed selecting
+correct names/descriptions and resolved parameters (Solo's
+`audibleCount:1`, Storm's `sway:90`/`tiltDeg:45`, Tilt's `tiltDeg:90`);
+Up/Down wrapping at both ends; the node count held constant at 8 across
+every switch; R and Escape both confirmed; a full second start/stop
+cycle confirmed nothing broke. Zero console errors. This closes
+ideas12.txt entirely — the next step per the standing build order is
+Brian actually flying/hearing everything shipped since SPEC 3.24,
+before 3.42 or quadrant 2 begin.

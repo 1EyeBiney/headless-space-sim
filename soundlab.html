@@ -56,7 +56,7 @@
         <a href="#sec-room">Spatial audio room (Phase 3L, L.8)</a>
         <a href="#sec-gate">Lighthouse gate (Phase 3L, L.9)</a>
         <a href="#sec-lock">Lock tone candidates (SPEC 2.11)</a>
-        <a href="#sec-vortex">3D vortex (Phase 3L, L.5)</a>
+        <a href="#sec-vortex">3D vortex (Phase 3L, L.5c)</a>
         <a href="#sec-way">"Be the Way" voices (ideas11)</a>
         <a href="#sec-cues">Discrete cues</a>
         <a href="#sec-prim">Raw primitives</a>
@@ -145,22 +145,22 @@
 </div>
 
 <!-- ============================================================ -->
-<h2 id="sec-vortex" class="section-header">3D vortex (ideas6, reshaped by Phase 3L, L.5)</h2>
-<p class="section-note">Brian's eight vortex recordings (<code>audio/quadrant/vortex</code>), each looping on its own HRTF panner and orbiting the listener at its own radius and speed — four one way, four the other. L.5 gave each vortex its own shaping, one at a time; Brian's ideas9 note, after hearing it, asked for group controls back. Start it, then put focus in the box: Up/Down change the shared height, Page Up/Down change the shared vertical wobble, Home/End tilt the orbital ring from flat (around you) toward vertical (rising and falling in front), Left/Right change the shared speed, [ and ] change how many of the eight are audible (muted ones keep orbiting silently), R resets everything, Escape stops. The status line reads back all of it after every change.</p>
+<h2 id="sec-vortex" class="section-header">3D vortex (ideas6, reshaped by Phase 3L, L.5, L.5c)</h2>
+<p class="section-note">Brian's eight vortex recordings (<code>audio/quadrant/vortex</code>), each looping on its own HRTF panner and orbiting the listener at its own radius and speed. L.5 gave each vortex its own shaping, one at a time; L.5b pulled that into one shared group of live controls; L.5c (Brian, ideas12: "preset configurations and behaviors for the prims... use enough variation to showcase the HRTF") drops live tweaking for six hand-picked presets instead — <b>Ring</b> (all eight, flat, one direction, slow), <b>Counter</b> (four each way, same radius, passing each other), <b>Tilt</b> (a vertical ring rising and falling in front), <b>Near and far</b> (two radii, one tight and fast, one wide and slow), <b>Storm</b> (all eight, swaying, fast, tilted), and <b>Solo</b> (one vortex, wide, slow — the reference). Start it, then put focus in the box: keys 1 through 6 (or Up/Down) pick a preset and the status line names it, R replays the current one from its start, Escape stops. Switching presets ramps the existing orbits rather than restarting them.</p>
 <div class="button-group">
     <button id="vortexStart">Start the vortex orbit <span class="desc">Loads all eight (about 1.7&nbsp;MB) the first time.</span></button>
     <button id="vortexStop">Stop the vortex orbit</button>
 </div>
 <div id="vortexArena" tabindex="0" role="application"
-     aria-label="Vortex orbit controls. Up and down change the shared height, page up and page down change the shared sway, Home and End tilt the orbital ring, left and right bracket keys change how many vortices are audible, left and right arrows change the shared speed, R resets, Escape stops."
+     aria-label="Vortex orbit controls. Keys 1 through 6, or up and down arrows, pick a preset: Ring, Counter, Tilt, Near and far, Storm, Solo. R replays the current preset from its start. Escape stops."
      style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
-    Arrow keys, Page Up/Down, Home, End, [ and ], and R work here once the orbit is running.
+    Keys 1 through 6, Up/Down, and R work here once the orbit is running.
 </div>
 <p id="vortexStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
 <!-- ============================================================ -->
 <h2 id="sec-way" class="section-header">"Be the Way" voices (ideas11)</h2>
-<p class="section-note">From Brian's own note (<code>audio/demo/be the way vortex demo1.txt</code>): four of his new recordings &mdash; the Way, the Truth, the Light, and an outro &mdash; each on its own HRTF panner orbiting the listener, same as the vortex demo above, but NOT linked into one shared group: each voice keeps its own speed, height, and tilt, set independently. Two orbit one way, two the other, by default. They fire in the order Brian listed rather than all at once &mdash; the Way starts alone, then the Truth joins a few seconds later, then the Light, then the outro &mdash; and each plays through once rather than looping, since these are spoken/sung segments, not ambient texture. Of the three outro clips on disk (13s/18s/full-song), the full-song ending is wired in here as a placeholder; say if you'd rather hear one of the others. Start it, then put focus in the box: Up/Down select one of the four voices by name, Left/Right change ITS OWN speed, Page Up/Down its own height, Home/End its own tilt, R resets all four, Escape stops.</p>
+<p class="section-note">From Brian's own note (<code>audio/demo/be the way vortex demo1.txt</code>): four of his new recordings &mdash; the Way, the Truth, the Light, and an outro &mdash; each on its own HRTF panner orbiting the listener, each with its own LIVE per-voice controls (the vortex demo above dropped these in favor of presets as of L.5c, but this demo keeps them): each voice keeps its own speed, height, and tilt, set independently. Two orbit one way, two the other, by default. They fire in the order Brian listed rather than all at once &mdash; the Way starts alone, then the Truth joins a few seconds later, then the Light, then the outro &mdash; and each plays through once rather than looping, since these are spoken/sung segments, not ambient texture. Of the three outro clips on disk (13s/18s/full-song), the full-song ending is wired in here as a placeholder; say if you'd rather hear one of the others. Start it, then put focus in the box: Up/Down select one of the four voices by name, Left/Right change ITS OWN speed, Page Up/Down its own height, Home/End its own tilt, R resets all four, Escape stops.</p>
 <div class="button-group">
     <button id="wayStart">Start "Be the Way"</button>
     <button id="wayStop">Stop</button>
@@ -1017,24 +1017,50 @@ document.getElementById('candB').addEventListener('click', candidateB);
 document.getElementById('candC').addEventListener('click', candidateC);
 document.getElementById('candSolid').addEventListener('click', candidateSolid);
 
-// ---- 3D vortex demo (ideas6, reshaped by L.5, reshaped back by L.5b/ideas9) -
+// ---- 3D vortex demo (ideas6, reshaped by L.5, L.5b/ideas9, L.5c/ideas12) ---
 // Eight looping sources, each on its own HRTF panner, each on its own
 // circular orbit around the listener (who sits at the origin facing -z,
-// the AudioContext default — this demo never moves the listener). Brian,
-// ideas9, after hearing L.5's per-vortex shaping: back to GROUP controls,
-// one shared state for all eight, as before L.5 — Up/Down height,
-// Left/Right speed (unchanged, already shared), Page Up/Down vertical
-// wobble (sway), Home/End tilt the orbital plane from flat (x-z, around
-// the listener) toward vertical (x-y, a ring rising and falling in
-// front), and [ / ] change how many of the eight are audible (1..8,
-// muted ones keep orbiting silently rather than stopping, so un-muting
-// mid-demo doesn't restart anything). A rAF loop advances every angle
-// (and the shared sway phase) by its own rate times the shared speed.
-var VORTEX_ORBITS = [
-    { r: 90,  w:  0.35 }, { r: 120, w: -0.28 }, { r: 150, w:  0.22 }, { r: 180, w: -0.18 },
-    { r: 110, w:  0.50 }, { r: 140, w: -0.40 }, { r: 170, w:  0.30 }, { r: 200, w: -0.25 }
+// the AudioContext default — this demo never moves the listener).
+// L.5 gave each vortex its own live shaping; L.5b pulled that back into
+// one shared group of live controls; L.5c (Brian, ideas12: "rather than
+// individual controls, I'd like preset configurations... use enough
+// variation to showcase the HRTF") drops live tweaking entirely in favor
+// of six hand-authored VORTEX_PRESETS, each its own full 8-slot {r, w}
+// orbit table plus shared height/sway/tiltDeg/speedMul/audibleCount —
+// chosen so each preset makes one thing obvious to the ear. The 8 audio
+// nodes are created once and persist across every preset switch; only
+// each node's own .orbit (and the shared group knobs) change, so
+// switching presets mid-run ramps smoothly rather than restarting or
+// popping — R is the one action that resets the CURRENT preset's angles/
+// sway phase back to their starting layout, replaying its choreography
+// from the top without touching the underlying loops themselves.
+var VORTEX_PRESETS = [
+    { name: 'Ring', desc: 'All eight, flat, one direction, slow.',
+      orbits: [ {r:90,w:0.15}, {r:110,w:0.15}, {r:130,w:0.15}, {r:150,w:0.15},
+                {r:170,w:0.15}, {r:190,w:0.15}, {r:210,w:0.15}, {r:230,w:0.15} ],
+      count: 8, speedMul: 1, height: 0, sway: 0, tiltDeg: 0 },
+    { name: 'Counter', desc: 'Four each way, same radius — passing each other.',
+      orbits: [ {r:140,w:0.35}, {r:140,w:0.35}, {r:140,w:0.35}, {r:140,w:0.35},
+                {r:140,w:-0.35}, {r:140,w:-0.35}, {r:140,w:-0.35}, {r:140,w:-0.35} ],
+      count: 8, speedMul: 1, height: 0, sway: 0, tiltDeg: 0 },
+    { name: 'Tilt', desc: 'A vertical ring, rising and falling in front.',
+      orbits: [ {r:90,w:0.2}, {r:110,w:0.2}, {r:130,w:0.2}, {r:150,w:0.2},
+                {r:170,w:0.2}, {r:190,w:0.2}, {r:210,w:0.2}, {r:230,w:0.2} ],
+      count: 8, speedMul: 1, height: 0, sway: 0, tiltDeg: 90 },
+    { name: 'Near and far', desc: 'Two radii — one tight and fast, one wide and slow.',
+      orbits: [ {r:70,w:0.9}, {r:70,w:-0.9}, {r:70,w:0.9}, {r:70,w:-0.9},
+                {r:230,w:0.12}, {r:230,w:-0.12}, {r:230,w:0.12}, {r:230,w:-0.12} ],
+      count: 8, speedMul: 1, height: 0, sway: 0, tiltDeg: 0 },
+    { name: 'Storm', desc: 'All eight, swaying, fast, tilted.',
+      orbits: [ {r:90,w:0.7}, {r:110,w:-0.65}, {r:130,w:0.6}, {r:150,w:-0.55},
+                {r:170,w:0.5}, {r:190,w:-0.45}, {r:210,w:0.4}, {r:230,w:-0.35} ],
+      count: 8, speedMul: 1, height: 0, sway: 90, tiltDeg: 45 },
+    { name: 'Solo', desc: 'One vortex, wide, slow — the reference.',
+      orbits: [ {r:230,w:0.15}, {r:230,w:0.15}, {r:230,w:0.15}, {r:230,w:0.15},
+                {r:230,w:0.15}, {r:230,w:0.15}, {r:230,w:0.15}, {r:230,w:0.15} ],
+      count: 1, speedMul: 1, height: 0, sway: 0, tiltDeg: 0 }
 ];
-var vortexGroup = { height: 0, sway: 0, tiltDeg: 0, speedMul: 1, audibleCount: 8, swayPhase: 0 };
+var vortexGroup = { presetIdx: 0, height: 0, sway: 0, tiltDeg: 0, speedMul: 1, audibleCount: 8, swayPhase: 0 };
 var vortex = { nodes: [], raf: null, last: 0 };
 var vortexArena = document.getElementById('vortexArena');
 var vortexStatus = document.getElementById('vortexStatus');
@@ -1056,6 +1082,17 @@ function vortexApplyAudibility() {
         var target = i < vortexGroup.audibleCount ? 0.35 : 0.0001;
         SIM.audio.ramp(n.g.gain, target, 0.25);
     });
+}
+// Retargets every node's own orbit to the given preset (ramping gain for
+// the new audible count) WITHOUT touching the underlying loops — this is
+// what makes switching presets smooth instead of a restart.
+function vortexApplyPreset(idx) {
+    var p = VORTEX_PRESETS[idx];
+    vortexGroup.presetIdx = idx;
+    vortexGroup.height = p.height; vortexGroup.sway = p.sway; vortexGroup.tiltDeg = p.tiltDeg;
+    vortexGroup.speedMul = p.speedMul; vortexGroup.audibleCount = p.count;
+    vortex.nodes.forEach(function (n, i) { n.orbit = p.orbits[i]; });
+    vortexApplyAudibility();
 }
 function vortexStep(dt) {
     var tilt = vortexGroup.tiltDeg * Math.PI / 180;
@@ -1082,36 +1119,34 @@ function vortexFrame(now) {
     vortex.raf = requestAnimationFrame(vortexFrame);
 }
 function vortexReadback() {
-    vortexSay('Height ' + Math.round(vortexGroup.height) + ', sway ' + Math.round(vortexGroup.sway) +
-               ', tilt ' + Math.round(vortexGroup.tiltDeg) + ' degrees, speed times ' +
-               vortexGroup.speedMul.toFixed(2) + ', ' + vortexGroup.audibleCount + ' of 8 audible.');
+    var p = VORTEX_PRESETS[vortexGroup.presetIdx];
+    vortexSay(p.name + '. ' + p.desc);
 }
 
 function vortexStart() {
     stopAll();
     var A = SIM.audio;
     if (!A.ctx) return;
-    vortexGroup.height = 0; vortexGroup.sway = 0; vortexGroup.tiltDeg = 0;
-    vortexGroup.speedMul = 1; vortexGroup.audibleCount = 8; vortexGroup.swayPhase = 0;
+    vortexGroup.swayPhase = 0;
     var names = [];
     for (var i = 1; i <= 8; i++) names.push('vortex' + i);
     vortexSay('Loading eight vortex recordings…');
     Promise.all(names.map(function (n) { return A.load(n); })).then(function (bufs) {
+        var startPreset = VORTEX_PRESETS[0];
         bufs.forEach(function (buf, i) {
-            var orbit = VORTEX_ORBITS[i], angle = i * Math.PI / 4;
+            var orbit = startPreset.orbits[i], angle = i * Math.PI / 4;
             var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
             var g = A.ctx.createGain(); g.gain.value = 0.0001;
             var p = A.makePanner({ x: Math.cos(angle) * orbit.r, y: 0, z: Math.sin(angle) * orbit.r });
             src.connect(g); g.connect(p); p.connect(A.worldBus);
             src.start(0, Math.random() * buf.duration * 0.5);   // don't all start on the same beat
-            A.ramp(g.gain, 0.35, 0.8);
             vortex.nodes.push({ src: src, g: g, p: p, orbit: orbit, angle: angle });
         });
+        vortexApplyPreset(0);
         vortex.last = performance.now();
         vortex.raf = requestAnimationFrame(vortexFrame);
         vortexArena.focus();
-        vortexSay('Eight vortices orbiting, all audible. Up/Down height, Left/Right speed, ' +
-                   'Page Up/Down sway, Home/End tilt, bracket keys change how many are audible, R resets.');
+        vortexSay('Ring. ' + startPreset.desc + ' Keys 1 through 6 pick a preset, R replays it, Escape stops.');
     }).catch(function (err) {
         vortexSay('Load failed: ' + err.message);
     });
@@ -1120,21 +1155,14 @@ function vortexStart() {
 vortexArena.addEventListener('keydown', function (e) {
     if (!vortex.nodes.length) return;
     var k = e.key;
-    if (k === 'ArrowUp') { vortexGroup.height = clamp(vortexGroup.height + 15, -300, 300); vortexReadback(); }
-    else if (k === 'ArrowDown') { vortexGroup.height = clamp(vortexGroup.height - 15, -300, 300); vortexReadback(); }
-    else if (k === 'PageUp') { vortexGroup.sway = clamp(vortexGroup.sway + 20, 0, 200); vortexReadback(); }
-    else if (k === 'PageDown') { vortexGroup.sway = clamp(vortexGroup.sway - 20, 0, 200); vortexReadback(); }
-    else if (k === 'Home') { vortexGroup.tiltDeg = clamp(vortexGroup.tiltDeg + 15, 0, 90); vortexReadback(); }
-    else if (k === 'End') { vortexGroup.tiltDeg = clamp(vortexGroup.tiltDeg - 15, 0, 90); vortexReadback(); }
-    else if (k === '[') { vortexGroup.audibleCount = clamp(vortexGroup.audibleCount - 1, 1, 8); vortexApplyAudibility(); vortexReadback(); }
-    else if (k === ']') { vortexGroup.audibleCount = clamp(vortexGroup.audibleCount + 1, 1, 8); vortexApplyAudibility(); vortexReadback(); }
-    else if (k === 'ArrowRight') { vortexGroup.speedMul = Math.min(8, vortexGroup.speedMul * 1.25); vortexReadback(); }
-    else if (k === 'ArrowLeft') { vortexGroup.speedMul = Math.max(0.125, vortexGroup.speedMul / 1.25); vortexReadback(); }
+    if (/^[1-6]$/.test(k)) { vortexApplyPreset(parseInt(k, 10) - 1); vortexReadback(); }
+    else if (k === 'ArrowUp') { vortexApplyPreset((vortexGroup.presetIdx - 1 + 6) % 6); vortexReadback(); }
+    else if (k === 'ArrowDown') { vortexApplyPreset((vortexGroup.presetIdx + 1) % 6); vortexReadback(); }
     else if (k === 'r' || k === 'R') {
-        vortexGroup.height = 0; vortexGroup.sway = 0; vortexGroup.tiltDeg = 0;
-        vortexGroup.speedMul = 1; vortexGroup.audibleCount = 8;
-        vortexApplyAudibility();
-        vortexSay('Vortex reset. All eight audible.');
+        vortexGroup.swayPhase = 0;
+        vortex.nodes.forEach(function (n, i) { n.angle = i * Math.PI / 4; });
+        vortexApplyPreset(vortexGroup.presetIdx);
+        vortexSay(VORTEX_PRESETS[vortexGroup.presetIdx].name + ' replayed from the start.');
     }
     else if (k === 'Escape') { vortexStop(); e.preventDefault(); return; }
     else return;
@@ -1440,7 +1468,9 @@ window.__lab = {
             explorer: { az: explorer.az, el: explorer.el, dist: explorer.dist,
                         running: !!explorer.panner, voice: explorer.voice },
             grid: { x: gridExplorer.x, y: gridExplorer.y, z: gridExplorer.z, running: !!gridExplorer.panner },
-            vortex: { running: vortex.nodes.length, height: vortexGroup.height, sway: vortexGroup.sway,
+            vortex: { running: vortex.nodes.length, presetIdx: vortexGroup.presetIdx,
+                      presetName: VORTEX_PRESETS[vortexGroup.presetIdx].name,
+                      height: vortexGroup.height, sway: vortexGroup.sway,
                       tiltDeg: vortexGroup.tiltDeg, speedMul: vortexGroup.speedMul,
                       audibleCount: vortexGroup.audibleCount },
             flyby: { routesRunning: flyby.routeNodes.length, stuntRunning: !!flyby.stuntNode,
