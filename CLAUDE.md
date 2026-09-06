@@ -105,8 +105,11 @@ expands.
   engine 1's three clips in the manifest, the other five stay on disk
   until a second drive exists — see "Sector" above); `audio/weapons/
   missiles/` = the one manifest missile-firing mp3, `audio/weapons/lasers/`
-  = 16 lasers (Mining ×8, Rapid-pulse ×8, all 16 in the manifest as of
-  SPEC 2.12) plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
+  = 48 lasers (Mining ×8, Rapid-pulse ×8, all 48 in the manifest — the
+  four newest families, Rugged mining/Fast fighter/Rotary cannon/Burst
+  plasma ×8 each, wired in as of SPEC 3.46, real lengths 7.0s/5.0s/7.0s/
+  5.0s per ffprobe, refitting each family's tick count/spacing to match)
+  plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
   masters with served MP3 siblings, all 6 in the manifest — the per-slot
   switch delay is timed off their original lengths); `audio/demo/`
   = `propeller_plane1–8.mp3` (Brian, 2026-09-05, for the lab's flyby
@@ -2846,6 +2849,48 @@ with the fit-at-the-station message; closing F2 and reading
 `localStorage` directly confirmed the chosen level persisted to
 `profile.slots`, with `laserHealth` untouched (wear is a firing-time
 thing, not a browsing one). Zero console errors. Not yet heard or
-flown by Brian. Next: 3.46 (four new laser families for slots 3–6),
-then L.5c (the vortex as six presets), all still ahead of 3.42 and
+flown by Brian.
+
+**Round 33 (Sonnet) also built SPEC 3.46** — four new laser families
+(rugged mining, fast fighter, rotary cannon, burst plasma) for slots
+3–6, and a new "Fit [family] in slot N" mechanism in the Lasers shop to
+put them there in the first place, since nothing before this round
+could fill an empty slot at all. Brian's own 32 recordings were
+re-measured with `ffprobe` rather than trusted against Fable's
+proposed durations (written before the clips existed) — the real
+lengths (5.0s/5.0s/7.0s/7.0s) meant every family's tick count and
+spacing had to be refit to what the clips actually run, the same way
+mining/rapid were originally fit to theirs. `buildLaserShop()` rebuilds
+the shop's own line list (buy/repair for an owned family, "Fit" lines
+for every empty-slot × unowned-family pairing) at open and after every
+purchase, so a family fit once simply stops being offered as "fit"
+anywhere else — the "no second fit" rule falls out of that rebuild for
+free, no special-case check needed. **A real, pre-existing migration
+bug found while testing, exposed by this round but not caused by it**:
+`loadProfile()`'s SPEC 3.26 migration iterated the LIVE `LASER_FAMILIES`
+array unconditionally on every load (never gated on version, reading
+current data instead of a frozen historical shape) to backfill
+`laserLevels` for anything missing from the raw save — harmless while
+that array only ever held mining/rapid, but the moment this round grew
+it to six entries, the same loop silently handed every profile —
+fresh or old — a free level 1 in all four new families, confirmed by a
+direct repro (a freshly-cleared profile showed all six families owned
+in `laserLevels` while `profile.slots` correctly still showed slots 3–6
+empty). Fixed by gating the block on `loadedVersion < 4` and hardcoding
+its family list to `['mining', 'rapid']` instead of the live array — a
+migration has to stay pinned to what it originally migrated, not grow
+with whatever the live data model adds years later. Machine-tested at
+a local server end to end, docked with seeded credits/alloy: the shop
+showed exactly 16 fit lines (4 slots × 4 families) before any fitting;
+fitting burst plasma into slot 3 deducted the right cost, set the
+right profile fields, and correctly dropped to 9 remaining fit lines
+with burst plasma's own buy/repair lines now in their place;
+insufficient-credits and insufficient-alloy refusals both confirmed;
+F2 read both newly-fit lasers (slots 3 and 4) with correct real
+numbers. Firing wasn't exercised in live combat this round (weapons
+are cold in the open sector, and it's a data-only addition riding on
+completely unchanged firing code) — confidence comes from F2 already
+confirming the exact values `beamTick`/`startBeam` would read. Zero
+console errors. Not yet heard or flown by Brian. Next: L.5c (the
+vortex demo becomes six named presets), still ahead of 3.42 and
 quadrant 2.

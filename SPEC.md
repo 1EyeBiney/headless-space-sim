@@ -2078,9 +2078,9 @@ since
 flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals, DONE
 → 3.45 five volume steps and the Beacons line, DONE → 3.49 the course
 second pass, DONE → 3.44 B is the tractor in tiers, DONE → 3.48 F2's
-equipped laser per slot, DONE** (all six, Round 33, Sonnet) **→ next:
-3.46** four new laser
-families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
+equipped laser per slot, DONE → 3.46 four new laser families for slots
+3–6, DONE** (all seven, Round 33, Sonnet) **→ next: L.5c** the vortex
+as six presets; 3.47 the
 stats page is a discussion, not scheduled) → **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5012,7 +5012,7 @@ level last chosen in F2, with `laserHealth` completely untouched by any
 of the cycling (health/wear is a firing-time mechanic, not a browsing
 one). Zero console errors. Not yet heard or flown by Brian.
 
-#### 3.46 Lasers for slots 3 to 6 — four new families (ideas12.txt) — proposed
+#### 3.46 Lasers for slots 3 to 6 — four new families (ideas12.txt) — DONE
 
 - Brian: "I think I have enough laser assets now to wire up slots 3
   through 6, please verify." **Verified**: `audio/weapons/lasers/` now
@@ -5050,6 +5050,81 @@ one). Zero console errors. Not yet heard or flown by Brian.
   its measured length; the shop fits a family into slot 3 and refuses
   a second fit of the same family; 3/4/5/6 select and fire; F2 (3.48)
   shows each; the matchup multipliers apply.
+
+**DONE (Round 33, Sonnet).** The 32 files were re-verified with `ffprobe`
+rather than trusted at face value — a good thing, since the real
+lengths (burst_plasma/fast_fighter 5.0s, rotary_cannon/rugged_mining
+7.0s, uniform across all 8 levels within each family, same as mining/
+rapid's own convention) didn't match Fable's proposed durations (9s/4s/
+6s/4.5s), written before the clips existed to measure. Every family's
+`tickCount`/`tickS` was refit to its REAL length instead — rugged
+mining 7×1s=7s, fast fighter 10×0.5s=5s (this one happens to land
+exactly on rapid's own cadence, fitting "rapid's cousin" neatly),
+rotary cannon 14×0.5s=7s, burst plasma 4×1.25s=5s — preserving each
+family's intended character (heavy-and-few vs. rapid-and-many) as
+closely as the real clip lengths allow; `tickBase`/`cooldownS` adjusted
+to match. `strong`/`weak` arrays (the actual multiplier keys, separate
+from `matchupSpoken`'s spoken strings) were built from `SHIP_CLASS`'s
+three classes and `ROCK_TYPES`' three rock names. All 32 manifest keys
+added to `audio_assets.js` following the `laser_<family><version>`
+naming `LASERS`' own generation loop already expects — no code change
+needed there, only data. **The missing piece** (fitting a family into
+an empty slot) is a new `buildLaserShop()` that REBUILDS the shop's own
+item list (buy/repair lines for every OWNED family, one "Fit X in slot
+N" line per empty-slot-x-unowned-family combination) rather than the
+old fixed list, called at `openLaserShop()` and after every buy/repair/
+fit action; a family fit once becomes owned and drops out of every
+remaining "fit" line for every other empty slot, which IS the "refuses
+a second fit" behavior — no special-case check needed, just the natural
+consequence of the list being rebuilt from current ownership. A new
+flat-cost path (`CFG.laserFitCredits` 300, `laserFitAlloy` 1, always
+level 1) sits alongside the existing per-level `buy`/`repair` costs in
+`laserShopText`/`laserShopReady`/`laserShopKey`. **A real, pre-existing
+migration bug found and fixed while testing, not introduced by this
+round's own new code but only ever exposed by it**: `loadProfile()`'s
+SPEC 3.26 (v3→v4) migration iterated the LIVE `LASER_FAMILIES` array
+unconditionally on every single load (not gated on `loadedVersion`, and
+reading current data rather than a frozen historical shape) to backfill
+`laserLevels`/`laserHealth` for any family missing from the raw saved
+JSON — harmless while the array only ever held mining/rapid (both
+meant to be always-owned, so the backfill was redundant with
+`defaultProfile()`'s own seed), but the instant this round grew
+`LASER_FAMILIES` to six entries, the SAME loop silently stamped level 1
+onto all four new families for EVERY profile, fresh or old, since none
+of them exist in ANY saved JSON either — confirmed by direct repro (a
+freshly-cleared profile read `laserLevels: {mining:1, rapid:1,
+rugged_mining:1, fast_fighter:1, rotary_cannon:1, burst_plasma:1}`
+despite `profile.slots` correctly showing slots 3–6 still empty, and
+the Lasers shop showed all four new families as normal level-2 buy
+lines instead of "Fit" lines). Fixed by gating the whole block on
+`loadedVersion < 4` AND hardcoding the migrated family list to
+`['mining', 'rapid']` instead of the live array — a migration has to
+stay pinned to what it originally migrated, the same lesson SPEC 2.18's
+version field and this round's own SPEC 3.45 sound-level migration both
+already exist to teach, just encountered from a new angle (a *live data
+table* growing, not a *save format* changing). Re-confirmed fixed: a
+freshly-cleared profile now reads exactly `{mining:1, rapid:1}. Machine-
+tested at a local server end to end, docked at Station Meridian with
+seeded credits/alloy: the Lasers shop's browsable list showed exactly
+16 "Fit" lines (4 empty slots × 4 unowned families) before any fitting;
+fitting burst plasma into slot 3 correctly deducted 300 credits/1
+alloy, set `profile.slots[2]` and `profile.laserLevels.burst_plasma`,
+and rebuilt the list down to 9 remaining fit lines with burst plasma's
+own buy/repair lines now present instead (confirming the "no second
+fit" behavior); insufficient-credits and insufficient-alloy refusals on
+a fit line both confirmed with the correct shortfall spoken; selecting
+the newly-fit slot 3 in flight spoke "Slot 3, burst plasma 1,
+switching."; F2 read both newly-fit lasers (slots 3 and 4) with their
+real per-tick/tick-count/cooldown/matchup numbers exactly matching the
+family data. Firing itself was not exercised in a live combat encounter
+this round (weapons are cold in open sector flight, and reaching a
+combat zone to fire for real was out of scope for a data-only addition)
+— confidence instead comes from `beamTick`/`startBeam` being completely
+unchanged code, reading the exact same `LASER_FAMILIES_BY_ID`/
+`laserLevelMult` values F2 already confirmed correct. Zero console
+errors throughout. Every family's numbers and the fit price are
+placeholders for Brian to fly and judge. Not yet heard or flown by
+Brian.
 
 #### 3.47 The stats page — a discussion, not a build (ideas12.txt)
 
