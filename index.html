@@ -461,9 +461,17 @@ var CFG_DEFAULTS = {
     // SPEC 3.41 (ideas11.txt): the flight course — beacons to fly through,
     // against the clock. A mission-menu drill, weapons cold, teaching the
     // controls the way a visual game's hoop course would.
-    courseGateRadius: 150,     // clean pass: within this of the gate's own
+    // SPEC 3.49 (ideas12.txt): closer gates, a bigger trigger radius, and
+    // turns steep enough that flying straight actually misses — Brian's
+    // own ask ("cut my requests in half except the radius") plus the
+    // geometry check that came with it: 500*sin(25 deg) ~= 211, still
+    // inside a 250 radius, so COURSES.gentle's own turns had to grow to
+    // 35-45 degrees for the course to teach turning at all (500*sin(35)
+    // ~= 287, outside the radius) while the wide radius still forgives
+    // sloppy manual-thrust centering once the ship HAS turned toward it.
+    courseGateRadius: 250,     // clean pass: within this of the gate's own
                                // position at the moment its plane is crossed
-    courseSpacing: 600,        // distance from one gate to the next
+    courseSpacing: 500,        // distance from one gate to the next
     courseAudible: 4,          // gates sounding at once, in order
     courseGains: [1, 0.6, 0.35, 0.2],  // volume ladder, active gate first
     courseMissPenaltyS: 10,    // added to the clock per missed gate
@@ -734,6 +742,9 @@ function recordContractRun(seconds) {
 // SPEC 3.41: the flight course's own best-10 board — a third, separate from
 // runs/contractRuns, since its own legs are fixed (today's one course) but
 // don't compare meaningfully to either the delivery run or the contract.
+// SPEC 3.49: returns the PREVIOUS best in seconds (undefined on a first-
+// ever run) rather than a plain boolean, so finishCourse() can speak the
+// actual delta ("N seconds off your best") and not just whether it won.
 function recordCourseRun(seconds) {
     if (!profile) return undefined;
     var prevBest = profile.courseRuns.length ? profile.courseRuns[0].seconds : undefined;
@@ -741,7 +752,7 @@ function recordCourseRun(seconds) {
     profile.courseRuns.sort(function (a, b) { return a.seconds - b.seconds; });
     profile.courseRuns = profile.courseRuns.slice(0, 10);
     saveProfile();
-    return prevBest === undefined || seconds < prevBest;
+    return prevBest;
 }
 
 // Lasers (SPEC 1.9, families SPEC 2.12). Slots 1 and 2 are the two laser
@@ -1034,18 +1045,22 @@ function makeRoster() {
 // hoop course would. Each COURSES entry is a list of TURNS — how much the
 // path's own heading changes before stepping courseSpacing forward to place
 // the next gate — rather than raw positions, so the shape is easy to read
-// and re-tune. "Gentle" keeps every turn under 30 degrees, on purpose:
-// Brian's own condition was that it should fly on auto-thrust alone.
+// and re-tune. "Gentle" keeps every turn between 35 and 45 degrees (SPEC
+// 3.49 — raised from "under 30" once the closer spacing and wider gate
+// radius meant flying dead straight cleared most gates by accident; see
+// the CFG.courseSpacing/courseGateRadius comment above for the math) —
+// still flyable on auto-thrust, since a gate is several seconds away at
+// cruise, but a pilot who never touches the arrows will miss some.
 var COURSES = [
     { id: 'gentle', name: 'Gentle', turns: [
         { yaw: 0,   pitch: 0  },
-        { yaw: 20,  pitch: 0  },
-        { yaw: -15, pitch: 5  },
-        { yaw: 25,  pitch: -5 },
-        { yaw: -20, pitch: 0  },
-        { yaw: 15,  pitch: 10 },
-        { yaw: -25, pitch: -10 },
-        { yaw: 10,  pitch: 0  }
+        { yaw: 40,  pitch: 0  },
+        { yaw: -35, pitch: 8  },
+        { yaw: 45,  pitch: -8 },
+        { yaw: -40, pitch: 0  },
+        { yaw: 35,  pitch: 10 },
+        { yaw: -45, pitch: -10 },
+        { yaw: 38,  pitch: 0  }
     ] }
 ];
 // Walks the turn list once, accumulating a heading and stepping
@@ -1108,20 +1123,34 @@ function clearCourseGate(clean) {
     g.courseCleared = true;
     stopVoice(g);
     var missText = '';
-    if (!clean) {
+    if (clean) {
+        courseState.made++;
+        SIM.cues.play('course_pass');
+    } else {
+        courseState.missed++;
         courseState.elapsed += CFG.courseMissPenaltyS;
         missText = 'Gate ' + (i + 1) + ' missed, plus ' + CFG.courseMissPenaltyS + '. ';
+        SIM.cues.play('course_miss');
     }
     if (i + 1 >= targets.length) finishCourse(missText);
     else activateCourseGate(i + 1, missText);
 }
+// SPEC 3.49: the final line folds in the made/missed tally and how this
+// run ranks against the best time on file — recordCourseRun returns the
+// PREVIOUS best (undefined on a first-ever run) rather than a plain
+// boolean, so the delta itself can be spoken either way.
 function finishCourse(prefix) {
     won = true;
     stopLockTone();
     var seconds = courseState.elapsed;
-    var best = recordCourseRun(seconds);
-    say((prefix || '') + 'Course complete. Time ' + fmtTime(seconds) + '.' +
-        (best === true ? ' New personal best!' : ''));
+    var prevBest = recordCourseRun(seconds);
+    var tally = courseState.made + ' of ' + targets.length + ' gates' +
+                (courseState.missed ? ', ' + courseState.missed + ' missed' : '') + '. ';
+    var rankText;
+    if (prevBest === undefined) rankText = 'Your first time.';
+    else if (seconds < prevBest) rankText = 'New personal best by ' + fmtTime(prevBest - seconds) + '.';
+    else rankText = fmtTime(seconds - prevBest) + ' off your best.';
+    say((prefix || '') + 'Course complete. Time ' + fmtTime(seconds) + '. ' + tally + rankText);
 }
 function updateCourse(dt) {
     if (!courseState || won || lost) return;
@@ -1920,6 +1949,7 @@ var HELP_SECTIONS = [
         'The tick and lock tone find the active gate exactly like a target lock does anywhere else — steer onto the tick.',
         'The clock starts the moment you first thrust, not at the menu. It runs until the eighth gate.',
         function () { return 'Fly wide of a gate and it still clears — you just add ' + CFG.courseMissPenaltyS + ' seconds to the clock and hear it named. Missing is never fatal, only slower.'; },
+        'A clean pass chimes up; a miss chimes down. The last gate reads the total time, how many of the eight you cleared cleanly, and how that time compares to your best.',
         'Weapons, shields, and auto-target are all off here — it is flown by hand, on the same stick you use everywhere else.',
         'The Run log keeps your best 10 times, same as the delivery run and the timed contract, its own separate board.'
     ] },
@@ -7097,7 +7127,7 @@ function onKeyDown(e) {
                 if (lost || !sectorHome) { hull = CFG.shipHull; repairAllSystems(); }
                 newGame();
                 if (mode === 'course') {
-                    courseState = { activeIndex: 0, elapsed: 0, started: false };
+                    courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0 };
                     activateCourseGate(0, courseIntro());
                 } else {
                     say(mode === 'mining' ? miningIntro() : combatIntro());
@@ -7394,6 +7424,7 @@ window.__sim = {
                           yaw: Math.round(deg(ship.yaw) * 10) / 10, pitch: Math.round(deg(ship.pitch) * 10) / 10 },
             course: courseState ? { activeIndex: courseState.activeIndex, started: courseState.started,
                           elapsed: Math.round(courseState.elapsed * 10) / 10,
+                          made: courseState.made, missed: courseState.missed,
                           gains: targets.filter(function (t) { return t.poiType === 'course'; })
                                         .map(function (t) { return t.nodes && t.nodes.mute ? Math.round(t.nodes.mute.gain.value * 100) / 100 : null; }),
                           gates: targets.filter(function (t) { return t.poiType === 'course'; })
@@ -7751,7 +7782,7 @@ function startMission(m) {
     // SPEC 3.41: courseState is set AFTER newGame() (which calls
     // clearMission(), itself nulling courseState out) — not before.
     if (m === 'course') {
-        courseState = { activeIndex: 0, elapsed: 0, started: false };
+        courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0 };
         activateCourseGate(0, courseIntro());
     } else {
         say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());

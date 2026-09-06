@@ -2736,8 +2736,43 @@ line browsed/cycled/saved correctly in both directions; a seeded
 pre-3.45 profile — three-level indexes, no `music` key at all — loaded
 migrated exactly as designed, confirmed both in-memory immediately and
 in the persisted `localStorage` copy only after the next real save),
-zero console errors throughout, none of it yet heard by Brian. Next:
-3.49 (the flight course second pass — spacing 500, radius 250, turns
-raised to 35–45° on the gentle course, pass/miss chimes, a made/missed
-tally, rank against best — all already decided, nothing left open),
-then 3.44, 3.48, 3.46, L.5c, all still ahead of 3.42 and quadrant 2.
+zero console errors throughout, none of it yet heard by Brian.
+
+**Round 33 (Sonnet) also built SPEC 3.49**, the flight course second
+pass, in the same session right after 3.45. `courseSpacing` 600 → 500,
+`courseGateRadius` 150 → 250, and `COURSES.gentle`'s turns raised from
+under-30° to 35–45° — all already decided in SPEC.md, nothing left open
+going in. Two new cues (`course_pass`, `course_miss`) fold into
+`clearCourseGate()` alongside a new `made`/`missed` tally on
+`courseState`; `recordCourseRun()` now returns the previous best in
+seconds (not a boolean) so the final line can speak the actual delta —
+"Your first time." / "New personal best by N seconds." / "N seconds off
+your best." — combined with the tally into one `say()`, per the SPEC
+2.15 rule. **One real testing gotcha, not a game bug**: a first attempt
+to prove "straight flight now misses gates" by walking positions along
+a single fixed world-axis line hit a genuine edge case — a position
+placed exactly ON a gate's plane registers as depth 0, which the game
+correctly treats as "hasn't reached it yet" (real continuous flight
+always arrives a hair past the plane, never exactly on it) — so that
+test's per-gate attribution came out confused. Caught from the test's
+own contradictory output rather than shipped as a false pass; fixed by
+nudging every test position a couple of units past each gate's own
+plane along its forward vector, and by computing genuine per-gate
+perpendicular offsets (via each gate's own cross product with world-up)
+for deliberate hit/miss cases rather than guessing a single world-axis
+offset — a crude first attempt at a "deliberate miss" test on one gate
+actually registered clean, because a raw world-axis nudge isn't
+uniformly lateral across every gate's own differently-oriented forward
+vector. With both fixes: straight, never-turning flight through the
+gentle course was confirmed missing the large majority of its eight
+gates (only the one gate that happens to sit exactly on the initial
+heading passes clean) — direct confirmation the geometry push-back
+worked; a controlled alternating clean/miss run confirmed both chimes
+firing at the right gates and the tally reading "4 of 8 gates, 4
+missed" with a correct "Your first time."; a following all-clean run
+measured 0 seconds and said "New personal best by 40 seconds."; a third
+run with one deliberate miss said "10 seconds off your best." against
+that new best. Zero console errors throughout. Every number here is
+still a placeholder for Brian to fly and judge. Not yet heard or flown
+by Brian. Next: 3.44 (B becomes the tractor in tiers, Z unbound), then
+3.48, 3.46, L.5c, all still ahead of 3.42 and quadrant 2.

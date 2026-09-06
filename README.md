@@ -159,9 +159,11 @@ nearest one loudest. The tick and lock tone find the active gate exactly
 the way they find any other target. The clock starts the moment you
 first thrust, not at the menu, and runs until the eighth gate. Flying
 wide of a gate still clears it — no gate ever stops the run — but costs
-10 seconds on the clock, named as it happens. Weapons, shields, and
-auto-target are all off: this one is flown by hand. Enter tries again;
-your best 10 times land in the Run log, their own board.
+10 seconds on the clock, named as it happens, and chimes down instead of
+up. Weapons, shields, and auto-target are all off: this one is flown by
+hand. The last gate reads the total time, how many of the eight you
+cleared cleanly, and how that time compares to your best. Enter tries
+again; your best 10 times land in the Run log, their own board.
 
 ## Keys
 

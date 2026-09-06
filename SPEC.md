@@ -2075,10 +2075,10 @@ course, DONE** (Round 31, Sonnet — built ahead of its own "after the
 playtest" note, at Brian's direct request) → **Brian flies everything
 since
 3.24, plus the course** → **ideas12.txt** (Brian, 2026-09-05, from
-flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals,
-DONE → 3.45 five volume steps and the Beacons line, DONE** (all three,
-Round 33, Sonnet) **→ next: 3.49** the course second pass (the
-geometry push-back answered, decided — see 3.49 itself) → 3.44 B is the tractor
+flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals, DONE
+→ 3.45 five volume steps and the Beacons line, DONE → 3.49 the course
+second pass, DONE** (all four, Round 33, Sonnet) **→ next: 3.44** B is
+the tractor
 in tiers → 3.48 F2's equipped laser per slot → 3.46 four new laser
 families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
 stats page is a discussion, not scheduled) → **3.42 escort in
@@ -4774,7 +4774,7 @@ prior migration's own "profile.version never regresses, and isn't
 rewritten to disk until something actually saves" behavior. Zero
 console errors throughout. Not yet heard by Brian.
 
-#### 3.49 The flight course, second pass (ideas12.txt) — proposed, with a geometry push-back
+#### 3.49 The flight course, second pass (ideas12.txt) — DONE
 
 - Brian: gates closer by 200; trigger range +100; a positive chime for
   a clean pass and a negative one for a miss; count made vs. missed in
@@ -4820,6 +4820,50 @@ console errors throughout. Not yet heard by Brian.
   gate under the new numbers (the whole point); a clean pass chimes up,
   a miss chimes down; the final line reads 7/1 and the delta; a second
   run reports its rank against the first.
+
+**DONE (Round 33, Sonnet).** `CFG.courseSpacing` 600 → 500 and
+`CFG.courseGateRadius` 150 → 250 exactly as decided; `COURSES.gentle`'s
+turns raised from under-30° to 35–45° in magnitude (alternating sign,
+one pitch wiggle per turn kept from the original shape). Two new cues,
+`course_pass` (a bright rising two-note) and `course_miss` (a short
+falling pair, deliberately not `refusal_offline`'s buzz — a miss still
+clears the gate and keeps the course moving, it isn't a refusal),
+folded into `clearCourseGate()` alongside its existing miss-penalty and
+tally increment (`courseState.made`/`missed`, new fields alongside
+`activeIndex`/`elapsed`/`started`). `recordCourseRun()` now returns the
+PREVIOUS best in seconds (`undefined` on a first-ever run) instead of a
+plain boolean, so `finishCourse()` can speak the real delta either way:
+"Your first time." / "New personal best by N seconds." / "N seconds off
+your best." — folded into the SAME final `say()` as the tally and the
+time, per the SPEC 2.15 rule. Help text (`HELP_SECTIONS`) and README
+both updated to describe the chimes and the richer final line — nothing
+else in either referenced the old spacing/radius numbers or turn cap
+directly, so no other stale text needed a fix. **Machine-tested at a
+local server**, and this round needed real care about *how*: a first
+attempt to prove "straight flight misses gates" by walking positions
+along a single fixed world-axis line produced a subtly WRONG per-gate
+attribution (an edge case where a position placed exactly ON a gate's
+own plane, at depth 0, doesn't register as "reached" it yet — realistic
+continuous flight always arrives at some small positive depth instead)
+— caught by the test's own confused output rather than shipped as a
+false negative, and corrected by nudging every test position a couple
+of units PAST each gate's plane along its own forward vector, matching
+how a real approach actually crosses it. With that fix: straight
+never-turning flight through the gentle course cleanly confirmed
+missing the large majority of gates (only the one gate that happens to
+lie exactly on the initial heading passed clean) — strongly validating
+the geometry fix; a controlled run alternating clean/miss by design
+(computed via each gate's own cross-product perpendicular, not a
+world-axis guess) confirmed both `course_pass`/`course_miss` firing at
+the right gates with zero console errors, the tally reading "4 of 8
+gates, 4 missed", and a first-ever completion correctly saying "Your
+first time."; a second, all-clean run measured 0 seconds and correctly
+said "New personal best by 40 seconds."; a third run with one deliberate
+miss (10 seconds) correctly said "10 seconds off your best." against
+the new 0-second best. Zero console errors throughout. Every number —
+the spacing, the radius, the turn angles — is a placeholder for Brian
+to fly and judge, same as every other tuning number in this file. Not
+yet heard or flown by Brian.
 
 #### 3.44 B is the tractor, in tiers; beacons move to the Sound menu (ideas12.txt) — proposed
 

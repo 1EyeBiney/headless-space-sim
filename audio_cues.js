@@ -290,6 +290,24 @@ SIM.cues = (function () {
                       var A = SIM.audio;
                       A.sfxArpeggio([523, 659, 784, 1047], 0.16, 0.18, { type: 'triangle' });
                       A.sfxChord([523, 659, 784], 0.9, 0.45, { type: 'sine', at: 0.65 });
+                  } },
+                { id: 'course_pass', name: 'Flight Course: Gate Passed Clean', source: 'spec-3.49',
+                  // SPEC 3.49 (ideas12.txt): a bright rising two-note for a
+                  // clean gate pass — distinct from menu_select's lower
+                  // square-wave click and ready_chime's slower rise.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 700, dur: 0.08, vol: 0.16 });
+                      A.sfxTone({ type: 'sine', f1: 1050, dur: 0.11, vol: 0.16, at: 0.08 });
+                  } },
+                { id: 'course_miss', name: 'Flight Course: Gate Missed', source: 'spec-3.49',
+                  // A short falling minor-ish pair for a missed gate — a
+                  // note, not the refusal_offline buzz, since missing a
+                  // gate still clears it and keeps the course moving.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'sine', f1: 500, dur: 0.09, vol: 0.16 });
+                      A.sfxTone({ type: 'sine', f1: 375, dur: 0.14, vol: 0.16, at: 0.09 });
                   } }
             ]
         }
