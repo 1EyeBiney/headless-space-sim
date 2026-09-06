@@ -3140,3 +3140,40 @@ dispute, convoy, the pre-Silence recorder, the gate waking), Fable's
 pick the tow. `backstory.md` ("The Silence") arrived alongside — read,
 not reviewed; offered as A.15. Nine questions in Part C. Nothing
 built.
+
+**Round 38 (Sonnet, docs only, 2026-09-06)**: Brian answered all nine
+of Round 37's questions in one message and said to apply them and keep
+going. **3.52 rewritten to DECIDED**: work-based reaction-mass cost
+confirmed ("ok" — a tier-1 core pull over its full 250-unit stop
+distance now costs ~1.0 rcs, well under half of flying it); the
+gentle-pull rule and Shift+B both dropped entirely rather than kept —
+Brian: "forget using Shift B to go down a tractor beam level, it will
+be upgradeable but not switcheable," so 3.52 no longer carries a
+selected-tier concept at all, only an owned ceiling (`tractorLevel()`)
+used directly; the beam exclusion confirmed and generalized to any
+`startBeam` call, not lasers alone; the four recordings confirmed by
+ear. **3.53 and 3.54 flipped from proposed to DECIDED, ready to
+build** — nothing changed in their shape, Brian just said "ok" and
+"yes." **Waypoint control postponed** ("postpone" — folded into A.13
+as open, not blocking); **manhattan-distance jumps confirmed** ("you
+are right" — folded into A.13, superseding the one-fare-per-edge
+model, not yet built since it lands with quadrant 2's own gate work).
+The course's approach-cue question resolved to "the existing pass
+chime is enough" and the stats question to "no second board" — both
+already matched what 3.49/3.53 specced, so no spec change beyond
+closing the question. **3.55 written up**: the distress-call tow,
+Fable's pick, confirmed ("do your recommendation") — deliberately
+reuses existing verbs (tractor to close distance, unchanged from 3.52;
+E to "recover" the derelict, the same idea as extracting an ore core)
+rather than inventing a new tow-follows-the-ship physics model, which
+would have meant teaching the tractor to trail a moving puller — a
+bigger change than one mission should force. Whether it carries any
+threat at all is left open on purpose, flagged rather than decided,
+with a lean toward none for v1. `backstory.md` stays unfolded per
+Brian's own "ignore the backstory file for now." All nine of Round
+37's Part C questions are now resolved (recorded as **ANSWERED** in
+place of **DECIDE**) and the ideas13.txt review section's own bullets
+carry the individual resolutions. Docs only — no code touched. Next:
+build in order, per "apply these and continue on the spec" — **3.54**
+(Escort/Defend drills on the mission menu) → **3.53** (course accuracy
+readout) → **3.52** (the tractor beam second pass, as now finalized).

@@ -348,22 +348,21 @@ stations. Every income source feeds credits or a resource.
   the cube's centre staying the endgame.
 
   **Waypoints as outposts, and jumps by distance (Brian, ideas13.txt,
-  2026-09-06 — direction, questions in Part C).** Two additions to the
-  cube. (1) The twelve edge midpoints are **controllable** — held, a
-  waypoint produces (what, DECIDE), so a player can grab many cheaply;
-  but a waypoint **decays unless the corners at both its ends are
-  held** — stable between two of your quadrants, contested between
-  yours and a rival's, unholdable between two rivals'. Corners stay
-  worth more. This is ideas11's "cut-off erodes control" given its
-  shape: the map's geometry runs the supply lines. (2) **Travel is by
-  manhattan distance, not one fare per edge** — from home a pilot may
-  jump to any valid cell within their jump budget, one hydrogen unit
-  per cell (an edge is 2, a face's diagonal 4, the far corner 6), so
-  waypoints become destinations now, not "later." Reconciled with the
-  three fixed gates per corner as: **the gate is which way you leave,
-  the map is how far** — fly to the gate on the first axis of the path,
-  pick the cell on the map, the network does the rest. Supersedes "one
-  hydrogen fare per edge" above if Brian confirms.
+  2026-09-06).** Two additions to the cube, one confirmed and one
+  postponed. (1) **Postponed** — the twelve edge midpoints as
+  controllable outposts (held, a waypoint produces something; decays
+  unless the corners at both its ends are held, ideas11's "cut-off
+  erodes control" given shape). Brian: "postpone." Stays open, no
+  numbers, revisit alongside 3.23b's own control work. (2)
+  **Confirmed** — **travel is by manhattan distance, not one fare per
+  edge**: from home a pilot may jump to any valid cell within their
+  jump budget, one hydrogen unit per cell (an edge is 2, a face's
+  diagonal 4, the far corner 6). Brian: "you are right." Reconciled
+  with the three fixed gates per corner as: **the gate is which way you
+  leave, the map is how far** — fly to the gate on the first axis of
+  the path, pick the cell on the map, the network does the rest. This
+  supersedes "one hydrogen fare per edge" above. Not yet built — lands
+  with 3.22/quadrant 2, alongside the gate work itself.
 
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
@@ -5110,147 +5109,100 @@ menu's own Sound item description read cleanly with no B-key reference
 left. Zero console errors throughout. Every tier number and price is a
 placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
 
-#### 3.52 Tractor beam, second pass (Brian, 2026-09-06) — queued, do NOT build yet
+#### 3.52 Tractor beam, second pass (Brian, 2026-09-06) — DECIDED, ready to build
 
-Brian, in chat (not from an ideas*.txt file): a further pass on the
-tractor beam (3.30/3.44), explicitly held back from building — "don't
-do this yet, but add it to do." Captured here in full so nothing is
-lost before it's picked up.
+A further pass on the tractor beam (3.30/3.44). Fable's evaluation
+(cost shape, the beam exclusion) and Brian's own answers are both
+folded in below — this is the buildable shape, nothing left open
+except what's explicitly flagged.
 
-- **Four tiers, not three.** `TRACTOR_TIERS` gains a tier 4, above
-  today's tier 3 (medium 20/large 10/huge 3). Placeholder progression,
-  Brian's own numbers not yet given: tier 4 medium 28/large 16/huge 6 —
-  a genuine placeholder, needs his ear same as every other tier number
-  here. A fourth `tractor_4` module joins `MODULES`, requiring
-  `tractor_3`, same cost/mass/alloy shape as the existing three
-  (placeholder price).
-- **A distinct recording per tier, not one hum for all four.** "Use
-  different sounds... use the last 3 numbered as the last 3 tiers."
-  Read as: of the 8 `tractor_beam2-9` recordings on disk, tier 1 keeps
-  `tractor_beam2` (already wired, SPEC 3.44/Round 34); tiers 2, 3, 4
-  take `tractor_beam7`, `tractor_beam8`, `tractor_beam9` respectively —
-  the LAST three by number, onto the LAST three tiers. **Flagged, not
-  confirmed**: this is Sonnet's own reading of "the last 3 numbered as
-  the last 3 tiers," not verified against Brian's own ear — `tractor_
-  beam3-6` stay unused and available if this pairing turns out wrong.
-  Manifest keys for `tractor_beam` (tier 1, existing) plus three new
-  ones (e.g. `tractor_beam_2`/`_3`/`_4`, naming TBD at build time) all
-  preload; `tractorStartHum()`/`tractorTierDown()` pick the tier's own
-  key instead of the one flat `tractor_beam` constant they use today.
-- **Reaction mass becomes a real lever on the tractor, not free.**
-  Today's tractor spends nothing to run — this adds a per-second RCS
-  draw while active (`spendRcs()`, the same helper thrust/braking/
-  repair already use), so pulling something in costs the same resource
-  flying there manually would. **Higher tiers cost less AND reach
-  farther** — both axes move together, tier 1 the most expensive and
-  shortest-ranged, tier 4 the cheapest and longest. Placeholder
-  numbers (needs Brian's own tuning pass against `runBudget()`, SPEC
-  3.32, before shipping for real): tier 1 = 1.5 rcs/s, range 500 (today's
-  number, unchanged); tier 2 = 1.1 rcs/s, range 650; tier 3 = 0.75
-  rcs/s, range 800; tier 4 = 0.5 rcs/s, range 950. **The design goal,
-  stated by Brian and worth checking against real numbers before
-  shipping**: a skilled tractor pull should cost LESS reaction mass
-  than flying the same distance manually with W would — the tractor
-  is meant to reward good targeting/range judgment, not be a strictly
-  worse (or merely equal) alternative to just thrusting over. Whatever
-  final per-second cost is chosen should be checked against `CFG.
-  rcsPerSpeedShed`/thrust's own RCS cost over the same distance, not
-  just asserted.
-- **Pulled items stop at 250, not 300.** Today `updateTractor` stops
-  the pull at `dist <= CFG.vacRange + 0.5` (300, the extractor's own
-  reach) — this decouples the two: a new `CFG.tractorStopDist` (250)
-  replaces `vacRange` in that one check, so the tractor itself pulls a
-  target 50 units closer than the extractor strictly needs, without
-  touching `vacRange` (300) for anything else (the extractor's own
-  reach, E, stays exactly as it is).
-- **Tractor and laser become mutually exclusive, but asymmetrically.**
-  "Tractor Beams and lasers should not fire at the same time... trying
-  to tractor while lasering is the usual lockout, and using a laser
-  while tractoring just cuts the tractor off." Two different behaviors,
-  not one shared refusal:
-  - **B while a laser burst is running** refuses, the exact shape
-    shields (G) already use for the same conflict (`index.html`'s own
-    `if (beam && beam.tool === 'laser')` check, `refusal_wait`, "Laser
-    burst in progress, N seconds. Tractor after."). This is the "usual
-    lockout" — nothing new, just extending an existing pattern to a
-    new key.
-  - **Space while the tractor is active does NOT refuse the laser** —
-    the burst fires normally, and firing it silently releases the
-    tractor (`stopTractor()`) as a side effect, the same way a manual
-    B-release already works. Needs its own care about the SPEC 2.15
-    rule (never two synchronous `say()` calls in one tick) if the
-    burst's own announcement and a "Tractor released" line would
-    otherwise collide — likely folded into one combined line, or the
-    release left silent (a "cuts it off" is already audible as the
-    hum stopping) rather than separately announced.
-- Test (once built): a fourth tier exists and moves a huge rock;
-  each of the four tiers plays its own distinct recording; RCS drains
-  while tractoring, at a rate that goes down as tier goes up while
-  range goes up; a target now stops at 250, not 300; B refuses with
-  the laser-busy message while a burst is running; firing a laser
-  while the tractor is engaged cuts it off without refusing the shot.
+- **Shift+B is gone. There is no "selected" tier any more, only
+  "owned."** Brian: "forget using Shift B to go down a tractor beam
+  level, it will be upgradeable but not switcheable... we can just make
+  them pull faster, reach longer, and use less reaction mass." This
+  removes the whole `tractorTier`/`tractorSwitch` machinery 3.44 built
+  — `tractorLevel()` (the owned ceiling, already exists) IS the active
+  tier now, used directly for pull rate, range, cost, and which
+  recording plays. `tractorTierDown()`, `stopTractorSwitch()`,
+  `tractorSwitchLeft()`, and the `SLOT_SWITCH[2]`/`laser_switch5` reuse
+  all go away entirely — there is nothing left to switch. Shift+B
+  itself needs no special handling: with the chord removed, it simply
+  falls through to plain B's own case (engage/release), which is
+  harmless.
+- **Four tiers, each with its own recording, its own pull rate on
+  every size (including core), its own range, and its own cost
+  multiplier.** `TRACTOR_TIERS` grows a `range` and `costMul` field per
+  tier, and core/small — flat at 20 across all tiers since 3.30 — now
+  scales too, since nothing about "not switchable, just better" argues
+  for holding one number back. Placeholders throughout, Brian's ear
+  decides the real numbers:
 
-**Fable's evaluation (2026-09-06).** The direction is right and four of
-the five pieces are straightforward. One piece is wrong as drafted, and
-it's the one Brian cared about most.
+  | Tier | Core | Medium | Large | Huge | Range | Cost×  | Recording |
+  |---|---|---|---|---|---|---|---|
+  | 1 | 20 | 4  | 0  | 0 | 500 | 1.0 | `tractor_beam` (`tractor_beam2.mp3`, unchanged) |
+  | 2 | 26 | 12 | 3  | 0 | 650 | 0.8 | `tractor_beam_2` (`tractor_beam7.mp3`) |
+  | 3 | 32 | 20 | 10 | 3 | 800 | 0.6 | `tractor_beam_3` (`tractor_beam8.mp3`) |
+  | 4 | 40 | 28 | 16 | 6 | 950 | 0.4 | `tractor_beam_4` (`tractor_beam9.mp3`) |
 
-- **The reaction-mass cost, as drafted, inverts Brian's own goal.** He
-  said "skilled usage should be better than just using thrusters to go
-  everywhere." Check the draft numbers against the ship's own: flying
-  200 units (from 500 to the extractor's 300) is roughly a 2-second W
-  burn (`rcsThrustPerS` 1 → 2 rcs) plus the stabilizers bleeding the
-  speed back off (`rcsPerSpeedShed` 0.02 × ~100 u/s → 2 rcs) — call it
-  **3–6 rcs**. The draft's tier 1 pulls a core at 20 u/s from 500 to 250,
-  12.5 seconds, at 1.5 rcs/s — **~19 rcs**, three to six times the cost
-  of flying. Tier 4 at 0.5 rcs/s is ~6 rcs — merely *equal* to flying.
-  So at these numbers the tractor is never the better choice at any
-  tier. The numbers are placeholders, but the SHAPE is the problem, not
-  the values: a flat per-second draw charges for TIME, and the tractor
-  is slow by design, so it always loses to a fast burn.
-- **A per-second cost also kills 3.44's own Shift+B.** Lower tiers pull
-  slower, so per-second they cost more in total AND take longer — a
-  double penalty with no upside, since a core pulls at 20/s on every
-  tier and "delicate" is pure flavor today (nothing breaks a core that's
-  pulled fast). Stepping down would be strictly dominated; the key
-  would exist to make the player worse off.
-- **Proposal: charge for work, not time.** Cost = rock mass × distance
-  closed × a tier efficiency. A small core pulled 250 units is cheap; a
-  huge rock pulled 250 units is expensive; a higher tier is a better
-  MOTOR (a lower multiplier), not a cheaper clock. This makes Brian's
-  goal true by construction — a light core costs less to pull in than
-  the whole ship costs to fly over, a huge rock costs more than flying
-  (which is right: you laser huge rocks where they sit) — and gives the
-  numbers a checkable target: **tier 1 pulling a core from 500 should
-  cost at most half of flying it**. Placeholders: mass by size
-  small/core 1, medium 3, large 8, huge 20; cost = mass × units ×
-  0.004 × tierMul, tierMul 1.0 / 0.8 / 0.6 / 0.4 — a core from 500 is
-  1.0 rcs at tier 1, 0.4 at tier 4; a medium is 3.0; a large at tier 3
-  is 4.8. Then the step-down has a real job again IF a reason to pull
-  gently exists — proposed: **a core pulled above a gentle rate can
-  crumble** (`corePullSafeRate` 20 — exactly tier 1's own core rate;
-  higher tiers' faster medium/large rates never touch cores, so this
-  only bites if a future tier speeds cores up), or simply drop the
-  crumble idea and accept Shift+B as a range/cost trim (a lower tier
-  reaches less far but there's no cost reason to pick it — weak). **Ask
-  Brian which** (Part C).
-- **Range per tier is fine**; the "lost target" threshold
-  (`tractorRange × 1.5` in `updateTractor`) has to scale with it or a
-  tier-4 pull started at 950 drops the target the moment it drifts.
-- **250 is fine, and here's the reason to write down**: the extractor
-  reaches 300, and a rock that stops exactly at 300 can drift back out
-  while the pilot switches B → E. 250 is a 50-unit margin, not a magic
-  number — `tractorStopDist`, separate from `vacRange`, as Sonnet
-  wrote.
-- **The laser exclusion is right and the asymmetry is right** — a
-  burst can't be stopped (SPEC 1.9), a tractor can, so the tractor is
-  the one that yields. One gap: E and V are beams too (`beam.tool`
-  'vac'/'dust'). E is the tractor's natural next move, and pressing it
-  while the pull is still finishing is exactly what a pilot will do.
-  Proposal: **any beam start cuts the tractor** (E included — "you've
-  got it, extract it"), not lasers only. Ask.
-- **The file mapping** (tier 1 keeps `tractor_beam2`, tiers 2/3/4 take
-  `tractor_beam7/8/9`) is the only sensible reading of "the last 3
-  numbered as the last 3 tiers." Confirm by ear; `3–6` stay in reserve.
+  Brian confirmed the file mapping ("they sound fine") — tier 1 keeps
+  `tractor_beam2` (already wired), tiers 2/3/4 take `tractor_beam7/8/9`,
+  the last three files onto the last three tiers; `tractor_beam3-6`
+  stay in reserve, unused. A fourth `tractor_4` module joins `MODULES`,
+  requiring `tractor_3` (placeholder 500cr/3 mass/5 alloy, continuing
+  the existing three's progression). `tractorFitted()`/`tractorLevel()`
+  are otherwise unchanged (test-fit still gives tier 1 free).
+- **Reaction mass charges for WORK, not time — Fable's proposed fix,
+  Brian confirmed ("ok").** A flat per-second draw punishes the
+  tractor for being slow by design and made every tier worse than just
+  flying (checked against `rcsThrustPerS`/`rcsPerSpeedShed`: ~3–6 rcs to
+  fly 200 units, versus ~19 rcs for a first-draft tier-1 pull over the
+  same ground) — charging for the actual distance closed, scaled by
+  the rock's own mass, fixes this by construction. Per real frame in
+  `updateTractor`: `cost = rockMass(t.size) × closeAmount × 0.004 ×
+  TRACTOR_TIERS[tier-1].costMul`, spent via `spendRcs()` (the same
+  helper thrust/braking/repair already use — same battery-mode
+  interaction, same 50/25% alerts). `rockMass`: core/small 1, medium 3,
+  large 8, huge 20 (mass is the ROCK's own property, independent of
+  which tier is pulling it — a higher tier is a better motor, not a
+  lighter load). Confirmed target: a tier-1 core pulled the full 250
+  units (500 → `tractorStopDist`) costs 1×250×0.004×1.0 = **1.0 rcs**,
+  well under half of flying the same distance — the design goal
+  Brian stated ("skilled usage should be better than just using
+  thrusters") holds at these numbers, not just asserted.
+- **Pulled items stop at 250, not 300 — confirmed.** A new
+  `CFG.tractorStopDist` (250) replaces `CFG.vacRange` in
+  `updateTractor`'s own stop check only; `vacRange` (300, the
+  extractor's reach) is untouched everywhere else. Reason it's not a
+  magic number: a rock stopped exactly at 300 can drift back out while
+  the pilot switches from B to E; 250 is a real margin.
+- **Range scales with tier — the "lost target" threshold must scale
+  with it too.** `updateTractor`'s own drop check
+  (`dist > CFG.tractorRange × 1.5`) becomes `dist >
+  TRACTOR_TIERS[tier-1].range × 1.5`, or a tier-4 pull started near its
+  own 950 range drops the target the moment it drifts.
+- **Tractor/laser exclusion, confirmed, and widened to every beam
+  tool — Brian: "ok."** Fable's gap-check: E and V are beams too
+  (`startBeam('vac')`/`startBeam('dust')`), and reaching for the
+  extractor right after a pull finishes is the single most likely next
+  move a pilot makes — restricting the cutoff to lasers only would
+  miss the common case. So: **any** `startBeam(tool)` call — laser,
+  vac, or dust — cuts the tractor the instant it actually commits to
+  firing (right where `wearLaser` already marks "committed," so a
+  refused attempt, e.g. shields up, never touches the tractor). The
+  other direction is unchanged: **B while a beam is running** refuses
+  with the existing `beam && beam.tool === 'laser'`-shaped check,
+  generalized to `beam` alone (any tool), `refusal_wait`, "Beam in
+  progress, N seconds. Tractor after." The cutoff itself stays silent
+  (per SPEC 2.15 — the hum stopping is already the audible tell; no
+  second `say()` competing with the firing announcement).
+- Test: all four tiers exist, each with its own recording, pull rate
+  (including a faster core/small), range, and cost; a tier-1 core pull
+  measures ~1 rcs over its full 250-unit stop distance, well under
+  half of flying it; a rock now stops at 250; a tier-4 pull started
+  near 950 doesn't drop the target early; B refuses while ANY beam
+  tool is running; firing the laser, the extractor, or the vacuum while
+  the tractor is active cuts it off silently without refusing the
+  beam; Shift+B is confirmed harmless (falls through to plain B).
 
 #### ideas13.txt — Brian's notes, reviewed (Fable, 2026-09-06)
 
@@ -5274,63 +5226,44 @@ A-section, and it bears directly on the encounters note below.
   two rivals' can't be held at all. Coherent, and it makes the map's
   geometry matter for control the way it already matters for travel.
   Written into A.13/3.23b as direction (Phase 4 — control is Q3's).
-  Open: what a waypoint produces, the decay rates for the three cases,
-  whether a waypoint's production also feeds the adjacent corners.
-- **Manhattan-distance jumps.** "If at −1,−1,−1 they could go 1,0,−1"
-  — a jump of three cells, paid in jump units per cell, not one fare
-  per edge as A.13 decided. **This contradicts the three-fixed-gates-
-  per-corner model** as written: a gate serves one edge, and there is
-  no gate pointing from home at (1,0,−1). Fable's reconciliation, to
-  confirm: the gate is WHICH WAY you leave, the galactic map is HOW
-  FAR — you pick any cell on the map within your jump budget, fly to
-  the gate on the first axis of the path (the right-hand gate for that
-  example), and the network routes the rest, one hydrogen unit per
-  cell of manhattan distance. The gate still teaches the geometry; the
-  fare scales with distance; waypoints become destinations (A.13's
-  "later" arrives — it has to, for the control idea above). What it
-  changes: 3.18's "the fare" is per cell not per edge (an edge = 2
-  units), and 3.22's gate arrival is at the nearest gate on the
-  destination side. **Brian's "5 warp corner to corner on a face"
-  doesn't match any pair** — adjacent corners are 2 apart, a face's
-  diagonal corners are 4, the cube's far corner is 6. Five is the number
-  of CELLS on the diagonal path counting both ends, so he may be
-  counting cells rather than jumps, or had another pair in mind. Ask.
-- **"A little chime to alert the user to start listening to the next
-  beacon"** — **built, SPEC 3.49** (`course_pass`/`course_miss`, in the
-  same tick as the next gate's "Gate N."), shipped Round 33, not yet
-  flown. No new item. One reading worth asking about: does he ALSO
-  want an approach cue — a tick or tone when the ship first enters a
-  gate's radius, before the crossing — which 3.49 does not do?
-- **"More stats in the ending evaluation: beacons hit and missed, total
-  distance from beacon center..."** — hit/missed and rank-vs-best are
-  **built, 3.49**. The accuracy metric is not: **3.53**, below.
-- **"The 2 station missions in the main menu for demo purposes."** Yes,
-  and cheap — **3.54**, below. It should go BEFORE the playtest
-  checkpoint, since it exists to let Brian reach those missions to
-  test them.
-- **"We need to start thinking of other encounters/instances."** What's
-  already planned: three anomaly kinds (A.13 — vortex storm, derelict
-  hulk, gas-pocket field, each "built when its sound exists"), the
-  drone swarm (3.13), and 3.42 (escort in formation, an escort
-  variant). A list to pick from — none specced, each fits machinery
-  that exists: **(a) distress call** — a stranded ship at a waypoint,
-  tow it home with the tractor (3.52 makes the tractor an economic
-  choice, and this is the tug's fiction from the other side);
-  **(b) salvage a derelict** — the hulk anomaly as an instance, cores
-  to extract from a dead ship instead of a rock; **(c) claim dispute**
-  — a rival miner working your field, to be scared off, not killed
-  (the game's first non-lethal encounter); **(d) convoy** — two or
-  three freighters, escort in formation at scale; **(e) the recorder**
-  — an unidentified beacon at a waypoint that plays a pre-Silence
-  recording and nothing else (from `backstory.md`; story delivery as a
-  pure listening encounter, the anomaly kind that "contains fragments
-  of the Silence"); **(f) the gate waking** — a one-time event at
-  Meridian's gate, also from `backstory.md`, the moment Q2 opens.
-  Which first is Brian's call — Fable's pick is (a): it uses the
-  tractor, the waypoint, and the tug voice, all of which exist or are
-  queued, and it is the first encounter that isn't a fight or a mine.
+  **Postponed (Brian, 2026-09-06): "postpone."** What a waypoint
+  produces, the decay rates for the three cases, and whether its
+  production feeds the adjacent corners all stay open — not urgent,
+  not blocking anything, revisit when Q3/control is actually being
+  built.
+- **Manhattan-distance jumps — confirmed (Brian, 2026-09-06): "you are
+  right."** Fable's reconciliation stands: the gate is WHICH WAY you
+  leave, the galactic map is HOW FAR — fly to the gate on the first
+  axis of the path, pick any cell on the map within your jump budget,
+  the network routes the rest, one hydrogen unit per cell of manhattan
+  distance (an edge = 2 units). Supersedes A.13's earlier "one fare per
+  edge." Waypoints become real destinations now, not "later." Changes
+  on build: 3.18's "the fare" is per cell, not per edge; 3.22's gate
+  arrival is at the nearest gate on the destination side. Brian's own
+  "5 warp corner to corner on a face" still doesn't match any pair
+  (adjacent 2, a face's diagonal 4, the far corner 6) — left unresolved
+  since it doesn't block anything; likely a cell count (5 on the
+  diagonal path, both ends included) rather than a jump count.
+- **"A little chime..." / approach cue — resolved (Brian, 2026-09-06):
+  "ok."** Read as: the existing `course_pass`/`course_miss` chime
+  (built, SPEC 3.49, shipped Round 33, not yet flown) is enough: no
+  separate approach cue on entering a gate's radius. No new item.
+- **"More stats..." — resolved (Brian, 2026-09-06): "ok, no new
+  leaderboard."** Hit/missed and rank-vs-best are built, 3.49; the
+  accuracy metric (average off centre) is **3.53**, below, read out
+  on the final line, never a second ranked board.
+- **"The 2 station missions in the main menu" — confirmed (Brian,
+  2026-09-06): "yes."** **3.54**, below, before the playtest checkpoint.
+- **"We need to start thinking of other encounters/instances" —
+  Brian, 2026-09-06: "do your recommendation, ignore the backstory
+  file for now."** Fable's pick, **the distress-call tow**, is
+  confirmed as the next encounter to spec — written up as **3.55**,
+  below. `backstory.md` ("The Silence") stays unreviewed and is
+  explicitly NOT being folded into A.15 right now — the two encounter
+  ideas that drew on it (the recorder, the gate waking) stay listed
+  as later options, not built toward.
 
-#### 3.53 The flight course, third pass: accuracy (ideas13.txt) — proposed
+#### 3.53 The flight course, third pass: accuracy (ideas13.txt) — DECIDED, ready to build
 
 - Brian: "total distance from beacon center when following path or
   some other metrics to evaluate it beyond just time."
@@ -5348,7 +5281,7 @@ A-section, and it bears directly on the encounters note below.
   a run with one wide miss reads the higher average; the log entry
   carries it.
 
-#### 3.54 Escort and Defend on the mission menu, as drills (ideas13.txt) — proposed, before the playtest
+#### 3.54 Escort and Defend on the mission menu, as drills (ideas13.txt) — DECIDED, ready to build, before the playtest
 
 - Brian: "I'd like the 2 missions we have made for the station to be
   in the main menu for demo purposes, otherwise no way to see that
@@ -5371,6 +5304,69 @@ A-section, and it bears directly on the encounters note below.
 - Test: both drills start from the menu with no sector, run to both
   outcomes, pay credits and no favor, retry on Enter, and the station-
   offered versions are untouched (still cooldown-gated, still favor).
+
+#### 3.55 Distress call: the tow, in reverse (ideas13.txt, Fable's pick, confirmed by Brian) — proposed, next after 3.52
+
+- Brian: "I can't remember whether we have another encounter/instance
+  mission already planned or not but we need to start thinking of other
+  encounters/instances to do." Asked for Fable's own recommendation
+  ("do your recommendation"); this is it.
+- **The pitch**: SPEC 2.16 already put the player on the OTHER end of
+  this exact fiction — lose your ship, wait for a tug, get towed home.
+  A distress-call mission flips it: the player IS the tug, for someone
+  else. It also gives the tractor beam (3.30/3.52) its first real
+  mission-level job, past mining — the whole reason to build 3.52 well.
+- **Deliberately reuses existing verbs rather than inventing a new "tow"
+  physics model.** The obvious literal version — the tractor holds the
+  disabled ship at a fixed distance BEHIND the player's own ship as it
+  flies the whole way home, a real leash — is a bigger mechanical change
+  than this one mission should force (3.52's tractor is built to close a
+  gap to a stop distance and hold there; it was never built to trail a
+  moving puller, and making it do so touches `updateTractor` in a way
+  every OTHER tractor use — mining — doesn't need). Built instead on the
+  same two verbs the game already teaches: **tractor** closes the
+  distance (unchanged from 3.52, no new code there), and **extract**
+  (E) is the "recover" action, reused by name — the exact same idea as
+  extracting an ore core, just on a stranded ship instead of a rock.
+  Once recovered, the derelict is abstracted out of the world (its
+  distress voice stops, no physical body to carry home) and the mission
+  becomes "get yourself back to the station," which needs nothing new
+  at all.
+- **Shape**: offered from a station's Missions list (`MISSIONS`, same
+  submenu as Escort/Defend/Contract), `poiName` stamped like the others.
+  Accepting spawns ONE `kind: 'friendly', disabled: true` derelict
+  (reusing the friendly-target machinery from 2.17 — no weapons, no hp
+  drain, excluded from Tab like every other friendly) at a spawn
+  distance matching escort/defend's own convention, silent engine, a
+  quiet distress-beacon voice in its place so it's locatable by ear like
+  any lock target (a synthesized ping if nothing recorded fits — check
+  `audio/` for anything named `distress`/`sos`/`beacon` first; ask
+  before synthesizing if genuinely unsure). Flying into tractor range
+  and engaging Z pulls it in exactly as 3.52 specs (no changes there);
+  once inside `tractorStopDist`, **E recovers it** — one line ("Derelict
+  secured. Bring it home to [station]."), `mission.recovered = true`,
+  the derelict despawns. From there it's an ordinary flight back:
+  `dockAtStation`/`callPoi` gain a `mission.recovered`-aware branch
+  (the same shape as 3.28's `contract` docking branch) that pays
+  credits and the standard `favorMission` bump and ends the mission.
+  Leaving without recovering it, or dying, fails it the same generic
+  way escort/defend already do (`clearMission()`'s existing
+  `favorFail` hook needs no new code — it already fires for any mission
+  with a `poiName` set).
+- **Open, flagged rather than decided**: whether this first version
+  carries any threat at all (a couple of scavenger raiders drawn to the
+  same wreck, reusing the escort/defend provoke-and-redirect pattern) or
+  ships pure-navigation-and-tractor for v1, with a threat layered on
+  later without touching the recovery logic. Fable's lean: ship it
+  without a threat first — proving the tractor's new economics (3.52)
+  matter is the point, and a fight would just be Combat training again
+  with extra steps.
+- Test (once built): accepting spawns the derelict at the right range
+  with its own locatable voice; tractoring it to `tractorStopDist` then
+  E recovers it and despawns it; docking afterward pays credits and
+  favor and ends the mission; leaving or dying beforehand fails it via
+  the existing generic path with no new code; the station-offered
+  Escort/Defend/Contract missions are unaffected.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
@@ -6489,35 +6485,24 @@ misses — written into 3.49.
 the tractor tier numbers; the four laser profiles and the 300+1 fit
 price; F2 switching with no delay; and the five stats-page questions.
 
-**DECIDE (open, from 3.52 and ideas13.txt, Fable 2026-09-06)**:
-1. **Tractor cost shape** — charge for work (mass × distance × tier
-   efficiency, Fable's proposal, which makes "better than thrusters"
-   true by construction) or per second as first drafted (which makes
-   the tractor never the better choice)? And the target: tier 1
-   pulling a core from 500 costs at most half of flying it — agree?
-2. **Why ever step down a tier** (Shift+B, 3.44)? A gentle-pull rule
-   (a core pulled too fast can crumble — `corePullSafeRate`), or drop
-   the idea and let Shift+B be a range/cost trim with no real reason?
-3. **Does the extractor cut the tractor too?** Fable: any beam start
-   (E, V, Space) releases it — "you've got it, extract it."
-4. **The four recordings** — tier 1 keeps `tractor_beam2`, tiers 2/3/4
-   take `7/8/9`: right by ear?
-5. **Waypoint control** — what a held waypoint produces; the three
-   decay rates (both corners yours / one / neither); does it feed the
-   adjacent corners?
-6. **Manhattan jumps vs three gates per corner** — Fable's
-   reconciliation (gate = direction, map = distance, one unit per
-   cell): confirm, or keep one fare per edge? And "5 warp corner to
-   corner": adjacent is 2, a face's diagonal 4, the far corner 6 —
-   were you counting cells (5 on the diagonal path) or a different
-   pair?
-7. **The course**: the pass chime exists (3.49) — do you also want an
-   approach cue on entering a gate's radius? Is "average off centre"
-   enough for 3.53, or a second board?
-8. **Escort/Defend drills (3.54)**: credits kept, favor and cooldown
-   skipped, Enter replays — agree?
-9. **Encounters**: which first — Fable's pick is the distress-call tow.
-   And `backstory.md` ("The Silence"): write it up as A.15?
+**ANSWERED (Brian, 2026-09-06, on the nine questions above)**: 1. work-
+based cost, confirmed — 3.52 now specs it that way, with the "under
+half of flying it" target hit at ~1.0 rcs for a tier-1 core over its
+full stop distance. 2. no gentle-pull rule, no step-down at all —
+Shift+B is retired outright ("it will be upgradeable but not
+switcheable"), the tier ladder is pure ownership; 3.52 rewritten
+around this. 3. confirmed — generalized to every beam tool (laser, E,
+V), not lasers alone. 4. confirmed ("they sound fine") — tier 1 keeps
+`tractor_beam2`, tiers 2/3/4 take `7/8/9`. 5. **postponed** — folded
+into A.13's own waypoint bullet above; no numbers yet. 6. confirmed —
+manhattan jumps, gate = direction / map = distance, one hydrogen unit
+per cell; folded into A.13 above, not yet built (lands with quadrant
+2). 7. no separate approach cue, and "average off centre" is enough —
+no second board; 3.53 built to that shape. 8. confirmed as specced —
+3.54 built to that shape. 9. **the distress-call tow**, Fable's own
+pick, confirmed ("do your recommendation") — see 3.55 below;
+`backstory.md` is noted but not folded into A.15 yet ("ignore the
+backstory file for now").
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts
