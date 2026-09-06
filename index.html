@@ -1075,7 +1075,7 @@ function makeRoster() {
         { name: 'Scout',     hp: 60,  pos: v3(-200, 120, 150),voice: { type: 'triangle', freq: 330, vib: 5, vibDepth: 12 },
           shipAsset: { name: 'ship_interceptor_3', rate: 1.35 } },
         { name: 'Drone',     hp: 40,  pos: v3(100, -150, -400),voice:{ type: 'beat',     freq: 165 },
-          shipAsset: { name: 'ship_corvette_1', rate: 1.2 } },
+          shipAsset: { name: 'ship_drone_1', rate: 1 } },
         { name: 'Cruiser',   hp: 150, pos: v3(350, 60, 0),    voice: { type: 'detuned',  freq: 82,  trem: 2 },
           shipAsset: { name: 'ship_cruiser_3', rate: 0.95 },
           orbit: { radius: 350, y: 60, degPerSec: 8, angle: 0 },
@@ -1257,7 +1257,7 @@ function makeMissionRoster(m) {
 // tell them apart by name, only by bearing/distance.
 var MISSION_WAVE_STATS = {
     escort: { name: 'Drone', hp: 40, voice: { type: 'beat', freq: 165 },
-              shipAsset: { name: 'ship_corvette_1', rate: 1.2 } },
+              shipAsset: { name: 'ship_drone_1', rate: 1 } },
     defend: { name: 'Raider', hp: 80, voice: { type: 'square', freq: 110, trem: 8 },
               shipAsset: { name: 'ship_interceptor_1', rate: 1.15 } }
 };
@@ -1431,10 +1431,16 @@ var ZONES = [
 // at a stage event, `ore` is what the final core holds. Stage thresholds are
 // HIDDEN: hp is rolled per rock per stage inside a range the player never
 // hears, so nobody can count ticks to the next event.
+// coreAssets (this round): two recordings per type, swapped in when the
+// rock collapses to its mineable core (see swapRockCoreVoice) instead of
+// just pitching up the same pre-core loop.
 var ROCK_TYPES = [
-    { name: 'Ice',   asset: 'asteroid1', hardness: 1.3, splitChance: 0.75, ore: 3000 },
-    { name: 'Iron',  asset: 'asteroid2', hardness: 0.7, splitChance: 0.25, ore: 6750 },
-    { name: 'Stone', asset: 'asteroid3', hardness: 1.0, splitChance: 0.5,  ore: 4500 }
+    { name: 'Ice',   asset: 'asteroid1', hardness: 1.3, splitChance: 0.75, ore: 3000,
+      coreAssets: ['asteroid_core1', 'asteroid_core2'] },
+    { name: 'Iron',  asset: 'asteroid2', hardness: 0.7, splitChance: 0.25, ore: 6750,
+      coreAssets: ['asteroid_core3_iron', 'asteroid_core4_iron'] },
+    { name: 'Stone', asset: 'asteroid3', hardness: 1.0, splitChance: 0.5,  ore: 4500,
+      coreAssets: ['asteroid_core5', 'asteroid_core6'] }
 ];
 // Size classes, biggest first. `rate` pitches the rock's loop (big = low),
 // `push` scales how far laser shoves and blasts throw it (small = flighty).
@@ -2262,6 +2268,34 @@ function buildRockVoice(t) {
     src.connect(gain);
     src.start(0, 0.15 + Math.random() * (buf.duration - 0.5));
     t.nodes = { gain: gain, lp: lp, panner: panner, oscs: [src], src: src };
+}
+
+// Called when a rock collapses into its mineable core (this round): swaps
+// the voice from the pre-core type loop to one of two per-type core
+// recordings (ROCK_TYPES[].coreAssets), crossfaded in through a second
+// gain feeding the SAME lowpass/panner the rock already has — a real
+// voice change, not just the old pitch-ramp-on-the-same-loop. Returns
+// false (no swap) if the asset isn't decoded yet, kicking off its load
+// for next time; the caller's own pitch-ramp is the fallback for this rock.
+function swapRockCoreVoice(t) {
+    var A = SIM.audio;
+    if (!A.ctx || !t.nodes) return false;
+    var pool = t.type.coreAssets;
+    var key = pool[Math.floor(Math.random() * pool.length)];
+    if (!A.assetBufs[key]) { A.load(key); return false; }
+    var buf = A.assetBufs[key];
+    var newGain = A.ctx.createGain(); newGain.gain.value = 0.0001;
+    var newSrc = A.ctx.createBufferSource();
+    newSrc.buffer = buf; newSrc.loop = true;
+    newSrc.loopStart = 0.15; newSrc.loopEnd = buf.duration - 0.15;
+    newSrc.connect(newGain); newGain.connect(t.nodes.lp);
+    newSrc.start(0, 0.15 + Math.random() * (buf.duration - 0.5));
+    A.ramp(newGain.gain, CFG.targetGain * 1.15, 0.6);
+    var oldGain = t.nodes.gain, oldSrc = t.nodes.src;
+    A.ramp(oldGain.gain, 0.0001, 0.6);
+    setTimeout(function () { try { oldSrc.stop(); oldGain.disconnect(); } catch (e) {} }, 700);
+    t.nodes.src = newSrc; t.nodes.gain = newGain; t.nodes.oscs = [newSrc];
+    return true;
 }
 
 function rockRate(t) { return t.resource ? 1.6 : ROCK_SIZES[t.size].rate; }
@@ -4562,20 +4596,31 @@ function tractorPullRateFor(t) {
     if (t.size === ROCK_SIZES.length - 3) return tier.large;
     return tier.huge;
 }
+// This round: the hum is Brian's own recording (tractor_beam) looping,
+// replacing the old flat 90Hz sine — the synthesized tone is now only a
+// fallback for the rare case the asset hasn't decoded yet this session.
 function tractorStartHum() {
     if (!SIM.audio.ctx || tractor.nodes) return;
-    var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0001;
-    var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 90;
-    o.connect(g); g.connect(SIM.audio.uiBus);
-    o.start();
-    tractor.nodes = { g: g, o: o };
-    SIM.audio.ramp(g.gain, 0.12, 0.2);
+    var A = SIM.audio;
+    if (!A.assetBufs.tractor_beam) A.load('tractor_beam');
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var src, isAsset = !!A.assetBufs.tractor_beam;
+    if (isAsset) {
+        src = A.ctx.createBufferSource();
+        src.buffer = A.assetBufs.tractor_beam; src.loop = true;
+    } else {
+        src = A.ctx.createOscillator(); src.type = 'sine'; src.frequency.value = 90;
+    }
+    src.connect(g); g.connect(A.uiBus);
+    src.start();
+    tractor.nodes = { g: g, src: src, isAsset: isAsset };
+    A.ramp(g.gain, 0.12, 0.2);
 }
 function tractorStopHum() {
     if (!tractor.nodes) return;
     var n = tractor.nodes; tractor.nodes = null;
     SIM.audio.ramp(n.g.gain, 0.0001, 0.2);
-    setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+    setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, 300);
 }
 function stopTractor(reason) {
     if (!tractor.active) return;
@@ -4671,9 +4716,13 @@ function updateTractor(dt) {
     t.pos = add(t.pos, scale(dir, closeAmount));
     if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
     if (tractor.nodes) {
-        // Pitch rises from 90 Hz at tractorRange to ~260 Hz at vacRange.
+        // Pitch/rate rises as the target closes — the recording's
+        // playbackRate climbs to ~2.9x at vacRange (same ratio the old
+        // synthesized 90->260Hz tone used); the oscillator fallback still
+        // ramps its own frequency the original way.
         var frac = clamp(1 - (dist - CFG.vacRange) / (CFG.tractorRange - CFG.vacRange), 0, 1);
-        SIM.audio.ramp(tractor.nodes.o.frequency, 90 + frac * 170, 0.2);
+        if (tractor.nodes.isAsset) SIM.audio.ramp(tractor.nodes.src.playbackRate, 1 + frac * 1.89, 0.2);
+        else SIM.audio.ramp(tractor.nodes.src.frequency, 90 + frac * 170, 0.2);
     }
 }
 
@@ -4693,7 +4742,10 @@ function randDir() {
 // 'small' — collapses into a glowing resource core for the extractor.
 function rockEvent(t) {
     stopBeam(true);
-    SIM.cues.play('explosion_rock', { pos: t.pos });
+    // This round: a 'large' rock (ROCK_SIZES index 1) picks its blast from
+    // the dedicated asteroid_large_crumble pool instead of the generic
+    // asteroid_explosion set — a bigger sound for a bigger rock.
+    SIM.cues.play('explosion_rock', { pos: t.pos, size: ROCK_SIZES[t.size].label });
     // The blast sheds a mist of particulates that hangs where it happened —
     // bigger rocks throw bigger mists. (Computed before the size changes.)
     var mist = Math.round((CFG.debrisEventBase + Math.random() * 200) *
@@ -4704,7 +4756,11 @@ function rockEvent(t) {
         t.resource = true;
         t.oreLeft = t.type.ore + Math.floor(Math.random() * 600) - 300;
         pushRock(t, scale(randDir(), 6));
-        if (t.nodes && t.nodes.src) SIM.audio.ramp(t.nodes.src.playbackRate, 1.6, 0.6);
+        // This round: swap to a real per-type core recording; fall back to
+        // the original pitch-ramp-on-the-same-loop if it isn't decoded yet.
+        if (t.nodes && t.nodes.src && !swapRockCoreVoice(t)) {
+            SIM.audio.ramp(t.nodes.src.playbackRate, 1.6, 0.6);
+        }
         say(t.name + ' collapses into a glowing core. Get close and press E to extract.');
         return;
     }

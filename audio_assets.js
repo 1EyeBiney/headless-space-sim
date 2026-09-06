@@ -27,6 +27,25 @@ window.AUDIO_MANIFEST = {
   asteroid_explosion1: 'audio/mining/asteroid_explosion1.mp3',
   asteroid_explosion2: 'audio/mining/asteroid_explosion2.mp3',
   asteroid_explosion3: 'audio/mining/asteroid_explosion3.mp3',
+  // Core voices (this round): a rock collapsed to its mineable core swaps
+  // to one of two per-type recordings instead of just pitching up its own
+  // loop — asteroid_core1/2 = Ice, 3/4 (named _iron by Brian) = Iron,
+  // 5/6 = Stone, matching ROCK_TYPES' own order.
+  asteroid_core1: 'audio/mining/asteroid_core1.mp3',
+  asteroid_core2: 'audio/mining/asteroid_core2.mp3',
+  asteroid_core3_iron: 'audio/mining/asteroid_core3_iron.mp3',
+  asteroid_core4_iron: 'audio/mining/asteroid_core4_iron.mp3',
+  asteroid_core5: 'audio/mining/asteroid_core5.mp3',
+  asteroid_core6: 'audio/mining/asteroid_core6.mp3',
+  // A large rock's own stage-blast pool (this round): explosion_rock picks
+  // from here instead of the generic asteroid_explosion1-3 set specifically
+  // when the rock breaking is 'large' — a bigger sound for a bigger rock.
+  asteroid_large_crumble1: 'audio/mining/asteroid_large_crumble1.mp3',
+  asteroid_large_crumble2: 'audio/mining/asteroid_large_crumble2.mp3',
+  asteroid_large_crumble3: 'audio/mining/asteroid_large_crumble3.mp3',
+  asteroid_large_crumble4: 'audio/mining/asteroid_large_crumble4.mp3',
+  asteroid_large_crumble5: 'audio/mining/asteroid_large_crumble5.mp3',
+  asteroid_large_crumble6: 'audio/mining/asteroid_large_crumble6.mp3',
 
   // Weapons.
   missile_fire: 'audio/weapons/missiles/missile-firing-fl-106655.mp3',
@@ -43,6 +62,10 @@ window.AUDIO_MANIFEST = {
   ship_interceptor_1: 'audio/ships/spaceship_interceptor_1r.mp3',
   ship_interceptor_3: 'audio/ships/spaceship_interceptor_3r.mp3',
   ship_corvette_1: 'audio/ships/spaceship_corvette_1r.mp3',
+  // Drone gets its own dedicated engine (this round) — was borrowing
+  // ship_corvette_1 (SHIP_CLASS maps Drone to 'corvette', but roster
+  // entries assign shipAsset directly, not derived from that map).
+  ship_drone_1: 'audio/ships/spaceship_drone_1r.mp3',
 
   // Lasers (SPEC 2.12): both families, all 16 versions.
   laser_mining1: 'audio/weapons/lasers/Mining_laser 1.mp3',
@@ -104,6 +127,12 @@ window.AUDIO_MANIFEST = {
   laser_switch4: 'audio/weapons/lasers/laser_switch4.mp3',
   laser_switch5: 'audio/weapons/lasers/laser_switch5.mp3',
   laser_switch6: 'audio/weapons/lasers/laser_switch6.mp3',
+
+  // Tractor beam hum (this round): replaces the synthesized 90Hz tone in
+  // tractorStartHum() with a real recording, same for every tier. Brian's
+  // set ran tractor_beam2-9 (no 1, no tier labels) — this picks the first
+  // on offer; the other 7 stay unwired, auditionable in soundlab.html.
+  tractor_beam: 'audio/weapons/tractor_beams/tractor_beam2.mp3',
 
   // Warp (SPEC 1.17/2.10). Engine 1's three phases only; engines 2-6 are
   // on disk under audio/ships/warp/ but not in the manifest yet — no

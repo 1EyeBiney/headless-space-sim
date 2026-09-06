@@ -95,9 +95,18 @@ expands.
   since two subfolders were untracked and `audio/missiles/` had pending
   deletions from Brian's reorganization). ~25 MB on disk:
   `audio/mining/` = 3 asteroid loops + 3 asteroid explosions, WAV masters
-  with served MP3 siblings (all 6 in the manifest); `audio/ships/` = 18
+  with served MP3 siblings (all 6 in the manifest), plus (Round 34,
+  Brian's own new batch) 6 `asteroid_core1-6` (2 per rock type — 1/2
+  Ice, 3/4 Iron marked `_iron`, 5/6 Stone, matching ROCK_TYPES' order)
+  swapped in when a rock collapses to its core (`swapRockCoreVoice`),
+  and 6 `asteroid_large_crumble1-6` for a 'large' rock's own stage
+  blast (`explosion_rock`'s `opts.size === 'large'` branch) — all 12
+  in the manifest; `audio/ships/` = 18
   ship loops (interceptor ×6, corvette ×7, cruiser ×5; only 5 in the
-  manifest so far — one per roster class) plus `repair_crew.wav` (Round
+  manifest so far — one per roster class) plus 6 more `spaceship_drone_
+  1r-6r` (Round 34, Brian's own batch — Drone previously borrowed
+  `ship_corvette_1`; now `ship_drone_1` is its own dedicated manifest
+  key, wired into both roster sites) plus `repair_crew.wav` (Round
   20, SPEC 3.27's damage-control voice, WAV master with a served MP3
   sibling, manifest key `repair_crew`) plus `audio/ships/warp/` = 18
   warp recordings for SPEC 1.17 (`warp_start1-6`, `warp_finish1-6` at
@@ -108,7 +117,12 @@ expands.
   = 48 lasers (Mining ×8, Rapid-pulse ×8, all 48 in the manifest — the
   four newest families, Rugged mining/Fast fighter/Rotary cannon/Burst
   plasma ×8 each, wired in as of SPEC 3.46, real lengths 7.0s/5.0s/7.0s/
-  5.0s per ffprobe, refitting each family's tick count/spacing to match)
+  5.0s per ffprobe, refitting each family's tick count/spacing to match),
+  `audio/weapons/tractor_beams/` = 8 hums (Round 34, Brian's own batch,
+  numbered 2-9, no 1) — `tractor_beam2` is the one wired in (manifest
+  key `tractor_beam`, replacing `tractorStartHum`'s old synthesized
+  90Hz tone for every tier), the other 7 stay on disk, auditionable in
+  `soundlab.html`
   plus 6 `laser_switch1-6` switch clips (2.02–2.67 s, WAV
   masters with served MP3 siblings, all 6 in the manifest — the per-slot
   switch delay is timed off their original lengths); `audio/demo/`
@@ -128,7 +142,14 @@ expands.
   `space_station1–10.mp3` (same day, for 3.31's recorded station
   beacons and L.9's gate — number 6 is the gate by Brian's pick; all
   ten in the manifest as of Round 21 and DO preload, real station voices
-  now, not lab-only); `audio/Explosions/`
+  now, not lab-only) plus (Round 34, Brian's own batch, deliberately left
+  UNWIRED) 7 pulsar1-8 (no 4) and 7 space_loop1-8 (no 2), staged ahead
+  of a nebula/pulsar environmental feature that doesn't exist yet —
+  audio/stations/"sound description for nebulae.txt" is Brian's own
+  ElevenLabs prompt set (10 nebula-type descriptions, #1 "normal," #3/5/
+  8/10 as danger variants) for whenever that gets designed; his own
+  call (asked directly) was to leave these alone until then;
+  `audio/Explosions/`
   = 8 new unintegrated hull-breach/explosion candidates, no manifest key
   yet. `soundlab.html` is the up-to-date "what's connected" checker —
   trust it over this paragraph for the current count. `audio/z.old/`
@@ -2920,3 +2941,50 @@ cycle confirmed nothing broke. Zero console errors. This closes
 ideas12.txt entirely — the next step per the standing build order is
 Brian actually flying/hearing everything shipped since SPEC 3.24,
 before 3.42 or quadrant 2 begin.
+
+**Round 34 (Sonnet): Brian dropped a new batch of recordings and asked
+for them reviewed and wired in "where appropriate," asking to be asked
+if anything wasn't obvious.** Five groups arrived; three wired in
+cleanly, two didn't have an existing hook to wire into and were
+confirmed, not guessed at, via two direct questions. **Wired**: (1)
+mining core voices — a rock collapsing to its mineable core now swaps
+to one of two real per-type recordings (`swapRockCoreVoice`, a genuine
+crossfaded voice change through a second gain feeding the rock's
+existing lowpass/panner) instead of just pitching the same pre-core
+loop up, which is all it ever did before; falls back to the old pitch-
+ramp if the asset isn't decoded yet. (2) a 'large' rock's own stage-
+blast pool — `explosion_rock` (audio_cues.js) now branches on a new
+`opts.size` param, picking from 6 dedicated `asteroid_large_crumble`
+recordings instead of the generic 3-explosion pool specifically when
+the rock breaking is large; every other size unchanged. (3) Drone's
+own dedicated engine (`ship_drone_1`) replacing the borrowed
+`ship_corvette_1` at both roster sites (`makeRoster`,
+`MISSION_WAVE_STATS`). **Asked, then wired per the answer**: the 8
+`tractor_beam` recordings (numbered 2-9, no tier labels) don't map
+onto the 3 tractor tiers SPEC 3.44 just added — asked whether to pick
+one for all tiers, map specific files to specific tiers, or leave them
+unwired; Brian picked "one file for all tiers," so `tractorStartHum()`
+now plays a real recording (`tractor_beam2`) instead of a synthesized
+90Hz tone, with the existing proximity effect ported from oscillator
+frequency to `playbackRate` (same ~2.9x ratio, 1x at `tractorRange` to
+~2.89x at `vacRange`) — the synthesized tone is now only a same-session
+fallback if the asset somehow isn't decoded yet. **Asked, left alone**:
+the pulsar (7 files, no 4) and space_loop (7 files, no 2) recordings,
+plus a nebula-description note (10 ElevenLabs prompts, Brian's own) —
+none of it matches any existing feature (no "nebula" or "pulsar" POI
+exists), so rather than invent a mechanic unilaterally, asked directly;
+Brian confirmed it's a future feature, left unwired on purpose. All
+three wired items machine-tested at a local server: a forced small-rock
+collapse confirmed `resource: true` with zero console errors (direct
+per-node-graph inspection isn't exposed via `__sim.state()`, so
+correctness rests on the crossfade code path executing without
+exception plus careful review — a real gameplay collapse is the
+strongest test available short of adding a debug hook); the
+`explosion_rock` cue confirmed accepting and branching on `size: 'large'`
+/`'medium'`/no-size, all three call shapes error-free; a Drone selected
+in a live Combat drill roster built its voice with zero console errors;
+the tractor engaged, pulled, released, and re-engaged cleanly with the
+real recording. Every new manifest key preloads and decodes (confirmed
+via `AUDIO_PRELOAD`/`assetBufs` directly). Nothing in this round was
+heard by Brian yet, and none of it touches SPEC.md's own numbered build
+order — this was pure asset-integration housekeeping alongside it.

@@ -1,0 +1,36 @@
+Here are 10 ElevenLabs sound descriptions for different imagined **nebula environments**. I’d treat these as atmospheric 5-second sounds with no obvious beginning or ending so they can loop.
+
+1. **Deep gaseous nebula**
+   `Inside a vast space nebula, deep soft low-frequency rumble, slow swirling gaseous movement, distant resonant vibrations, subtle airy plasma hiss, mysterious and enormous, continuous ambient sound, no music, no voices`
+
+2. **Ionized plasma cloud**
+   `Spaceship moving through an ionized nebula, gentle electrical crackling, shimmering plasma energy, soft static pulses, low atmospheric drone, faint charged-particle hiss, eerie but beautiful deep-space ambience`
+
+3. **Dense storm nebula**
+   `Dense turbulent nebula surrounding a spacecraft, heavy swirling gaseous roar, deep rolling energy rumbles, distant electrical discharges, irregular plasma crackles, powerful space-storm atmosphere, continuous and threatening`
+
+[yes]
+4. **Quiet blue nebula**
+   `Calm luminous nebula in deep space, soft flowing gaseous ambience, faint shimmering tones, gentle low-frequency resonance, subtle airy movement, peaceful mysterious cosmic atmosphere, smooth sustained sound`
+
+5. **Radioactive nebula**
+   `Dangerous radioactive nebula, ominous low drone, intermittent electronic-like particle clicks, subtle static, unstable energy crackles, deep vibrating cosmic hum, unsettling hazardous space environment`
+
+6. **Crystal-like nebula**
+   `Exotic nebula filled with shimmering mineral dust and energized particles, delicate glassy resonances, soft harmonic ringing, faint plasma hiss, deep atmospheric hum, beautiful strange cosmic ambience`
+
+7. **Dark nebula**
+   `Extremely dark dense nebula, muffled deep-space rumble, slow heavy gaseous movement, distant low-frequency pulses, almost no high frequencies, oppressive mysterious atmosphere, vast and quiet`
+
+8. **Magnetic nebula**
+   `Powerful magnetic nebula surrounding a spaceship, deep oscillating electromagnetic hum, slowly warping tones, subtle electrical buzzing, pulsing resonance, strange shifting energy field, continuous science-fiction ambience`
+
+9. **Stellar nursery nebula**
+   `Massive stellar nursery nebula, deep warm cosmic drone, slow flowing gas currents, distant energetic pulses, faint sparkling particle sounds, occasional low stellar rumble, immense active region of forming stars`
+
+10. **Violent charged-particle cloud**
+    `Spaceship passing through a highly charged particle nebula, rushing gaseous energy, rapid electrical crackles, bright plasma fizz, deep turbulent rumble, intermittent energy surges striking the ship's shields, intense continuous space ambience`
+
+For a game, I’d make **#1 the normal nebula sound**, then use **#3, #5, #8, and #10** for special nebula types so the player can identify environmental danger by sound alone.
+
+I can also give you 10 matching descriptions for what it sounds like when the ship is physically interacting with the nebula—shield interference, sensor distortion, hull static, electrical arcing, and similar effects.

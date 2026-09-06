@@ -215,10 +215,16 @@ SIM.cues = (function () {
                 { id: 'explosion_rock', name: 'Asteroid Stage Blast', source: 'v11-extraction',
                   // One of the three recorded rock explosions, positioned
                   // at the rock; falls back to the synthesized explosion_kill
-                  // cue if the recordings haven't decoded yet.
+                  // cue if the recordings haven't decoded yet. This round: a
+                  // 'large' rock (opts.size) picks from its own dedicated
+                  // asteroid_large_crumble pool instead — a bigger sound for
+                  // a bigger rock, every other size unchanged.
                   fn: function (opts) {
                       var A = SIM.audio, pos = opts.pos;
-                      var names = ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
+                      var names = opts.size === 'large'
+                          ? ['asteroid_large_crumble1', 'asteroid_large_crumble2', 'asteroid_large_crumble3',
+                             'asteroid_large_crumble4', 'asteroid_large_crumble5', 'asteroid_large_crumble6']
+                          : ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
                       var buf = A.assetBufs[names[Math.floor(Math.random() * names.length)]];
                       if (!A.ctx || !buf) { SIM.cues.play('explosion_kill', opts); return; }
                       var out = A.worldOut(pos, Math.ceil(buf.duration * 1000));
