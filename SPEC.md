@@ -3121,6 +3121,83 @@ ideas12.txt item — the next step per the standing build order is
 Brian actually flying/hearing everything shipped since 3.24, a human
 playtesting checkpoint, before 3.42 or quadrant 2.
 
+#### L.1c Galactic map: the cube (A.13, ideas9/ideas11) — DONE
+
+Brian, mid-playtest-checkpoint: "I'd like the demo of our 3D galactic
+map to be reflective of how we envision our game being with the 3x3x3
+grid, starting at the center of the closest face." A.13's cube design
+had been fully talked through and decided by this point (see A.13
+above — corners are quadrants, edge midpoints are waypoints, face
+centres are views except one, coordinates spoken vertical-lateral-
+depth) but never actually built; L.1b was still the free-roaming
+"grid cursor" prototype from Round 25, one press moving 100 raw world
+units in any direction with no cube shape to it at all. This item
+turns L.1b INTO the decided design rather than sitting a new demo
+beside it — the whole reason L.1b existed was to prototype the
+galactic map's cursor, and the map's shape is no longer undecided.
+
+- **DONE (Round 36, Sonnet).** `gridExplorer.{x,y,z}` are now cube
+  coordinates in `{-1, 0, 1}`, not raw world units — `GRID_SPACING`
+  (400) is only how far apart cells sit for the HRTF panner, not a
+  step size choice any more. `gridCellKind(x,y,z)` sorts a cell by how
+  many axes are nonzero — 3 = corner (a quadrant), 2 = edge midpoint
+  (a waypoint), 1 = face centre (a view) — the same geometric test the
+  real map will use. Arrows step vertical/lateral, W/S step depth,
+  each press changing exactly one axis by one cell and clamping at the
+  cube's own boundary; Shift has no role any more (A.13's own decision
+  once the cube shrank from the earlier 9×9×9 lattice — there is no
+  finer step left to take). Two refusals, both new: landing back on
+  the same cell (the boundary) says "No route that way."; landing on
+  `(0,0,0)` — reachable only by moving a face centre's own single
+  nonzero axis toward zero — says "No route through the centre.",
+  since the cube's own centre (reserved for A.8's base) is never a
+  cursor position at all. `gridDescribe()` speaks vertical, then
+  lateral, then depth, a zero never spoken — "1 below, 1 left, 1
+  behind" for home, matching Brian's own worked example exactly.
+  `CUBE_NAMES` gives the 8 corners placeholder identities: home
+  (`-1,-1,-1`), Quadrant 2 "the economy" at home's lateral neighbour
+  and Quadrant 3 "control" at its vertical neighbour (Fable's proposed
+  assignment — still open in Part C, not re-decided here, just used
+  as the best current answer so the demo has real names to speak), and
+  four unlabelled corners for the rest. Enter is context-sensitive: a
+  corner plays `ready_chime` and speaks "Jump: [name]."; a waypoint
+  gets a lower blip and "A waypoint. No destination here, just the
+  road."; an ordinary face centre refuses, "Not a destination."; the
+  one exception — the near face's centre, `(0,0,-1)`, the demo's own
+  start position — always succeeds, "Harbour reached — reachable only
+  from Quadrant 2, the one place a rival can never follow." A corner
+  gets a real voice (the same `ship_corvette_1` loop L.1b always used,
+  full volume); a waypoint gets the same loop heavily lowpassed and
+  quiet ("just the road, not a place"); a face centre gets no voice at
+  all, matching "a view, not a destination." **One deliberate
+  simplification, flagged**: the harbour's special reachability rule
+  is normally gated on the pilot actually being in Quadrant 2, but this
+  is a standalone lab demo with no real "current quadrant" behind it,
+  so Enter there always succeeds rather than checking anything — the
+  real map will gate it for real. **The start position is exactly
+  what Brian asked for**: `(0, 0, -1)`, the centre of the face facing
+  the pilot by default (A.13's own "the default view is over the
+  pilot's shoulder — the near face is the 'behind' face"), from which
+  every corner of that face is exactly two presses away, matching
+  Fable's own read of it as "a good start position." Section renamed
+  in the lab (`3D grid cursor` → `Galactic map: the cube`), the TOC
+  link and `aria-label` updated to match, `__lab.state().grid` gained
+  `kind`/`label`. Machine-tested at a local server: the demo starts at
+  `(0,0,-1)`, spoken "1 behind"; Brian's own worked example replayed
+  exactly — Right then Down reaches `(1,-1,-1)`, "1 below, 1 right, 1
+  behind", named Quadrant 2, while Left then Down reaches home instead,
+  both matching A.13's own text verbatim; the centre-crossing refusal
+  confirmed by pressing "ahead" from the start position (would land on
+  `(0,0,0)`); the boundary refusal confirmed at `(1,0,0)`; Enter
+  confirmed on a corner (jump + chime), a waypoint (road message), an
+  ordinary face centre (refusal), and the harbour (success); Escape and
+  the Stop button both confirmed tearing down to zero running nodes;
+  a full restart cycle confirmed nothing was left broken. Zero console
+  errors throughout. Every quadrant name beyond home/Q2/Q3 is a bare
+  placeholder, and Q2/Q3's own assignment is still Fable's proposal,
+  not Brian's confirmed answer — flagged here, not silently decided.
+  Not yet heard by Brian.
+
 #### L.10 "Be the Way" voices (ideas11, `audio/demo/"be the way vortex demo1.txt"`) — DONE
 
 Brian dropped a new txt alongside four new recordings in `audio/demo/`

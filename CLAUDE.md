@@ -61,7 +61,11 @@ expands.
   (ideas11) added L.10, "Be the Way"**: four of Brian's new voice/song
   clips, each on its own independent (not shared/grouped, unlike L.5's
   vortex) HRTF orbit, firing in a staggered sequence rather than all at
-  once — see the "Be the Way" bullet further down. Shared
+  once — see the "Be the Way" bullet further down. **Round 36 turned
+  L.1's own sibling, the grid cursor (L.1b, Round 25), into L.1c** —
+  the actual decided galactic-map cube (A.13), not a free-roaming grid
+  any more; see the "Round 36" bullet further down for the full shape.
+  Shared
   helpers (`labPolarToPos`, `labNormAz`, `labDescribeAz`/`labDescribeEl`,
   `LAB_NAMES8`, `labShuffle`, `labResetListener`) sit above all of them;
   `window.__lab` (`tick(ms)`/`state()`) is this page's test hook, the
@@ -3049,3 +3053,42 @@ sweep (`SIM.cues.play('explosion_kill', {size: ...})` for `capital`/
 including the medium-default fallback, resolves without throwing. Not
 yet heard by Brian. Like Round 34, this doesn't touch SPEC.md's own
 numbered build order.
+
+**Round 36 (Sonnet): Brian, mid-playtest-checkpoint, asked for the
+sound lab's galactic-map demo to actually be the cube design (A.13)
+rather than the free-roaming grid it had been sitting as since Round
+25.** `soundlab.html`'s L.1b ("3D grid cursor") is now L.1c: coordinates
+are cube cells in `{-1,0,1}` per axis, not raw world units, and
+`gridCellKind()` sorts every cell into one of the cube's three real
+kinds by how many axes are nonzero — corner (a quadrant), edge midpoint
+(a waypoint), or face centre (a view, not a destination) — the same
+test the real galactic map will need. One press moves one cell along
+an axis (Shift dropped entirely — A.13 had already withdrawn the
+"Shift for a midpoint" idea once the cube shrank from the earlier
+9×9×9 lattice); a press refuses instead of moving when it would land
+back where it started (the cube's outer boundary) or on the cube's own
+forbidden centre. `CUBE_NAMES` gives the 8 corners placeholder
+identities, keyed by home + Fable's still-unconfirmed Q2/Q3 proposal
+(home's lateral neighbour = Quadrant 2 "the economy," its vertical
+neighbour = Quadrant 3 "control") — flagged in both SPEC.md and here as
+NOT Brian's own confirmed answer, just the best current one so the demo
+has real names to speak rather than raw coordinates. Enter is
+context-sensitive by cell kind (jump+chime on a corner, a lesser blip
+and "just the road" on a waypoint, a flat refusal on an ordinary face
+centre) with one deliberate exception: the near face's centre — the
+demo's own START position, exactly what Brian asked for ("starting at
+the center of the closest face") — always succeeds as the one harbour
+reachable from Quadrant 2, though this demo can't actually check
+"which quadrant is the pilot in" the way the real map eventually will,
+so that check is simply skipped here (flagged, not hidden). A corner
+gets a real voice (L.1b's own engine loop, unchanged), a waypoint gets
+the same loop heavily muffled and quiet, a face centre gets none at
+all. Machine-tested at a local server by replaying Brian's own worked
+example from A.13 verbatim — Right then Down from the start reaches
+Quadrant 2 exactly as specced ("1 below, 1 right, 1 behind"), Left
+then Down reaches home instead — plus the centre-crossing refusal, the
+boundary refusal, all four Enter outcomes, and a full stop/restart
+cycle, all confirmed with zero console errors. Not yet heard by Brian.
+This is lab work, same as Round 33's L.5c — it doesn't touch SPEC.md's
+numbered build order or unblock the standing "Brian flies everything
+since 3.24" checkpoint.

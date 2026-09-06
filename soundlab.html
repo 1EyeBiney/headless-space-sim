@@ -51,7 +51,7 @@
     <div class="nav-links">
         <a href="index.html">Back to the game</a>
         <a href="#sec-explorer">Position Explorer (Phase 3L, L.1)</a>
-        <a href="#sec-grid">3D grid cursor (ideas9, L.1b)</a>
+        <a href="#sec-grid">Galactic map: the cube (A.13, L.1c)</a>
         <a href="#sec-flyby">Flyby (Phase 3L, L.4)</a>
         <a href="#sec-room">Spatial audio room (Phase 3L, L.8)</a>
         <a href="#sec-gate">Lighthouse gate (Phase 3L, L.9)</a>
@@ -86,16 +86,16 @@
 <p id="explorerStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
 <!-- ============================================================ -->
-<h2 id="sec-grid" class="section-header">3D grid cursor (ideas9, L.1b)</h2>
-<p class="section-note">Brian's own idea for the galactic map's cursor, tried alongside L.1's polar one rather than in place of it: a 3D coordinate grid stepped through with the arrows and W/S, the coordinates spoken as it moves so the cursor is always on a grid point. Left/Right step left/right, Up/Down step up/down (height), W steps forward, S steps back — each a `gridStep` of 100; Shift plus any of those is the fine step, 25. Coordinates are read back as grid-cell counts from the origin ("2 right, 1 up, 3 forward"), rounded to the nearest 100-unit cell even after a fine Shift step (a fine adjustment can sit off the coarse grid; the reading rounds rather than showing a fraction). Home resets to the origin, Enter "selects," Escape stops. Brian: "If there are other ways to do this better, I am open" — this is the first thing to try, not the last.</p>
+<h2 id="sec-grid" class="section-header">Galactic map: the cube (A.13, L.1c)</h2>
+<p class="section-note">L.1b's free-roaming grid, now built as the actual decided shape (A.13, "our cube"): a 3&times;3&times;3 cube whose eight CORNERS are the eight quadrants, whose twelve edge MIDPOINTS are waypoints (encounters, or nothing), and whose six FACE CENTRES are view-only positions you can stand on but never travel to &mdash; except the one over the pilot's own shoulder by default ("1 behind"), which is a real destination, reachable only from Quadrant 2, a protected mid-game harbour. The cube's own centre (reserved for the endgame base) is never a cursor position at all. Coordinates are spoken in a fixed order &mdash; vertical, lateral, depth &mdash; and a zero is never spoken: "1 below, 1 left, 1 behind" is home. One press moves exactly one cell along an axis (no Shift step &mdash; withdrawn once the cube shrank from the earlier 9&times;9&times;9 lattice); a press that would land on the centre, or that would leave the cube, refuses instead. Arrows step vertical/lateral, W/S step depth, Enter selects a quadrant (or explains why it can't, on a waypoint or an ordinary face centre), Home returns to the start, Escape stops. <b>The demo starts where Brian asked: the centre of the closest face</b> &mdash; every corner of that near face is exactly two presses away. One simplification, flagged: since this is a standalone demo with no real save behind it, the harbour at the near face's centre always succeeds when reached, rather than actually checking whether "the pilot" is in Quadrant 2 &mdash; the real map will gate it for real.</p>
 <div class="button-group">
-    <button id="gridStart">Start the grid cursor</button>
-    <button id="gridStop">Stop the grid cursor</button>
+    <button id="gridStart">Start the galactic map</button>
+    <button id="gridStop">Stop the galactic map</button>
 </div>
 <div id="gridArena" tabindex="0" role="application"
-     aria-label="Grid cursor controls. Left and right step left and right, up and down step up and down, W steps forward, S steps back, shift for a finer step, Home resets to the origin, Enter selects, Escape stops."
+     aria-label="Galactic map cube controls. Arrows step vertical and lateral, W steps ahead, S steps behind, Home returns to the start, Enter selects a quadrant, Escape stops."
      style="border: 1px solid #4CAF50; border-radius: 6px; padding: 14px; color: #aaa; margin-bottom: 8px;">
-    Arrow keys, W, S, Home, and Enter work here once the grid cursor is running.
+    Arrow keys, W, S, Home, and Enter work here once the galactic map is running.
 </div>
 <p id="gridStatus" class="desc" aria-live="polite" style="margin-bottom: 30px;"></p>
 
@@ -412,18 +412,37 @@ document.getElementById('explorerStart').addEventListener('click', explorerStart
 document.getElementById('explorerSwap').addEventListener('click', explorerSwapVoice);
 document.getElementById('explorerStop').addEventListener('click', explorerStop);
 
-// ---- L.1b 3D grid cursor (ideas9) -------------------------------------------
-// Brian's own alternative to L.1's polar cursor for the galactic map: a
-// coordinate grid instead of a compass. Position is tracked in raw world
-// units (x right+, y up+, z forward = negative — the same front/back sign
-// convention labPolarToPos already uses, since 0 azimuth/elevation there
-// is (0, 0, -dist)); GRID_STEP (100) is the normal step, GRID_STEP_FINE
-// (25) is Shift's. Coordinates are always READ BACK rounded to the
-// nearest GRID_STEP cell — a fine Shift step can leave the cursor between
-// coarse cells, and rounding (rather than showing a fraction) is the
-// simplest way to keep "always on a grid point" true to the ear even then.
-var GRID_STEP = 100, GRID_STEP_FINE = 25;
-var gridExplorer = { x: 0, y: 0, z: 0, voice: 'engine', panner: null, srcNodes: null, blipTimer: null };
+// ---- L.1c Galactic map: the cube (A.13, ideas9/ideas11, "our cube") -------
+// L.1b's free-roaming grid, now the actual decided shape: a 3x3x3 cube
+// whose 8 CORNERS are the eight quadrants, 12 edge MIDPOINTS are waypoints,
+// and 6 FACE CENTRES are view-only positions — except the one over the
+// pilot's own shoulder by default ("1 behind"), reachable only from
+// Quadrant 2 as a protected mid-game harbour. The cube's own centre
+// (reserved for the endgame base, A.8) is never a cursor position at all.
+// Coordinates: x = lateral (+1 right), y = vertical (+1 above), z = depth
+// (+1 ahead) — spoken vertical-lateral-depth, a zero never spoken ("1
+// below, 1 left, 1 behind" is home). One press moves exactly one cell
+// along an axis; Fable's earlier "Shift for a midpoint" is withdrawn now
+// that the cube shrank from the 9x9x9 lattice to just 3 positions an axis
+// — there's no finer step left to take. A move that would land on the
+// forbidden centre, or leave the cube, refuses instead of moving.
+var GRID_SPACING = 400;   // world units per cell, for the HRTF panner only
+// The 8 corners (quadrants). Home = "1 below, 1 left, 1 behind" (Brian's
+// own worked example). Quadrant 2 (the economy) is home's lateral
+// neighbour, Quadrant 3 (control) its vertical neighbour — Fable's
+// proposal, not yet confirmed by Brian; the other four corners are
+// unnamed placeholders, same as every quadrant name in this project.
+var CUBE_NAMES = {
+    '-1,-1,-1': 'Quadrant 1, home',
+    '1,-1,-1':  'Quadrant 2, the economy',
+    '-1,1,-1':  'Quadrant 3, control',
+    '-1,-1,1':  'Quadrant 4',
+    '1,1,-1':   'Quadrant 5',
+    '1,-1,1':   'Quadrant 6',
+    '-1,1,1':   'Quadrant 7',
+    '1,1,1':    'Quadrant 8'
+};
+var gridExplorer = { x: 0, y: 0, z: -1, panner: null, srcNodes: null, blipTimer: null };
 var gridArena = document.getElementById('gridArena');
 var gridStatus = document.getElementById('gridStatus');
 function gridSay(t) { gridStatus.textContent = t; }
@@ -433,82 +452,141 @@ function gridStopVoice() {
     if (gridExplorer.srcNodes) {
         var n = gridExplorer.srcNodes; gridExplorer.srcNodes = null;
         try { SIM.audio.ramp(n.g.gain, 0.0001, 0.2); } catch (e) {}
-        setTimeout(function () { try { n.src.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+        setTimeout(function () { try { n.src.stop(); n.g.disconnect(); if (n.lp) n.lp.disconnect(); } catch (e) {} }, 300);
     }
 }
 function gridStop() {
     gridStopVoice();
     if (gridExplorer.panner) { try { gridExplorer.panner.disconnect(); } catch (e) {} gridExplorer.panner = null; }
-    gridSay('Grid cursor stopped.');
+    gridSay('Galactic map stopped.');
 }
 registerStop(gridStop);
 
+// nz (how many axes are nonzero) sorts a cell into one of the cube's three
+// kinds — 3 = corner (a quadrant), 2 = edge midpoint (a waypoint), 1 = face
+// centre (a view). nz 0 (the true centre) never happens: it's refused on
+// arrival, below.
+function gridCellKind(x, y, z) {
+    var nz = (x !== 0 ? 1 : 0) + (y !== 0 ? 1 : 0) + (z !== 0 ? 1 : 0);
+    return nz === 3 ? 'corner' : nz === 2 ? 'waypoint' : 'face';
+}
+function gridKey() { return gridExplorer.x + ',' + gridExplorer.y + ',' + gridExplorer.z; }
+// A quadrant gets a real voice (the engine loop, full volume); a waypoint
+// gets the same loop muffled and quiet ("just the road, not a place"); a
+// face centre — a view, not a place — gets none at all.
 function gridStartVoice() {
     var A = SIM.audio;
     if (!A.ctx || !gridExplorer.panner) return;
     gridStopVoice();
+    var kind = gridCellKind(gridExplorer.x, gridExplorer.y, gridExplorer.z);
+    if (kind === 'face') return;
     A.load('ship_corvette_1').then(function (buf) {
         if (!gridExplorer.panner) return;
         var src = A.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
         var g = A.ctx.createGain(); g.gain.value = 0.0001;
-        src.connect(g); g.connect(gridExplorer.panner);
+        var lp = A.ctx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = kind === 'corner' ? 20000 : 900;
+        src.connect(g); g.connect(lp); lp.connect(gridExplorer.panner);
         src.start();
-        A.ramp(g.gain, 0.4, 0.3);
-        gridExplorer.srcNodes = { src: src, g: g };
+        A.ramp(g.gain, kind === 'corner' ? 0.45 : 0.2, 0.3);
+        gridExplorer.srcNodes = { src: src, g: g, lp: lp };
     });
 }
 function gridUpdatePanner() {
     if (!gridExplorer.panner) return;
-    SIM.audio.movePanner(gridExplorer.panner, { x: gridExplorer.x, y: gridExplorer.y, z: gridExplorer.z });
+    SIM.audio.movePanner(gridExplorer.panner, {
+        x: gridExplorer.x * GRID_SPACING, y: gridExplorer.y * GRID_SPACING, z: -gridExplorer.z * GRID_SPACING
+    });
 }
-// One coordinate's spoken word, or null if it's at the origin on that axis.
-function gridAxisWord(rawUnits, posWord, negWord) {
-    var cells = Math.round(rawUnits / GRID_STEP);
-    if (cells === 0) return null;
-    return Math.abs(cells) + ' ' + (cells > 0 ? posWord : negWord);
+// A.13's decided vocabulary: vertical, lateral, depth, in that fixed
+// order, a zero never spoken.
+function gridAxisWord(n, posWord, negWord) {
+    if (n === 0) return null;
+    return Math.abs(n) + ' ' + (n > 0 ? posWord : negWord);
 }
 function gridDescribe() {
-    var parts = [gridAxisWord(gridExplorer.x, 'right', 'left'),
-                  gridAxisWord(gridExplorer.y, 'up', 'down'),
-                  gridAxisWord(-gridExplorer.z, 'forward', 'back')].filter(function (p) { return p; });
-    return parts.length ? parts.join(', ') : 'at the origin';
+    var parts = [gridAxisWord(gridExplorer.y, 'above', 'below'),
+                 gridAxisWord(gridExplorer.x, 'right', 'left'),
+                 gridAxisWord(gridExplorer.z, 'ahead', 'behind')].filter(function (p) { return p; });
+    return parts.length ? parts.join(', ') : 'Centre.';
+}
+function gridCellLabel() {
+    var kind = gridCellKind(gridExplorer.x, gridExplorer.y, gridExplorer.z);
+    if (kind === 'corner') return CUBE_NAMES[gridKey()] || 'A quadrant';
+    if (kind === 'waypoint') return 'A waypoint';
+    if (gridExplorer.x === 0 && gridExplorer.y === 0 && gridExplorer.z === -1) {
+        return 'The near face\'s centre — the way to the one harbour reachable from Quadrant 2';
+    }
+    return 'A face centre — a view, not a destination';
 }
 function gridStart() {
     stopAll();
     var A = SIM.audio;
     if (!A.ctx) return;
-    gridExplorer.x = 0; gridExplorer.y = 0; gridExplorer.z = 0;
-    gridExplorer.panner = A.makePanner({ x: 0, y: 0, z: 0 });
+    // Brian's own decided start: the centre of the closest face — every
+    // corner of that face is exactly two presses away.
+    gridExplorer.x = 0; gridExplorer.y = 0; gridExplorer.z = -1;
+    gridExplorer.panner = A.makePanner({ x: 0, y: 0, z: GRID_SPACING });
     gridExplorer.panner.connect(A.worldBus);
     gridStartVoice();
     gridArena.focus();
-    gridSay('Grid cursor started. ' + gridDescribe() + '.');
+    gridSay('Galactic map started. ' + gridDescribe() + '. ' + gridCellLabel() + '.');
 }
 gridArena.addEventListener('keydown', function (e) {
     if (!gridExplorer.panner) return;
-    var k = e.key, step = e.shiftKey ? GRID_STEP_FINE : GRID_STEP;
-    if (k === 'ArrowLeft') gridExplorer.x -= step;
-    else if (k === 'ArrowRight') gridExplorer.x += step;
-    else if (k === 'ArrowUp') gridExplorer.y += step;
-    else if (k === 'ArrowDown') gridExplorer.y -= step;
-    else if (k === 'w' || k === 'W') gridExplorer.z -= step;
-    else if (k === 's' || k === 'S') gridExplorer.z += step;
+    var k = e.key;
+    var nx = gridExplorer.x, ny = gridExplorer.y, nz = gridExplorer.z;
+    if (k === 'ArrowLeft') nx -= 1;
+    else if (k === 'ArrowRight') nx += 1;
+    else if (k === 'ArrowUp') ny += 1;
+    else if (k === 'ArrowDown') ny -= 1;
+    else if (k === 'w' || k === 'W') nz += 1;
+    else if (k === 's' || k === 'S') nz -= 1;
     else if (k === 'Home') {
-        gridExplorer.x = 0; gridExplorer.y = 0; gridExplorer.z = 0;
         e.preventDefault();
+        gridExplorer.x = 0; gridExplorer.y = 0; gridExplorer.z = -1;
         gridUpdatePanner();
-        gridSay('Reset. At the origin.');
+        gridStartVoice();
+        gridSay('Reset. ' + gridDescribe() + '. ' + gridCellLabel() + '.');
         return;
     } else if (k === 'Enter') {
-        SIM.cues.play('ready_chime');
-        gridSay('Selected: ' + gridDescribe() + '.');
         e.preventDefault();
+        var kind = gridCellKind(gridExplorer.x, gridExplorer.y, gridExplorer.z);
+        if (kind === 'corner') {
+            SIM.cues.play('ready_chime');
+            gridSay('Jump: ' + (CUBE_NAMES[gridKey()] || 'a quadrant') + '.');
+        } else if (kind === 'waypoint') {
+            SIM.audio.blip(440, 90, 0.14);
+            gridSay('A waypoint. No destination here, just the road.');
+        } else if (gridExplorer.x === 0 && gridExplorer.y === 0 && gridExplorer.z === -1) {
+            // Simplification, flagged: a standalone lab demo has no real
+            // "current quadrant" to check, so this always succeeds here —
+            // the real map gates it on actually being in Quadrant 2.
+            SIM.cues.play('ready_chime');
+            gridSay('Harbour reached — reachable only from Quadrant 2, the one place a rival can never follow.');
+        } else {
+            SIM.audio.blip(220, 90, 0.1);
+            gridSay('Not a destination.');
+        }
         return;
     } else if (k === 'Escape') { gridStop(); e.preventDefault(); return; }
     else return;
     e.preventDefault();
+    nx = clamp(nx, -1, 1); ny = clamp(ny, -1, 1); nz = clamp(nz, -1, 1);
+    if (nx === gridExplorer.x && ny === gridExplorer.y && nz === gridExplorer.z) {
+        SIM.audio.blip(220, 80, 0.1);
+        gridSay('No route that way.');
+        return;
+    }
+    if (nx === 0 && ny === 0 && nz === 0) {
+        SIM.audio.blip(220, 80, 0.1);
+        gridSay('No route through the centre.');
+        return;
+    }
+    gridExplorer.x = nx; gridExplorer.y = ny; gridExplorer.z = nz;
     gridUpdatePanner();
-    gridSay(gridDescribe() + '.');
+    gridStartVoice();
+    gridSay(gridDescribe() + '. ' + gridCellLabel() + '.');
 });
 document.getElementById('gridStart').addEventListener('click', gridStart);
 document.getElementById('gridStop').addEventListener('click', gridStop);
@@ -1467,7 +1545,9 @@ window.__lab = {
         return {
             explorer: { az: explorer.az, el: explorer.el, dist: explorer.dist,
                         running: !!explorer.panner, voice: explorer.voice },
-            grid: { x: gridExplorer.x, y: gridExplorer.y, z: gridExplorer.z, running: !!gridExplorer.panner },
+            grid: { x: gridExplorer.x, y: gridExplorer.y, z: gridExplorer.z, running: !!gridExplorer.panner,
+                    kind: gridExplorer.panner ? gridCellKind(gridExplorer.x, gridExplorer.y, gridExplorer.z) : null,
+                    label: gridExplorer.panner ? gridCellLabel() : null },
             vortex: { running: vortex.nodes.length, presetIdx: vortexGroup.presetIdx,
                       presetName: VORTEX_PRESETS[vortexGroup.presetIdx].name,
                       height: vortexGroup.height, sway: vortexGroup.sway,
