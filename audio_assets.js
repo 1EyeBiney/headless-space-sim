@@ -67,6 +67,37 @@ window.AUDIO_MANIFEST = {
   // entries assign shipAsset directly, not derived from that map).
   ship_drone_1: 'audio/ships/spaceship_drone_1r.mp3',
 
+  // Ship destruction, four size tiers (this round, Brian's own batch):
+  // explosion_kill picks from the tier matching the destroyed ship's own
+  // name (shipExplosionSize) instead of the old pure-synthesis cue.
+  // Real lengths run capital ~8-9.5s, large 7.0s, medium 5.0s, small
+  // 3.0s per ffprobe — a deliberate size-to-length progression.
+  ship_capital_explode1: 'audio/Explosions/ship_capital_explode1.mp3',
+  ship_capital_explode2: 'audio/Explosions/ship_capital_explode2.mp3',
+  ship_capital_explode3: 'audio/Explosions/ship_capital_explode3.mp3',
+  ship_capital_explode4: 'audio/Explosions/ship_capital_explode4.mp3',
+  ship_capital_explode5: 'audio/Explosions/ship_capital_explode5.mp3',
+  ship_capital_explode6: 'audio/Explosions/ship_capital_explode6.mp3',
+  ship_large_explode1: 'audio/Explosions/ship_large_explode1.mp3',
+  ship_large_explode2: 'audio/Explosions/ship_large_explode2.mp3',
+  ship_large_explode3: 'audio/Explosions/ship_large_explode3.mp3',
+  ship_large_explode4: 'audio/Explosions/ship_large_explode4.mp3',
+  ship_large_explode5: 'audio/Explosions/ship_large_explode5.mp3',
+  ship_large_explode6: 'audio/Explosions/ship_large_explode6.mp3',
+  ship_large_explode7: 'audio/Explosions/ship_large_explode7.mp3',
+  ship_large_explode8: 'audio/Explosions/ship_large_explode8.mp3',
+  ship_medium_explode1: 'audio/Explosions/ship_medium_explode1.mp3',
+  ship_medium_explode2: 'audio/Explosions/ship_medium_explode2.mp3',
+  ship_medium_explode3: 'audio/Explosions/ship_medium_explode3.mp3',
+  ship_medium_explode4: 'audio/Explosions/ship_medium_explode4.mp3',
+  ship_medium_explode6: 'audio/Explosions/ship_medium_explode6.mp3',
+  ship_small_explode1: 'audio/Explosions/ship_small_explode1.mp3',
+  ship_small_explode2: 'audio/Explosions/ship_small_explode2.mp3',
+  ship_small_explode3: 'audio/Explosions/ship_small_explode3.mp3',
+  ship_small_explode4: 'audio/Explosions/ship_small_explode4.mp3',
+  ship_small_explode5: 'audio/Explosions/ship_small_explode5.mp3',
+  ship_small_explode6: 'audio/Explosions/ship_small_explode6.mp3',
+
   // Lasers (SPEC 2.12): both families, all 16 versions.
   laser_mining1: 'audio/weapons/lasers/Mining_laser 1.mp3',
   laser_mining2: 'audio/weapons/lasers/Mining_laser 2.mp3',

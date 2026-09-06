@@ -150,10 +150,18 @@ expands.
   8/10 as danger variants) for whenever that gets designed; his own
   call (asked directly) was to leave these alone until then;
   `audio/Explosions/`
-  = 8 new unintegrated hull-breach/explosion candidates, no manifest key
-  yet. `soundlab.html` is the up-to-date "what's connected" checker —
-  trust it over this paragraph for the current count. `audio/z.old/`
-  (Backups/Media/peaks, REAPER scratch) is gitignored.
+  = 8 `system_explosion1-8` (still unintegrated hull-breach candidates,
+  no manifest key yet — unrelated to the batch below) plus (Round 35,
+  Brian's own new batch) 25 `ship_<size>_explode<N>` across four size
+  tiers — capital ×6, large ×8, medium ×5 (no 5), small
+  ×6 — all 25 wired into the manifest and into `explosion_kill`
+  (`audio_cues.js`), which now picks from the tier matching the
+  destroyed ship's own name (`shipExplosionSize()`, index.html) instead
+  of the old pure-synthesis noise-and-thump, which survives only as the
+  fallback for an undecoded tier. `soundlab.html` is the up-to-date
+  "what's connected" checker — trust it over this paragraph for the
+  current count. `audio/z.old/` (Backups/Media/peaks, REAPER scratch)
+  is gitignored.
 - `.claude/launch.json` — a static-file server config (`npx serve`, port
   8934) for `preview_start`, same convention as `ag`'s and `kc`'s own
   `.claude/launch.json`. Needed now that the game is split across four
@@ -2988,3 +2996,56 @@ real recording. Every new manifest key preloads and decodes (confirmed
 via `AUDIO_PRELOAD`/`assetBufs` directly). Nothing in this round was
 heard by Brian yet, and none of it touches SPEC.md's own numbered build
 order — this was pure asset-integration housekeeping alongside it.
+
+**Round 35 (Sonnet): Brian dropped 25 more recordings in
+`audio/Explosions/` — four ship-explosion size tiers — and asked for
+them found and wired in directly this time (no review-and-ask framing,
+just "go ahead").** `explosion_kill` (audio_cues.js), the cue every
+combat kill already played (100% synthesized until now — unlike
+`explosion_rock`, it never had a recorded pool at all), gained a
+`pools` lookup keyed by a new `opts.size` and picks a random member of
+whichever tier matches; the original noise-plus-thump survives only as
+the fallback for a tier with nothing decoded yet. A new
+`SHIP_EXPLOSION_SIZE` table (index.html, next to `SHIP_CLASS`) maps
+each roster ship NAME — not `SHIP_CLASS`, deliberately — onto one of
+the four tiers: `Cruiser` (the roster's toughest hostile, 150 hp,
+orbiting) gets `capital`, the biggest/longest pool; `Freighter` (same
+`SHIP_CLASS` — cruiser — but a lesser non-combat hull, 120 hp) gets
+`large`; `Drone` (corvette class) gets `medium`; `Raider`/`Scout`
+(interceptor class) get `small`; anything unlisted (`Miner`, or any
+future ship) falls back to `medium`. This was a genuine judgment call,
+flagged here rather than silently made: the four tiers don't map 1:1
+onto `SHIP_CLASS`'s three categories, so the cruiser class had to split
+across two tiers by ship identity rather than reusing the class
+wholesale — the real file lengths (`ffprobe`: capital ~8-9.5s, large
+7.0s, medium 5.0s, small 3.0s, a clean deliberate progression) supported
+reading `SHIP_CLASS` as an ordinal "how big" ranking (matching
+`SALVAGE`'s own interceptor<corvette<cruiser ordering) rather than a
+literal HP sort, which is why Drone (the single LOWEST-hp ship in the
+roster at 40) still gets the middle tier, not the smallest. **A real
+bug caught before it shipped, not after**: `explosion_rock`'s own
+existing fallback (`SIM.cues.play('explosion_kill', opts)`, added last
+round for its own size-aware crumble branch) passed its ROCK-size
+`opts.size` (`'huge'/'large'/'medium'/'small'`, from `ROCK_SIZES`)
+straight through — since three of those four words are ALSO valid keys
+in `explosion_kill`'s new ship-size `pools`, a rock's fallback explosion
+would have silently played a SHIP explosion sound (e.g. a large rock
+→ the `ship_large_explode` pool) purely by vocabulary collision, never
+exercised in this round's own testing since the rock explosion assets
+are always decoded by the time a real fallback would trigger. Fixed by
+having that one fallback call construct a fresh `{ pos: pos }` object
+instead of forwarding `opts` wholesale, so a rock's own size can never
+leak into the ship lookup. Machine-tested at a local server: all four
+new manifest-key samples confirmed decoded; a full 5-ship Combat drill
+kill sequence (`poke({enemyHp: 5})` plus real per-shot cooldown waits,
+since the laser's `Date.now()`-based cooldown ignores `__sim.step()`'s
+simulated time) killed Raider and Scout (small), Freighter (large),
+Drone (medium), and Cruiser (capital) — every one of the four tiers
+exercised through genuine gameplay, zero console errors throughout,
+salvage amounts on each kill cross-checked against `SALVAGE`'s own
+per-class values as an independent correctness signal; a direct call
+sweep (`SIM.cues.play('explosion_kill', {size: ...})` for `capital`/
+`large`/`small`/no-size/an unrecognized string) confirmed every branch,
+including the medium-default fallback, resolves without throwing. Not
+yet heard by Brian. Like Round 34, this doesn't touch SPEC.md's own
+numbered build order.

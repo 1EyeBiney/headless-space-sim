@@ -850,6 +850,16 @@ var SALVAGE = { interceptor: 2, corvette: 3, cruiser: 5 };
 // rcsPerDustUnit and rcsMission below) so a clean delivery run never
 // spends long on battery, while a sloppy one definitely feels it.
 var RCS_PER_KILL = { interceptor: 6, corvette: 9, cruiser: 15 };
+// Ship destruction, four size tiers (this round): which of
+// audio_cues.js's explosion_kill pools plays when a NAMED ship dies.
+// Keyed by name rather than SHIP_CLASS, since the cruiser class itself
+// splits across two tiers — Cruiser (the roster's toughest hostile,
+// orbiting, 150 hp) gets the biggest ("capital") pool; Freighter (same
+// class, but a lesser non-combat hull, 120 hp) gets "large" instead.
+// Anything not listed (Miner, or any future ship) falls back to medium.
+var SHIP_EXPLOSION_SIZE = { Cruiser: 'capital', Freighter: 'large', Drone: 'medium',
+                             Raider: 'small', Scout: 'small' };
+function shipExplosionSize(name) { return SHIP_EXPLOSION_SIZE[name] || 'medium'; }
 
 // Replaces the old per-laser hullMult/rockMult: the FAMILY decides whether
 // this shot is a good match for the target, a rock by type, a ship by class.
@@ -1309,7 +1319,7 @@ function missionStrike(t) {
     if (f.hp <= 0) {
         f.alive = false;
         stopVoice(f);
-        SIM.cues.play('explosion_kill', { pos: f.pos });
+        SIM.cues.play('explosion_kill', { pos: f.pos, size: shipExplosionSize(f.name) });
         say(t.name + ' hits the ' + f.name + '. ' + f.name + ' destroyed.');
         missionEnd(false);
         return;
@@ -2970,7 +2980,7 @@ function updateTargeting(dt) {
 // to thread `extra` through to its own delayed victory line.
 function destroyTarget(t, extra) {
     t.alive = false;
-    SIM.cues.play('explosion_kill', { pos: t.pos });
+    SIM.cues.play('explosion_kill', { pos: t.pos, size: shipExplosionSize(t.name) });
     stopVoice(t);
     if (targets[selected] === t) selectNearest();
     if (threat && threat.t === t) endThreat();

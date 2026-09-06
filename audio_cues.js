@@ -44,15 +44,42 @@ SIM.cues = (function () {
             label: 'Combat',
             cues: [
                 { id: 'explosion_kill', name: 'Target Destroyed', source: 'v11-extraction',
-                  // Filtered noise body + a low sine thump, positioned at the
-                  // dying target so the blast itself is a 3D event.
+                  // This round (Brian's own recordings): one of a pool of
+                  // real explosions, sized to the destroyed ship's own tier
+                  // (opts.size — 'capital'/'large'/'medium'/'small', see
+                  // shipExplosionSize()), positioned at the dying target.
+                  // The original synthesized noise-body-plus-thump is now
+                  // only the fallback for a size with nothing decoded yet.
                   fn: function (opts) {
                       var A = SIM.audio, pos = opts.pos;
-                      var out = A.worldOut(pos, 900);
-                      if (!out) return;
-                      A.sfxNoise({ dur: 0.6, vol: 0.8, filter: 'lowpass', freq: 2500, out: out });
-                      A.sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out });
-                      A.sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out });
+                      var pools = {
+                          capital: ['ship_capital_explode1', 'ship_capital_explode2', 'ship_capital_explode3',
+                                    'ship_capital_explode4', 'ship_capital_explode5', 'ship_capital_explode6'],
+                          large: ['ship_large_explode1', 'ship_large_explode2', 'ship_large_explode3',
+                                  'ship_large_explode4', 'ship_large_explode5', 'ship_large_explode6',
+                                  'ship_large_explode7', 'ship_large_explode8'],
+                          medium: ['ship_medium_explode1', 'ship_medium_explode2', 'ship_medium_explode3',
+                                   'ship_medium_explode4', 'ship_medium_explode6'],
+                          small: ['ship_small_explode1', 'ship_small_explode2', 'ship_small_explode3',
+                                  'ship_small_explode4', 'ship_small_explode5', 'ship_small_explode6']
+                      };
+                      var names = pools[opts.size] || pools.medium;
+                      var buf = A.assetBufs[names[Math.floor(Math.random() * names.length)]];
+                      if (A.ctx && buf) {
+                          var out = A.worldOut(pos, Math.ceil(buf.duration * 1000));
+                          if (out) {
+                              var g = A.ctx.createGain(); g.gain.value = 0.9;
+                              var src = A.ctx.createBufferSource(); src.buffer = buf;
+                              src.connect(g); g.connect(out);
+                              src.start();
+                              return;
+                          }
+                      }
+                      var out2 = A.worldOut(pos, 900);
+                      if (!out2) return;
+                      A.sfxNoise({ dur: 0.6, vol: 0.8, filter: 'lowpass', freq: 2500, out: out2 });
+                      A.sfxTone({ type: 'sine', f1: 90, f2: 45, dur: 0.55, vol: 0.5, out: out2 });
+                      A.sfxNoise({ dur: 0.35, vol: 0.25, filter: 'bandpass', freq: 700, q: 2, at: 0.05, out: out2 });
                   } },
                 { id: 'chaff_burst', name: 'Decoy Burst', source: 'spec-1.8',
                   // A bright crackling burst at the ship (UI bus): a hiss of
@@ -226,7 +253,14 @@ SIM.cues = (function () {
                              'asteroid_large_crumble4', 'asteroid_large_crumble5', 'asteroid_large_crumble6']
                           : ['asteroid_explosion1', 'asteroid_explosion2', 'asteroid_explosion3'];
                       var buf = A.assetBufs[names[Math.floor(Math.random() * names.length)]];
-                      if (!A.ctx || !buf) { SIM.cues.play('explosion_kill', opts); return; }
+                      // Falls back to explosion_kill's OWN (ship-sized) ideas —
+                      // deliberately drops opts.size here rather than passing it
+                      // through: ROCK_SIZES labels ('huge'/'large'/'medium'/
+                      // 'small') and ship explosion tiers ('capital'/'large'/
+                      // 'medium'/'small') share vocabulary but mean different
+                      // pools, so a rock's own size must never leak in as a
+                      // ship size — explosion_kill's medium default takes over.
+                      if (!A.ctx || !buf) { SIM.cues.play('explosion_kill', { pos: pos }); return; }
                       var out = A.worldOut(pos, Math.ceil(buf.duration * 1000));
                       var g = A.ctx.createGain(); g.gain.value = 0.9;
                       var src = A.ctx.createBufferSource(); src.buffer = buf;
