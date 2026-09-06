@@ -2077,9 +2077,9 @@ since
 3.24, plus the course** → **ideas12.txt** (Brian, 2026-09-05, from
 flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals, DONE
 → 3.45 five volume steps and the Beacons line, DONE → 3.49 the course
-second pass, DONE → 3.44 B is the tractor in tiers, DONE** (all five,
-Round 33, Sonnet) **→ next: 3.48** F2's equipped laser per slot → 3.46
-four new laser
+second pass, DONE → 3.44 B is the tractor in tiers, DONE → 3.48 F2's
+equipped laser per slot, DONE** (all six, Round 33, Sonnet) **→ next:
+3.46** four new laser
 families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
 stats page is a discussion, not scheduled) → **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
@@ -4957,7 +4957,7 @@ menu's own Sound item description read cleanly with no B-key reference
 left. Zero console errors throughout. Every tier number and price is a
 placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
 
-#### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — proposed
+#### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
   not all the lasers, where the player could switch the laser in that
@@ -4977,6 +4977,40 @@ placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
   clip plays; Right past the owned level wraps; an empty slot's line
   refuses Left/Right with the buzz (3.50); leaving F2 and firing uses
   the level chosen there.
+
+**DONE (Round 33, Sonnet).** The Lasers heading is rebuilt as one block
+per slot (name/level/status, per-tick/ticks/cooldown, matchup, health —
+four lines, or one "Slot N is empty" line), with the old per-FAMILY
+list gone entirely; a shared Range/point-blank line stays, since it
+isn't tied to any one slot. Every line in a slot's own block carries a
+new `slot` tag (`buildShipLines()`'s `line()` helper grew an optional
+second argument) so `shipScreenKey`'s new Left/Right handler can find
+which slot the cursor is on regardless of which of that slot's four
+lines it happens to be reading — pressing Left/Right on the Range line,
+a heading, or any other non-tagged line instead says "This line isn't
+one." and does nothing. On a real slot line, Left/Right calls the same
+`cycleLaserVersion(i, dir)` flight already uses (wrapping 1..owned both
+directions), saves the profile, plays the slot's own `laser_switch`
+clip through a new `playSlotSwitchClipNatural(i)` — natural length, no
+`playbackRate` stretch and no refusal window, since F2 is a frozen sim
+and nothing is actually "switching" — then rebuilds `shipScreen.lines`
+and re-speaks the current line so the numbers are heard fresh
+immediately. An empty slot's line refuses with `refusal_offline` (3.50)
+instead of cycling. `KEY_DESCRIPTIONS.f2`, the F2 open/idle hint lines,
+and README's F2 row all mention the new Left/Right behavior. Machine-
+tested at a local server against a profile seeded with mining level 3
+(owned) in slot 1 and rapid level 1 in slot 2: Left cycled 3→2, Right
+cycled 2→3, a further Right wrapped 3→1, and a further Left wrapped
+1→3 — all four confirmed reading the correct name/per-tick numbers
+each time; the per-tick line itself confirmed reflecting the new
+level's real damage (15 at level 1 vs. 21 at level 3, same tick base);
+Left/Right on the Lasers heading line and on the shared Range line both
+correctly refused as "not a slot line"; the empty slot 3 correctly
+refused with the fit-at-the-station message; closing F2 and reading
+`localStorage` directly confirmed `profile.slots[0]` persisted at the
+level last chosen in F2, with `laserHealth` completely untouched by any
+of the cycling (health/wear is a firing-time mechanic, not a browsing
+one). Zero console errors. Not yet heard or flown by Brian.
 
 #### 3.46 Lasers for slots 3 to 6 — four new families (ideas12.txt) — proposed
 

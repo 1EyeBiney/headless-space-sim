@@ -2072,7 +2072,7 @@ var KEY_DESCRIPTIONS = {
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles among owned levels backward.',
     '3': 'Select laser slot 3.', '4': 'Select laser slot 4.',
     '5': 'Select laser slot 5.', '6': 'Select laser slot 6.',
-    f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, Escape closes it.',
+    f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, left and right cycle a laser slot\'s level right there and re-read it with the new numbers, Escape closes it.',
     f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
     b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining, at your currently selected tier — tier ' + tractorLevel() + ' owned. Shift B steps the selected tier down, wrapping to the top, for a delicate core you would rather ease off on.'; },
@@ -3108,6 +3108,23 @@ function stopLaserSwitch() {
     if (s.g) {
         SIM.audio.ramp(s.g.gain, 0.0001, 0.1);
         setTimeout(function () { try { s.src.stop(); s.g.disconnect(); } catch (e) {} }, 200);
+    }
+}
+
+// SPEC 3.48: F2 is a frozen sim, so cycling a slot's level there has no
+// real switch delay or refusal window — but the slot's own clip still
+// plays, for the feel, at its own natural length (no playbackRate
+// stretch, unlike startSlotSwitch below) and blocks nothing.
+function playSlotSwitchClipNatural(i) {
+    var sw = SLOT_SWITCH[i], A = SIM.audio;
+    if (A.ctx && !A.assetBufs[sw.asset]) A.load(sw.asset);
+    if (A.ctx && A.assetBufs[sw.asset]) {
+        var src = A.ctx.createBufferSource(); src.buffer = A.assetBufs[sw.asset];
+        var g = A.ctx.createGain(); g.gain.value = 0.5;
+        src.connect(g); g.connect(A.uiBus);
+        src.start();
+    } else if (A.ctx) {
+        A.sfxSweep({ f1: 300, f2: 900, f3: 500, dur: sw.s, vol: 0.12, type: 'sawtooth' });
     }
 }
 
@@ -5084,7 +5101,11 @@ function oreGained() {
 function buildShipLines() {
     var lines = [];
     function heading(name) { lines.push({ text: name + ', heading.', heading: true, name: name }); }
-    function line(text) { lines.push({ text: text, heading: false }); }
+    // SPEC 3.48: an optional slot index tags every line belonging to a
+    // laser slot's own block, so shipScreenKey's Left/Right can find which
+    // slot the cursor is sitting on regardless of which of that slot's
+    // lines it happens to be reading.
+    function line(text, slot) { lines.push({ text: text, heading: false, slot: slot }); }
 
     heading('Hull');
     line('Hull ' + hull + ' percent.' + (activeRepairId === 'hull' ? ' Damage control on it.' : ''));
@@ -5124,23 +5145,28 @@ function buildShipLines() {
     if (laserBoostActive()) {
         line('Laser boost active, ' + Math.ceil((laserBoostUntil - Date.now()) / 1000) + ' seconds left.');
     }
-    LASER_FAMILIES.forEach(function (fam) {
-        var level = profile.laserLevels[fam.id];
-        var perTick = Math.round(fam.tickBase * laserLevelMult(level));
-        line(capFirst(fam.label) + ' laser level ' + level + ' of 8, health ' +
-             Math.round(profile.laserHealth[fam.id]) + '.');
-        line(perTick + ' per tick, ' + fam.tickCount + ' ticks over ' + (fam.tickCount * fam.tickS) +
-             ' seconds, ' + fam.cooldownS + ' second cooldown.');
-        line('Bites ' + fam.matchupSpoken.strong + '. Weak on ' + fam.matchupSpoken.weak + '.');
-    });
     line('Range ' + CFG.laserRange + ', up to ' + Math.round((CFG.laserCloseMult - 1) * 100) +
          ' percent more at point-blank.');
+    // SPEC 3.48 (ideas12.txt): one block per FITTED slot, not one list per
+    // family then one per slot to reconcile — Brian's own complaint about
+    // the old shape. Left/Right on any of a slot's own lines cycles that
+    // slot's level within the owned range (shipScreenKey), so every number
+    // here has to come from the SLOT's actual fitted laser, not the family
+    // in the abstract.
     for (var i = 0; i < LASER_SLOTS; i++) {
         var L = profile ? laserById(profile.slots[i]) : null;
-        if (!L) { line('Slot ' + (i + 1) + ' is empty.'); continue; }
+        if (!L) { line('Slot ' + (i + 1) + ' is empty.', i); continue; }
+        var fam = LASER_FAMILIES_BY_ID[L.family];
+        var perTick = Math.round(fam.tickBase * laserLevelMult(L.version));
         var left = laserCooldownLeft(i);
-        line('Slot ' + (i + 1) + ', ' + L.name +
-             (left > 0 ? ', recharging ' + Math.ceil(left) + ' seconds' : ', ready') + '.');
+        var switching = laserSwitch && laserSwitch.slot === i;
+        var status = switching ? ', switching ' + Math.ceil(laserSwitchLeft()) + ' seconds'
+                   : left > 0 ? ', recharging ' + Math.ceil(left) + ' seconds' : ', ready';
+        line('Slot ' + (i + 1) + ': ' + capFirst(fam.label) + ' laser level ' + L.version + status + '.', i);
+        line(perTick + ' per tick, ' + fam.tickCount + ' ticks over ' + (fam.tickCount * fam.tickS) +
+             ' seconds, ' + fam.cooldownS + ' second cooldown.', i);
+        line('Bites ' + fam.matchupSpoken.strong + '. Weak on ' + fam.matchupSpoken.weak + '.', i);
+        line('Health ' + Math.round(profile.laserHealth[fam.id]) + '.', i);
     }
 
     heading('Missiles');
@@ -5267,7 +5293,8 @@ function openShipScreen() {
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
     var headingCount = shipScreen.lines.filter(function (l) { return l.heading; }).length;
     say('Ship status. ' + headingCount + ' headings, ' + shipScreen.lines.length +
-        ' lines. Down arrow reads line by line, H jumps headings, a letter jumps to one, Escape closes.');
+        ' lines. Down arrow reads line by line, H jumps headings, a letter jumps to one, ' +
+        'left and right change a laser slot\'s level, Escape closes.');
 }
 
 function closeShipScreen() {
@@ -5304,6 +5331,28 @@ function shipScreenKey(lname, shift) {
         shipScreen.idx = 0; shipScreenSpeakLine();
     } else if (lname === 'end') {
         shipScreen.idx = n - 1; shipScreenSpeakLine();
+    } else if (lname === 'arrowleft' || lname === 'arrowright') {
+        // SPEC 3.48: cycles the CURRENT line's own laser slot within its
+        // owned range, live — F2 is frozen sim, so no switch delay or
+        // refusal window, just the clip at natural length and the block
+        // re-reading with the new numbers.
+        var cur = shipScreen.lines[shipScreen.idx];
+        if (!cur || cur.slot === undefined) {
+            SIM.audio.blip(220, 80, 0.1);
+            say('Left and right change a laser slot\'s level. This line isn\'t one.');
+            return;
+        }
+        var si = cur.slot;
+        if (!laserById(profile.slots[si])) {
+            SIM.cues.play('refusal_offline');
+            say('Slot ' + (si + 1) + ' is empty. Fit a laser at the station.');
+            return;
+        }
+        cycleLaserVersion(si, lname === 'arrowright' ? 1 : -1);
+        saveProfile();
+        playSlotSwitchClipNatural(si);
+        shipScreen.lines = buildShipLines();
+        shipScreenSpeakLine();
     } else if (lname === 'y') {
         // SPEC 3.51: checked before the generic first-letter jump below —
         // no heading starts with Y today, but this must never depend on
@@ -5323,7 +5372,7 @@ function shipScreenKey(lname, shift) {
         if (found >= 0) { shipScreen.idx = found; shipScreenSpeakLine(); }
         else { SIM.audio.blip(220, 80, 0.1); say('No heading starts with that letter.'); }
     } else {
-        say('Up and down arrows read ship status, H jumps headings, a letter jumps to one, Escape closes.');
+        say('Up and down arrows read ship status, H jumps headings, a letter jumps to one, left and right change a laser slot\'s level, Escape closes.');
     }
 }
 

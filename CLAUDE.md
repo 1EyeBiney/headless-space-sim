@@ -2822,6 +2822,30 @@ tier) all confirmed, F2's Tractor heading reading correctly, and the
 mission menu's B press falling through cleanly to "No item starts with
 B." Zero console errors throughout. Every tier number and price is a
 placeholder for Brian to fly and judge. Not yet heard or flown by
-Brian. Next: 3.48 (F2's equipped laser per slot, switchable there),
-then 3.46 (four new laser families for slots 3–6), then L.5c (the
-vortex as six presets), all still ahead of 3.42 and quadrant 2.
+Brian.
+
+**Round 33 (Sonnet) also built SPEC 3.48** — F2's Lasers heading is now
+one block per fitted slot (name/level/status, per-tick numbers,
+matchup, health) instead of a per-family list to reconcile against a
+separate per-slot list, and Left/Right on any of a slot's own lines
+cycles that slot's level within what's owned, re-reading the block with
+the new numbers. `buildShipLines()`'s `line()` helper grew an optional
+`slot` tag so `shipScreenKey`'s new Left/Right branch can tell which
+slot the cursor is on from any of that slot's four lines, refusing
+cleanly ("This line isn't one.") anywhere else and with the offline
+buzz on an empty slot. A new `playSlotSwitchClipNatural(i)` plays the
+slot's own switch clip at its real length with no stretch and no
+refusal window — F2 is a frozen sim, so nothing is actually delayed,
+the clip is just there for the feel. Machine-tested at a local server
+against a seeded profile (mining level 3 in slot 1, rapid level 1 in
+slot 2): Left/Right cycled and wrapped correctly in both directions
+with the per-tick numbers confirmed changing for real (15 at level 1
+vs. 21 at level 3); Left/Right on the heading and the shared Range line
+both correctly refused as not a slot line; the empty slot 3 refused
+with the fit-at-the-station message; closing F2 and reading
+`localStorage` directly confirmed the chosen level persisted to
+`profile.slots`, with `laserHealth` untouched (wear is a firing-time
+thing, not a browsing one). Zero console errors. Not yet heard or
+flown by Brian. Next: 3.46 (four new laser families for slots 3–6),
+then L.5c (the vortex as six presets), all still ahead of 3.42 and
+quadrant 2.
