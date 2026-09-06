@@ -3108,3 +3108,35 @@ tractor is active just cuts the tractor off rather than refusing the
 shot. Full detail in SPEC.md 3.52. Brian's own words: "don't do this
 yet, but add it to do" — this is queued after the standing "Brian
 flies everything since 3.24" checkpoint, not built.
+
+**Round 37 (Fable, docs only, 2026-09-06)**: Brian switched to Fable
+to evaluate 3.52 and `ideas13.txt`. **3.52's verdict**: direction
+right, but the reaction-mass cost as drafted (a flat per-second draw)
+inverts Brian's own goal — at the draft numbers a tier-1 core pull
+costs ~19 rcs against ~3–6 to fly the same distance, and lower tiers
+become strictly dominated, which would leave 3.44's Shift+B with no
+reason to exist. Fable proposes charging for WORK (rock mass ×
+distance × tier efficiency) with a checkable target (a core from 500
+at tier 1 costs at most half of flying), and a gentle-pull rule to
+give the step-down a job; plus: the lost-target threshold must scale
+with per-tier range, 250 is a 50-unit drift margin over the
+extractor's 300 (fine), and the laser exclusion should cover E/V too
+(any beam start cuts the tractor). Build held until the cost-shape
+question is answered. **ideas13.txt**: two notes are already built
+in 3.49 (the pass chime; hit/missed + rank) and just not flown yet;
+two are small new items — **3.53** (a course accuracy readout,
+"average off centre," from the `lateral` the code already computes)
+and **3.54** (Escort and Defend as mission-menu drills — no station, so
+no favor and no cooldown, credits kept, Enter replays — slotted
+BEFORE the playtest checkpoint since it exists to let Brian reach
+those missions); two are cube direction written into A.13 — waypoints
+as controllable outposts that decay without held corners at both
+ends, and manhattan-distance jumps (one hydrogen unit per cell)
+reconciled with the three-gates-per-corner model as "gate = which way
+you leave, map = how far" (Brian's "5 warp corner to corner" matches
+no pair — 2/4/6 — likely cells counted, not jumps; asked); the last
+opens an encounters list (distress-call tow, derelict salvage, claim
+dispute, convoy, the pre-Silence recorder, the gate waking), Fable's
+pick the tow. `backstory.md` ("The Silence") arrived alongside — read,
+not reviewed; offered as A.15. Nine questions in Part C. Nothing
+built.

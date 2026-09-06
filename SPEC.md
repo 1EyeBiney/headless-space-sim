@@ -347,6 +347,24 @@ stations. Every income source feeds credits or a resource.
   beyond the hold, a free yard, where saved things live — the base at
   the cube's centre staying the endgame.
 
+  **Waypoints as outposts, and jumps by distance (Brian, ideas13.txt,
+  2026-09-06 — direction, questions in Part C).** Two additions to the
+  cube. (1) The twelve edge midpoints are **controllable** — held, a
+  waypoint produces (what, DECIDE), so a player can grab many cheaply;
+  but a waypoint **decays unless the corners at both its ends are
+  held** — stable between two of your quadrants, contested between
+  yours and a rival's, unholdable between two rivals'. Corners stay
+  worth more. This is ideas11's "cut-off erodes control" given its
+  shape: the map's geometry runs the supply lines. (2) **Travel is by
+  manhattan distance, not one fare per edge** — from home a pilot may
+  jump to any valid cell within their jump budget, one hydrogen unit
+  per cell (an edge is 2, a face's diagonal 4, the far corner 6), so
+  waypoints become destinations now, not "later." Reconciled with the
+  three fixed gates per corner as: **the gate is which way you leave,
+  the map is how far** — fly to the gate on the first axis of the path,
+  pick the cell on the map, the network does the rest. Supersedes "one
+  hydrogen fare per edge" above if Brian confirms.
+
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
 The lab stops being only a list of every sound and becomes the place
@@ -2081,10 +2099,14 @@ second pass, DONE → 3.44 B is the tractor in tiers, DONE → 3.48 F2's
 equipped laser per slot, DONE → 3.46 four new laser families for slots
 3–6, DONE → L.5c the vortex as six presets, DONE** (all eight, Round 33,
 Sonnet; 3.47 the
-stats page stays a discussion, not scheduled) → **Brian flies/hears
-everything since 3.24** → **3.52 the tractor beam, second pass**
-(queued 2026-09-06, explicitly held back from building — see 3.52
-itself) → **3.42 escort in
+stats page stays a discussion, not scheduled) → **3.54 Escort and
+Defend drills on the mission menu** (ideas13.txt — FIRST, cheap, and
+it exists to let Brian reach those missions for the playtest) →
+**Brian flies/hears everything since 3.24** → **3.53 the course's
+accuracy readout** (ideas13.txt, small) → **3.52 the tractor beam,
+second pass** (queued 2026-09-06, held back from building until Part
+C's cost-shape question is answered — see 3.52's own evaluation) →
+**3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
 (ideas10: the economy lives
@@ -5168,6 +5190,188 @@ lost before it's picked up.
   the laser-busy message while a burst is running; firing a laser
   while the tractor is engaged cuts it off without refusing the shot.
 
+**Fable's evaluation (2026-09-06).** The direction is right and four of
+the five pieces are straightforward. One piece is wrong as drafted, and
+it's the one Brian cared about most.
+
+- **The reaction-mass cost, as drafted, inverts Brian's own goal.** He
+  said "skilled usage should be better than just using thrusters to go
+  everywhere." Check the draft numbers against the ship's own: flying
+  200 units (from 500 to the extractor's 300) is roughly a 2-second W
+  burn (`rcsThrustPerS` 1 → 2 rcs) plus the stabilizers bleeding the
+  speed back off (`rcsPerSpeedShed` 0.02 × ~100 u/s → 2 rcs) — call it
+  **3–6 rcs**. The draft's tier 1 pulls a core at 20 u/s from 500 to 250,
+  12.5 seconds, at 1.5 rcs/s — **~19 rcs**, three to six times the cost
+  of flying. Tier 4 at 0.5 rcs/s is ~6 rcs — merely *equal* to flying.
+  So at these numbers the tractor is never the better choice at any
+  tier. The numbers are placeholders, but the SHAPE is the problem, not
+  the values: a flat per-second draw charges for TIME, and the tractor
+  is slow by design, so it always loses to a fast burn.
+- **A per-second cost also kills 3.44's own Shift+B.** Lower tiers pull
+  slower, so per-second they cost more in total AND take longer — a
+  double penalty with no upside, since a core pulls at 20/s on every
+  tier and "delicate" is pure flavor today (nothing breaks a core that's
+  pulled fast). Stepping down would be strictly dominated; the key
+  would exist to make the player worse off.
+- **Proposal: charge for work, not time.** Cost = rock mass × distance
+  closed × a tier efficiency. A small core pulled 250 units is cheap; a
+  huge rock pulled 250 units is expensive; a higher tier is a better
+  MOTOR (a lower multiplier), not a cheaper clock. This makes Brian's
+  goal true by construction — a light core costs less to pull in than
+  the whole ship costs to fly over, a huge rock costs more than flying
+  (which is right: you laser huge rocks where they sit) — and gives the
+  numbers a checkable target: **tier 1 pulling a core from 500 should
+  cost at most half of flying it**. Placeholders: mass by size
+  small/core 1, medium 3, large 8, huge 20; cost = mass × units ×
+  0.004 × tierMul, tierMul 1.0 / 0.8 / 0.6 / 0.4 — a core from 500 is
+  1.0 rcs at tier 1, 0.4 at tier 4; a medium is 3.0; a large at tier 3
+  is 4.8. Then the step-down has a real job again IF a reason to pull
+  gently exists — proposed: **a core pulled above a gentle rate can
+  crumble** (`corePullSafeRate` 20 — exactly tier 1's own core rate;
+  higher tiers' faster medium/large rates never touch cores, so this
+  only bites if a future tier speeds cores up), or simply drop the
+  crumble idea and accept Shift+B as a range/cost trim (a lower tier
+  reaches less far but there's no cost reason to pick it — weak). **Ask
+  Brian which** (Part C).
+- **Range per tier is fine**; the "lost target" threshold
+  (`tractorRange × 1.5` in `updateTractor`) has to scale with it or a
+  tier-4 pull started at 950 drops the target the moment it drifts.
+- **250 is fine, and here's the reason to write down**: the extractor
+  reaches 300, and a rock that stops exactly at 300 can drift back out
+  while the pilot switches B → E. 250 is a 50-unit margin, not a magic
+  number — `tractorStopDist`, separate from `vacRange`, as Sonnet
+  wrote.
+- **The laser exclusion is right and the asymmetry is right** — a
+  burst can't be stopped (SPEC 1.9), a tractor can, so the tractor is
+  the one that yields. One gap: E and V are beams too (`beam.tool`
+  'vac'/'dust'). E is the tractor's natural next move, and pressing it
+  while the pull is still finishing is exactly what a pilot will do.
+  Proposal: **any beam start cuts the tractor** (E included — "you've
+  got it, extract it"), not lasers only. Ask.
+- **The file mapping** (tier 1 keeps `tractor_beam2`, tiers 2/3/4 take
+  `tractor_beam7/8/9`) is the only sensible reading of "the last 3
+  numbered as the last 3 tiers." Confirm by ear; `3–6` stay in reserve.
+
+#### ideas13.txt — Brian's notes, reviewed (Fable, 2026-09-06)
+
+Seven notes. Two are already built and waiting to be flown; two are
+small, buildable now (3.53, 3.54); two are galactic-map direction that
+go to A.13/3.23b with questions; one is a discussion that opens a
+list. `backstory.md` arrived alongside — a full setting outline ("The
+Silence") — and is NOT reviewed here; it deserves its own pass as an
+A-section, and it bears directly on the encounters note below.
+
+- **"Half-vertice spots can be controlled but lose control faster if
+  connected to vertices the human doesn't control"; "controlling them
+  generates resources... but vertices are more valuable."** In the
+  spec's own words: the cube's edge MIDPOINTS (waypoints) become
+  **controllable outposts** — they produce when held, so a player could
+  grab many cheaply, but a waypoint decays unless the CORNERS at its two
+  ends are held too; corners (quadrants) are worth more. This is the
+  supply-line rule ideas11 asked for ("cut-off erodes control, not
+  favor") given a shape: a waypoint between two of your corners is
+  stable, between yours and a rival's is contested and decays, between
+  two rivals' can't be held at all. Coherent, and it makes the map's
+  geometry matter for control the way it already matters for travel.
+  Written into A.13/3.23b as direction (Phase 4 — control is Q3's).
+  Open: what a waypoint produces, the decay rates for the three cases,
+  whether a waypoint's production also feeds the adjacent corners.
+- **Manhattan-distance jumps.** "If at −1,−1,−1 they could go 1,0,−1"
+  — a jump of three cells, paid in jump units per cell, not one fare
+  per edge as A.13 decided. **This contradicts the three-fixed-gates-
+  per-corner model** as written: a gate serves one edge, and there is
+  no gate pointing from home at (1,0,−1). Fable's reconciliation, to
+  confirm: the gate is WHICH WAY you leave, the galactic map is HOW
+  FAR — you pick any cell on the map within your jump budget, fly to
+  the gate on the first axis of the path (the right-hand gate for that
+  example), and the network routes the rest, one hydrogen unit per
+  cell of manhattan distance. The gate still teaches the geometry; the
+  fare scales with distance; waypoints become destinations (A.13's
+  "later" arrives — it has to, for the control idea above). What it
+  changes: 3.18's "the fare" is per cell not per edge (an edge = 2
+  units), and 3.22's gate arrival is at the nearest gate on the
+  destination side. **Brian's "5 warp corner to corner on a face"
+  doesn't match any pair** — adjacent corners are 2 apart, a face's
+  diagonal corners are 4, the cube's far corner is 6. Five is the number
+  of CELLS on the diagonal path counting both ends, so he may be
+  counting cells rather than jumps, or had another pair in mind. Ask.
+- **"A little chime to alert the user to start listening to the next
+  beacon"** — **built, SPEC 3.49** (`course_pass`/`course_miss`, in the
+  same tick as the next gate's "Gate N."), shipped Round 33, not yet
+  flown. No new item. One reading worth asking about: does he ALSO
+  want an approach cue — a tick or tone when the ship first enters a
+  gate's radius, before the crossing — which 3.49 does not do?
+- **"More stats in the ending evaluation: beacons hit and missed, total
+  distance from beacon center..."** — hit/missed and rank-vs-best are
+  **built, 3.49**. The accuracy metric is not: **3.53**, below.
+- **"The 2 station missions in the main menu for demo purposes."** Yes,
+  and cheap — **3.54**, below. It should go BEFORE the playtest
+  checkpoint, since it exists to let Brian reach those missions to
+  test them.
+- **"We need to start thinking of other encounters/instances."** What's
+  already planned: three anomaly kinds (A.13 — vortex storm, derelict
+  hulk, gas-pocket field, each "built when its sound exists"), the
+  drone swarm (3.13), and 3.42 (escort in formation, an escort
+  variant). A list to pick from — none specced, each fits machinery
+  that exists: **(a) distress call** — a stranded ship at a waypoint,
+  tow it home with the tractor (3.52 makes the tractor an economic
+  choice, and this is the tug's fiction from the other side);
+  **(b) salvage a derelict** — the hulk anomaly as an instance, cores
+  to extract from a dead ship instead of a rock; **(c) claim dispute**
+  — a rival miner working your field, to be scared off, not killed
+  (the game's first non-lethal encounter); **(d) convoy** — two or
+  three freighters, escort in formation at scale; **(e) the recorder**
+  — an unidentified beacon at a waypoint that plays a pre-Silence
+  recording and nothing else (from `backstory.md`; story delivery as a
+  pure listening encounter, the anomaly kind that "contains fragments
+  of the Silence"); **(f) the gate waking** — a one-time event at
+  Meridian's gate, also from `backstory.md`, the moment Q2 opens.
+  Which first is Brian's call — Fable's pick is (a): it uses the
+  tractor, the waypoint, and the tug voice, all of which exist or are
+  queued, and it is the first encounter that isn't a fight or a mine.
+
+#### 3.53 The flight course, third pass: accuracy (ideas13.txt) — proposed
+
+- Brian: "total distance from beacon center when following path or
+  some other metrics to evaluate it beyond just time."
+- `updateCourse` already computes `lateral` — the crossing's distance
+  from the gate's own axis — for the clean/miss decision and then
+  throws it away. Keep it: `courseState.offsets[]` per gate, and the
+  final line adds **"average N off centre"** (mean of the eight; a miss
+  counts at its real distance, so a wide miss drags the average up).
+  Store `avgOffset` on the `courseRuns` entry; the Run log speaks it
+  beside the time. One more metric, if wanted: **best gate** ("gate 5,
+  dead centre") — cheap, and it tells the pilot what a good crossing
+  felt like. Not a second board — time stays the ranking; accuracy is
+  read out, not competed on, until Brian says otherwise.
+- Test: eight clean crossings at a known offset read back that average;
+  a run with one wide miss reads the higher average; the log entry
+  carries it.
+
+#### 3.54 Escort and Defend on the mission menu, as drills (ideas13.txt) — proposed, before the playtest
+
+- Brian: "I'd like the 2 missions we have made for the station to be
+  in the main menu for demo purposes, otherwise no way to see that
+  without playing."
+- Two `MENU_ITEMS`, **Escort drill** and **Defend drill**, after Flight
+  course, each calling the existing `startMissionRun(kind)` path with
+  no `sectorHome` — the same relationship Combat training has to the
+  Contested Zone: same waves, same friendly, same win/loss, but a
+  standalone drill. Consequences to decide, Fable's proposal in each:
+  no station means no favor (`poiName` null; `missionEnd` skips the
+  favor bump — it has to, there's nothing to credit); credits **kept**
+  (a drill that pays is fine — Combat training pays salvage); the
+  cooldown **skipped** (a drill is replayable — that's the point);
+  death is a drill death (Enter retries, no tug — `tugCandidate()`
+  already returns false with no `sectorHome`). Enter after a win
+  replays it (drill behavior), which is the one place this differs
+  from the station-offered version, where Enter is refused. The
+  mission menu grows to twelve; first-letter D now cycles Delivery run
+  → Defend drill, E jumps to Escort drill, both fine.
+- Test: both drills start from the menu with no sector, run to both
+  outcomes, pay credits and no favor, retry on Enter, and the station-
+  offered versions are untouched (still cooldown-gated, still favor).
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -6284,6 +6488,36 @@ misses — written into 3.49.
 **DECIDE (open, from ideas12.txt)**: what Z becomes, if anything;
 the tractor tier numbers; the four laser profiles and the 300+1 fit
 price; F2 switching with no delay; and the five stats-page questions.
+
+**DECIDE (open, from 3.52 and ideas13.txt, Fable 2026-09-06)**:
+1. **Tractor cost shape** — charge for work (mass × distance × tier
+   efficiency, Fable's proposal, which makes "better than thrusters"
+   true by construction) or per second as first drafted (which makes
+   the tractor never the better choice)? And the target: tier 1
+   pulling a core from 500 costs at most half of flying it — agree?
+2. **Why ever step down a tier** (Shift+B, 3.44)? A gentle-pull rule
+   (a core pulled too fast can crumble — `corePullSafeRate`), or drop
+   the idea and let Shift+B be a range/cost trim with no real reason?
+3. **Does the extractor cut the tractor too?** Fable: any beam start
+   (E, V, Space) releases it — "you've got it, extract it."
+4. **The four recordings** — tier 1 keeps `tractor_beam2`, tiers 2/3/4
+   take `7/8/9`: right by ear?
+5. **Waypoint control** — what a held waypoint produces; the three
+   decay rates (both corners yours / one / neither); does it feed the
+   adjacent corners?
+6. **Manhattan jumps vs three gates per corner** — Fable's
+   reconciliation (gate = direction, map = distance, one unit per
+   cell): confirm, or keep one fare per edge? And "5 warp corner to
+   corner": adjacent is 2, a face's diagonal 4, the far corner 6 —
+   were you counting cells (5 on the diagonal path) or a different
+   pair?
+7. **The course**: the pass chime exists (3.49) — do you also want an
+   approach cue on entering a gate's radius? Is "average off centre"
+   enough for 3.53, or a second board?
+8. **Escort/Defend drills (3.54)**: credits kept, favor and cooldown
+   skipped, Enter replays — agree?
+9. **Encounters**: which first — Fable's pick is the distress-call tow.
+   And `backstory.md` ("The Silence"): write it up as A.15?
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts
