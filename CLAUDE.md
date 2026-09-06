@@ -1692,15 +1692,18 @@ away from cycle-back to auto-target — see the Combat section**) · T report se
 target (lock onset also speaks distance) · Shift+T auto-target (SPEC
 3.38: the stabilizers aim the ship at the selected target for you,
 never fires, limited pool, not standard gear) · R range to target with
-closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · Z
-tractor beam (mining, SPEC 3.30) · Shift+Z zone size · Q map · H warp ·
-C call · B beacons on/off/target only · I
+closing/opening (Shift+R = the radar sweep) · E extractor · V vacuum · B
+tractor beam (mining, SPEC 3.30; tiered and moved here from Z, SPEC 3.44
+— "B for beam") · Shift+B steps the selected tier down, wrapping to the
+top · Z unbound ("Z does nothing here") · Shift+Z zone size · Q map ·
+H warp · C call · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
 objective) · X leave · F1 help · F12 explore · Escape opens the mission
 menu (SPEC 1.18 — see below; no separate pause any more). Menu: arrows +
-Enter (first letters D/S/C/M/H jump, S cycles Sector then Sound; B
-cycles beacons here too); Left/Right on the Difficulty line cycles
-Rookie/Veteran/Ace in place.
+Enter (first letters D/S/C/M/H jump, S cycles Sector, then Sound, then
+Sound Lab); Left/Right on the Difficulty line cycles
+Rookie/Veteran/Ace in place. Beacons (on/off/target only) live in the
+Sound menu as of SPEC 3.45, not on a direct key any more.
 
 ## Accessibility architecture (non-negotiable)
 
@@ -2774,5 +2777,51 @@ measured 0 seconds and said "New personal best by 40 seconds."; a third
 run with one deliberate miss said "10 seconds off your best." against
 that new best. Zero console errors throughout. Every number here is
 still a placeholder for Brian to fly and judge. Not yet heard or flown
-by Brian. Next: 3.44 (B becomes the tractor in tiers, Z unbound), then
-3.48, 3.46, L.5c, all still ahead of 3.42 and quadrant 2.
+by Brian.
+
+**Round 33 (Sonnet) also built SPEC 3.44** — B is now the tractor beam,
+tiered like the lasers; Z is unbound; beacons stay purely in the Sound
+menu (3.45 built where they moved to, this round removes the last way
+to reach them from a live key). `TRACTOR_TIERS[0..2]` holds per-tier
+medium/large/huge pull rates (core/small stays flat at
+`CFG.tractorPullCore` on every tier); `tractorLevel()` is the OWNED
+ceiling, read directly off module ownership (1 with the test fit,
+rising with `tractor_2`/`tractor_3`) — the exact pattern
+`autoTargetTier()` had already borrowed FROM this feature back in SPEC
+3.38, now built for real. `tractorTier` is the SELECTED tier, live
+session state reset to the owned ceiling on every fresh mission start,
+so a pilot who never touches Shift+B always gets their best. Shift+B
+steps it down, wrapping to the top, reusing `laser_switch5`
+(`SLOT_SWITCH[2]`, 2.2s) at natural length with B refused meanwhile —
+a direct mirror of the laser slot switch's own machinery
+(`tractorSwitch`/`stopTractorSwitch()`/`tractorSwitchLeft()`). Two new
+MODULES, `tractor_2`/`tractor_3`, each requiring the one below,
+alloy-priced like the repair crew's. `beaconKey()` is deleted outright
+— three call sites removed (the raw-sim switch, a mission-menu
+B-passthrough, a Sound-menu B-passthrough), not just the obvious one.
+**A documentation gap found while sweeping for stale text, not a code
+bug**: fixing the raw-sim `B` binding alone would have left FOUR other
+"the B key"/"B cycles beacons" references pointing at a key that no
+longer does that — one of them live code (`beaconNote()`'s own spoken
+hint at sector entry, which would have kept telling a player with
+beacons off to press a B that had stopped working), the rest comments.
+All four fixed alongside the main rebind, plus README/CLAUDE.md's own
+key-map text and — noticed only because a test script's blind `s`,`s`
+press landed on the WRONG menu item — a separate, pre-existing
+staleness: CLAUDE.md's key map said "S cycles Sector then Sound," but a
+third item, "Sound Lab" (added back in Round 18), also starts with S
+and had never been mentioned; fixed to "Sector, then Sound, then Sound
+Lab" while already touching that line. Machine-tested at a local
+server against a profile seeded with `tractor_2` owned: Z answering "Z
+does nothing here", Shift+Z unaffected, a fresh mining start defaulting
+`tractorTier` to the owned ceiling, a medium rock's pull measured at
+exactly 12/s at tier 2 and exactly 4/s after stepping down to tier 1, a
+large rock refused at tier 1 and pulling at exactly 3/s back at tier 2,
+B's mid-switch refusal and Shift+B's wrap-to-the-top (not the max
+tier) all confirmed, F2's Tractor heading reading correctly, and the
+mission menu's B press falling through cleanly to "No item starts with
+B." Zero console errors throughout. Every tier number and price is a
+placeholder for Brian to fly and judge. Not yet heard or flown by
+Brian. Next: 3.48 (F2's equipped laser per slot, switchable there),
+then 3.46 (four new laser families for slots 3–6), then L.5c (the
+vortex as six presets), all still ahead of 3.42 and quadrant 2.

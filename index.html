@@ -147,15 +147,17 @@ var CFG_DEFAULTS = {
     vacArc: 20 * Math.PI / 180,
     vacTickMs: 600,
 
-    // Tractor beam (SPEC 3.30): Z pulls the selected rock/core toward the
-    // ship at a clean fixed rate by size — not a force fighting momentum,
-    // a deliberate simplification (see SPEC.md 3.30). Not standard gear;
-    // tractorTestFit fits it to every ship for free until Brian has heard
-    // it, after which the tractor_1 module becomes the only way to get one.
+    // Tractor beam (SPEC 3.30, tiered as of SPEC 3.44): pulls the selected
+    // rock/core toward the ship at a clean fixed rate by size — not a force
+    // fighting momentum, a deliberate simplification (see SPEC.md 3.30).
+    // Not standard gear; tractorTestFit fits everyone with tier 1 (today's
+    // numbers, unchanged) until Brian has heard it, after which owning
+    // tractor_1/2/3 (MODULES) is the only way in — see TRACTOR_TIERS below
+    // for what tiers 2 and 3 add on top of tractorPullCore, which stays
+    // constant across every tier.
     tractorTestFit: true,
-    tractorRange: 500,           // Z refuses beyond this
-    tractorPullCore: 20,         // u/s closed on a small rock or a core (500 -> vacRange 300 in 10s)
-    tractorPullMedium: 4,        // "barely" moves a medium
+    tractorRange: 500,           // B refuses beyond this
+    tractorPullCore: 20,         // u/s closed on a small rock or a core (500 -> vacRange 300 in 10s), every tier
     tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
 
     // Auto-target (SPEC 3.38, ideas10.txt): Shift+T hands the stabilizers
@@ -863,7 +865,9 @@ var SOUND_CATS = [
     { id: 'music',   label: 'Music',
       desc: 'Ambient tracks. Nothing plays yet.' }
 ];
-// The four POI beacons: on, off, or only the selected nav target (B key).
+// The four POI beacons: on, off, or only the selected nav target — the
+// Sound menu's own Beacons line (SPEC 3.45; B itself moved on to the
+// tractor beam, SPEC 3.44).
 var BEACON_MODES = [
     { id: 'on',     say: 'Beacons: on.' },
     { id: 'off',    say: 'Beacons: off.' },
@@ -906,10 +910,19 @@ var MODULES = [
       cfg: { repairHalfS: 30 } },
     // SPEC 3.30: tractor beam, tier 1 — not standard gear; CFG.tractorTestFit
     // fits it to every ship for free until Brian has heard it, after which
-    // owning this is the only way. No cfg override yet (tier 1's numbers
-    // are the CFG defaults); a later tier would move heavier rocks.
+    // owning this is the only way. SPEC 3.44 (ideas12.txt) added two more
+    // tiers, each requiring the one below, same test-fit pattern as
+    // auto_target_1/2/3: no cfg override on any of the three — tractorLevel()
+    // reads ownership directly, since which tier is owned decides which of
+    // TRACTOR_TIERS' three per-size pull rates applies, not a flat override.
     { id: 'tractor_1', name: 'tractor beam', cost: 600, mass: 10, alloy: 2,
       desc: 'Pulls a targeted small rock or core toward you instead of flying to it.',
+      cfg: {} },
+    { id: 'tractor_2', name: 'tractor beam II', cost: 500, mass: 6, alloy: 3, requires: 'tractor_1',
+      desc: 'Pulls a large rock too, and moves a medium one faster.',
+      cfg: {} },
+    { id: 'tractor_3', name: 'tractor beam III', cost: 500, mass: 4, alloy: 4, requires: 'tractor_2',
+      desc: 'Pulls anything, even a huge rock — slowly.',
       cfg: {} },
     // SPEC 3.38 (ideas10.txt): auto-target stabilizers, three tiers, each
     // requiring the one below — same test-fit pattern as the tractor beam:
@@ -1682,8 +1695,10 @@ var lastLaserAt = 0;
 var radarBusy = false;
 var autoThrust = false;  // Shift+W cruise (SPEC 1.15): thrusts as if W were held until cancelled
 var zoneIdx = 0;         // start Wide: a big center for first-time pilots
-// SPEC 3.30: Z now starts/stops the tractor beam (a tool used constantly);
-// the zone cycle it used to be moves to Shift+Z (a setting changed rarely).
+// SPEC 3.30 gave Z the tractor beam (a tool used constantly), moving the
+// zone cycle it used to be to Shift+Z (a setting changed rarely) — SPEC
+// 3.44 later moved the tractor itself to B, leaving Z unbound; Shift+Z
+// still means exactly what it always has.
 function cycleZone() {
     zoneIdx = (zoneIdx + 1) % ZONES.length;
     SIM.audio.blip(zoneIdx === 0 ? 400 : (zoneIdx === 1 ? 550 : 700), 90, 0.14, 0, 'triangle');
@@ -1938,7 +1953,7 @@ var HELP_SECTIONS = [
         'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
         'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
         'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
-        function () { return 'Z engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — Z again releases it. It barely moves a medium rock and does nothing to large or huge ones, and it needs the target within ' + CFG.tractorRange + '.'; },
+        function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: your tier decides how much it can move a medium, large, or huge rock, and Shift B steps down to a gentler tier if you would rather ease off a delicate core, wrapping back to the top. It needs the target within ' + CFG.tractorRange + '.'; },
         'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
         'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
         'Careful: lasering or missiling a finished core shatters it. Most of the ore is lost; only a dust mist remains.',
@@ -1976,8 +1991,7 @@ var HELP_SECTIONS = [
         'Weapons and mining tools are cold in open sector space.'
     ] },
     { heading: 'System', items: [
-        'B cycles the point-of-interest beacons: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship.',
-        'The Sound item on the mission menu sets a level — off, low, quiet, medium, or full — for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line that cycles the same on/off/target-only choice as the B key. Speech is never affected. Settings are saved.',
+        'The Sound item on the mission menu sets a level — off, low, quiet, medium, or full — for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship. Speech is never affected. Settings are saved.',
         'Escape opens the mission menu over the live game: Resume goes back to the ship, or pick anything else to leave. Escape again also resumes.',
         'F12 turns on explore mode, where every key describes itself safely.',
         'F1 opens this help screen. Escape closes it.',
@@ -2061,7 +2075,7 @@ var KEY_DESCRIPTIONS = {
     f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, Escape closes it.',
     f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
-    b: 'Cycle the point-of-interest beacons: on, off, or only the selected nav target. Saved with your profile.',
+    b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining, at your currently selected tier — tier ' + tractorLevel() + ' owned. Shift B steps the selected tier down, wrapping to the top, for a delicate core you would rather ease off on.'; },
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, sending it ballistic at once, no shield needed. A moment later you hear it pop clear. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'At the mission menu, jumps to space mining.',
@@ -2070,7 +2084,7 @@ var KEY_DESCRIPTIONS = {
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
     y: 'Speaks your resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys. Works anywhere, including inside the station and its submenus.',
-    z: 'Tractor beam: pulls the selected rock or core toward you while mining. Z again releases it. Shift Z cycles the target zone size instead: wide, standard, or narrow.',
+    z: 'Z does nothing on its own any more — the tractor beam moved to B. Shift Z still cycles the target zone size: wide, standard, or narrow.',
     e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
@@ -2279,14 +2293,14 @@ function buildPoiVoice(t) {
     // Phase 3L, L.9: the gate's beacon is directional — a cone sweeping a
     // full turn every gateSweepS (updateTargeting), loudest when the beam
     // points at you. The outer gain floors rather than zeros — silence is
-    // a bug, and B's "target only" mode still has to find it.
+    // a bug, and beacon mode's "target only" setting still has to find it.
     if (t.poiType === 'gate') {
         panner.coneInnerAngle = CFG.gateConeInner;
         panner.coneOuterAngle = CFG.gateConeOuter;
         panner.coneOuterGain = CFG.gateConeOuterGain;
         t.gatePhase = 0;
     }
-    // The B key's mute sits after the tremolo — the LFO is summed INTO
+    // Beacon mode's mute sits after the tremolo — the LFO is summed INTO
     // gain.gain, so zeroing that gain would still swing it by the depth.
     var mute = SIM.audio.ctx.createGain();
     mute.gain.value = beaconAudible(t) ? 1 : 0;
@@ -2389,15 +2403,9 @@ function applyBeaconMutes() {
     });
 }
 
-function beaconKey() {
-    var i = 0;
-    for (var k = 0; k < BEACON_MODES.length; k++) if (BEACON_MODES[k].id === beaconMode) i = k;
-    beaconMode = BEACON_MODES[(i + 1) % BEACON_MODES.length].id;
-    saveProfile();
-    SIM.audio.blip(beaconMode === 'on' ? 700 : beaconMode === 'target' ? 550 : 400, 90, 0.14, 0, 'triangle');
-    say(beaconModeText() + (mode === 'sector' ? '' : ' Applies in open sector space.'));
-}
-
+// SPEC 3.44: beaconKey() (B's own direct cycle) is gone — B is the tractor
+// now. The Sound menu's own Beacons line (SPEC 3.45) is the only way left
+// to change beaconMode; beaconModeText() below still backs it.
 function beaconModeText() {
     for (var k = 0; k < BEACON_MODES.length; k++) if (BEACON_MODES[k].id === beaconMode) return BEACON_MODES[k].say;
     return 'Beacons: on.';
@@ -2406,7 +2414,7 @@ function beaconModeText() {
 // Read back at sector entry when the beacons aren't simply on, so a quiet
 // sector is never a mystery.
 function beaconNote() {
-    return beaconMode === 'on' ? '' : ' ' + beaconModeText() + ' B cycles them.';
+    return beaconMode === 'on' ? '' : ' ' + beaconModeText() + ' The Sound menu cycles them.';
 }
 
 function makeSectorRoster() {
@@ -2825,9 +2833,10 @@ function updateTargeting(dt) {
             // brightness inside 1,000; ~1.3 kHz at 7,000; ~600 Hz at 11,000.
             var haze = 20000 * Math.pow(1000 / Math.max(a.dist, 1000), 1.4);
             cutoff = Math.min(cutoff, clamp(haze, 500, CFG.lpMax));
-            // The B key (SPEC 1.12): on / off / selected target only. SPEC
-            // 3.41's course gates ignore B entirely — their own volume
-            // ladder (courseGainFor) is the only thing driving this mute.
+            // Beacon mode (SPEC 1.12, in the Sound menu as of SPEC 3.45):
+            // on / off / selected target only. SPEC 3.41's course gates
+            // ignore it entirely — their own volume ladder (courseGainFor)
+            // is the only thing driving this mute.
             if (t.nodes.mute && SIM.audio.ctx) {
                 var muteTarget = t.poiType === 'course' ? courseGainFor(t) : (beaconAudible(t) ? 1 : 0);
                 t.nodes.mute.gain.setTargetAtTime(muteTarget, SIM.audio.ctx.currentTime, 0.15);
@@ -4446,26 +4455,54 @@ function debrisTotal() {
     return debris.reduce(function (s, d) { return s + d.amount; }, 0);
 }
 
-// ---- tractor beam (SPEC 3.30) -----------------------------------------------
-// Z pulls the selected rock or core toward the ship instead of flying to
-// it. A clean, constant-rate pull by size (not a force competing with the
-// laser's own beamPush frame by frame — a deliberate simplification,
-// flagged in SPEC.md) while damping whatever velocity the target already
-// carries, so a laser-shoved rock's momentum dies out fast instead of
-// sailing past the pull. Not standard equipment: tractorTestFit fits it
-// to every ship for free until Brian has heard it; after that, owning
-// the tractor_1 module is the only way.
+// ---- tractor beam (SPEC 3.30, tiered as of SPEC 3.44) ----------------------
+// B (moved from Z, SPEC 3.44) pulls the selected rock or core toward the
+// ship instead of flying to it. A clean, constant-rate pull by size (not a
+// force competing with the laser's own beamPush frame by frame — a
+// deliberate simplification, flagged in SPEC.md) while damping whatever
+// velocity the target already carries, so a laser-shoved rock's momentum
+// dies out fast instead of sailing past the pull. Not standard equipment:
+// tractorTestFit fits everyone with tier 1 for free until Brian has heard
+// it; after that, owning tractor_1/2/3 (MODULES) is the only way.
+// Three owned tiers, like the lasers (SPEC 3.44). Core/small always pulls
+// at CFG.tractorPullCore regardless of tier; medium/large/huge scale up
+// per tier — a top-tier tractor moves anything, slowly. Indexed 0..2 for
+// tiers 1..3 (tractorLevel()/tractorTier are the 1-based numbers players
+// hear; TRACTOR_TIERS[tier - 1] is the row).
+var TRACTOR_TIERS = [
+    { medium: 4,  large: 0,  huge: 0 },   // tier 1 (today's numbers, unchanged)
+    { medium: 12, large: 3,  huge: 0 },   // tier 2
+    { medium: 20, large: 10, huge: 3 }    // tier 3
+];
 var tractor = { active: false, targetIdx: -1, nodes: null };
+// The SELECTED tier (Shift+B steps it down within the owned range,
+// wrapping to the top — "a delicate core you'd rather not yank"); reset to
+// the owned ceiling on every fresh mission/drill start (clearMission), so
+// a pilot who never touches Shift+B always gets their best.
+var tractorTier = 1;
+var tractorSwitch = null;   // { until, timer, src, g } while a Shift+B tier switch is in progress
 
 function tractorFitted() { return CFG.tractorTestFit || ownedModules().indexOf('tractor_1') >= 0; }
 
+// Owned tier: 1 with the test fit (today's numbers, unchanged from before
+// tiers existed) and rising with the highest tractor_N module actually
+// bought — same pattern autoTargetTier() explicitly borrowed from this one.
+function tractorLevel() {
+    var lvl = 1;
+    if (ownedModules().indexOf('tractor_2') >= 0) lvl = 2;
+    if (ownedModules().indexOf('tractor_3') >= 0) lvl = 3;
+    return lvl;
+}
 // core and small rock share ROCK_SIZES.length-1 (a core is a collapsed
-// small rock, SPEC 3.30's own "core and small rock" pairing) — 0 for
-// large/huge refuses the pull entirely.
+// small rock, SPEC 3.30's own "core and small rock" pairing) and always
+// pull at tractorPullCore regardless of tier; medium/large/huge read the
+// SELECTED tier's own row of TRACTOR_TIERS (0 = refuses the pull entirely).
 function tractorPullRateFor(t) {
     if (t.size >= ROCK_SIZES.length - 1) return CFG.tractorPullCore;
-    if (t.size === ROCK_SIZES.length - 2) return CFG.tractorPullMedium;
-    return 0;
+    var tier = TRACTOR_TIERS[clamp(tractorTier, 1, TRACTOR_TIERS.length) - 1];
+    if (t.size === ROCK_SIZES.length - 2) return tier.medium;
+    if (t.size === ROCK_SIZES.length - 3) return tier.large;
+    return tier.huge;
 }
 function tractorStartHum() {
     if (!SIM.audio.ctx || tractor.nodes) return;
@@ -4488,7 +4525,53 @@ function stopTractor(reason) {
     tractorStopHum();
     if (reason) say(reason);
 }
+// Seconds left on a Shift+B tier switch in progress (0 = none).
+function tractorSwitchLeft() {
+    return tractorSwitch ? Math.max(0, (tractorSwitch.until - Date.now()) / 1000) : 0;
+}
+function stopTractorSwitch() {
+    if (!tractorSwitch) return;
+    var s = tractorSwitch; tractorSwitch = null;
+    clearTimeout(s.timer);
+    if (s.g) {
+        SIM.audio.ramp(s.g.gain, 0.0001, 0.1);
+        setTimeout(function () { try { s.src.stop(); s.g.disconnect(); } catch (e) {} }, 200);
+    }
+}
+// Shift+B (SPEC 3.44): steps the SELECTED tier down within the owned
+// range, wrapping to the top. Brian: "just use laser switch 5 for when
+// this one switches" — SLOT_SWITCH[2] (laser_switch5, 2.2s) at its own
+// natural length, no time-stretch (this isn't a per-slot delay that varies
+// by weight, just one fixed clip reused). B itself refuses while it plays,
+// exactly 1.14's own laser-slot-switch shape.
+function tractorTierDown() {
+    if (tractorSwitch) { SIM.cues.play('refusal_wait'); say('Tractor switching, ' + Math.ceil(tractorSwitchLeft()) + ' seconds.'); return; }
+    var owned = tractorLevel();
+    var newTier = tractorTier - 1;
+    if (newTier < 1) newTier = owned;
+    tractorTier = newTier;
+    var sw = SLOT_SWITCH[2], secs = sw.s, A = SIM.audio, src = null, g = null;
+    if (A.ctx && !A.assetBufs[sw.asset]) A.load(sw.asset);
+    if (A.ctx && A.assetBufs[sw.asset]) {
+        var buf = A.assetBufs[sw.asset];
+        src = A.ctx.createBufferSource(); src.buffer = buf;   // natural length: no playbackRate stretch
+        g = A.ctx.createGain(); g.gain.value = 0.5;
+        src.connect(g); g.connect(A.uiBus);
+        src.start();
+    } else if (A.ctx) {
+        A.sfxSweep({ f1: 300, f2: 900, f3: 500, dur: secs, vol: 0.12, type: 'sawtooth' });
+    }
+    tractorSwitch = { until: Date.now() + secs * 1000, src: src, g: g, timer: null };
+    tractorSwitch.timer = setTimeout(function () {
+        tractorSwitch = null;
+        if (!running) return;
+        SIM.cues.play('slot_select');
+        say('Tractor tier ' + tractorTier + '.');
+    }, secs * 1000);
+    say('Tractor tier ' + tractorTier + ', switching.');
+}
 function tractorKey() {
+    if (tractorSwitch) { SIM.cues.play('refusal_wait'); say('Tractor switching, ' + Math.ceil(tractorSwitchLeft()) + ' seconds.'); return; }
     if (tractor.active) { stopTractor('Tractor released.'); return; }
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The tractor beam only works while mining.'); return; }
     if (!tractorFitted()) { SIM.cues.play('refusal_offline'); say('No tractor beam fitted. The shipyard sells it.'); return; }
@@ -5093,10 +5176,14 @@ function buildShipLines() {
 
     if (tractorFitted()) {
         heading('Tractor beam');
-        line('Pull ' + CFG.tractorPullCore + ' a second on a small rock or a core, ' +
-             CFG.tractorPullMedium + ' on a medium, none on large or huge.');
-        line('Range ' + CFG.tractorRange + '.' +
+        var tOwned = tractorLevel(), tSel = TRACTOR_TIERS[clamp(tractorTier, 1, TRACTOR_TIERS.length) - 1];
+        line('Tier ' + tOwned + ' owned, tier ' + tractorTier + ' selected.' +
              (ownedModules().indexOf('tractor_1') < 0 ? ' Test fit.' : ''));
+        line('Pull ' + CFG.tractorPullCore + ' a second on a small rock or a core, ' +
+             tSel.medium + ' on a medium, ' +
+             (tSel.large > 0 ? tSel.large + ' on a large, ' : 'none on a large, ') +
+             (tSel.huge > 0 ? tSel.huge + ' on a huge.' : 'none on a huge.'));
+        line('Range ' + CFG.tractorRange + '.');
     }
 
     if (autoTargetFitted()) {
@@ -7004,10 +7091,21 @@ function onKeyDown(e) {
     }
     // Shift+Z (SPEC 3.30): the target-zone cycle Z used to be, unguarded by
     // tug/mission/over() same as it always was — a preference toggle, not
-    // a combat action, so it stays available any time.
+    // a combat action, so it stays available any time. Z itself is unbound
+    // as of SPEC 3.44 (the tractor moved to B) — it falls through to the
+    // switch's default case below, "Z does nothing here."
     if (e.shiftKey && lname === 'z') {
         if (e.repeat) return;
         cycleZone();
+        return;
+    }
+    // Shift+B (SPEC 3.44): steps the tractor's SELECTED tier down. Same
+    // shape as Shift+Z above — tractorTierDown()/tractorKey() already
+    // refuse on their own terms (wrong mode, not fitted, mid-switch), so
+    // this isn't gated on tug/mission/over() either.
+    if (e.shiftKey && lname === 'b') {
+        if (e.repeat) return;
+        tractorTierDown();
         return;
     }
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
@@ -7064,7 +7162,7 @@ function onKeyDown(e) {
             if (weaponsCold()) { SIM.cues.play('refusal_offline'); say('Nothing shoots at you in open space. Decoys are for encounters.'); }
             else if (!over()) fireChaff();
             break;
-        case 'b':      beaconKey(); break;
+        case 'b':      if (!over()) tractorKey(); break;
         case 'tab':    if (!over()) cycleTarget(); break;
         case 'r':      rangeReport(); break;
         case 'e':      if (!over()) startExtract(); break;
@@ -7089,7 +7187,6 @@ function onKeyDown(e) {
                                        : 'No target selected. Tab cycles targets.');
             break;
         }
-        case 'z':      if (!over()) tractorKey(); break;
         case 'f1':     openHelp(); break;
         case 'f2':     openShipScreen(); break;
         case 'f3':     openResourceScreen(); break;
@@ -7417,7 +7514,8 @@ window.__sim = {
             })(),
             tractor: { active: tractor.active, fitted: tractorFitted(),
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
-                       dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null },
+                       dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null,
+                       owned: tractorLevel(), tier: tractorTier, switching: Math.round(tractorSwitchLeft() * 10) / 10 },
             autoTarget: { active: !!autoTarget, holding: autoTarget ? autoTarget.holding : false,
                           holdRemaining: autoTarget ? Math.round(autoTarget.holdRemaining * 10) / 10 : null,
                           charges: autoTargetCharges, tier: autoTargetTier(),
@@ -7590,6 +7688,8 @@ function clearMission() {
     targets.forEach(stopVoice);
     killMissile();
     stopTractor();
+    stopTractorSwitch();
+    tractorTier = tractorLevel();   // SPEC 3.44: every fresh start snaps back to the best owned tier
     stopBeam(true);
     thrusterSync(null);
     stopLockTone();
@@ -7695,7 +7795,7 @@ var MENU_ITEMS = [
           saveProfile();
       } },
     { label: 'Sound',
-      desc: 'Volume for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line — same choice as the B key.',
+      desc: 'Volume for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line: on, off, or only your selected nav target.',
       run: function () { openSoundMenu(); } },
     { label: 'Run log',
       desc: function () {
@@ -7829,8 +7929,6 @@ function menuKey(lname, name) {
         say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
     } else if (lname === 'tab') {
         say(menuItemText(menuIdx));
-    } else if (lname === 'b') {
-        beaconKey();          // no item starts with B; the beacon key works here too
     } else if (lname.length === 1 && /[a-z]/.test(lname)) {
         // First-letter jump, cycling from the item after the cursor.
         var next = -1;
@@ -7916,7 +8014,6 @@ function soundKey(lname) {
         }
     }
     else if (lname === 'enter' || lname === 'tab') { say(soundLineText(soundMenu.idx)); }
-    else if (lname === 'b') { beaconKey(); }
     else if (lname === 'y') { speakTotals(); }
     else {
         SIM.audio.blip(220, 80, 0.1);

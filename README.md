@@ -45,12 +45,10 @@ full — for four kinds of sound: the world around you (engines, rocks,
 enemy fire, explosions, beacons), your cockpit instruments (the lock
 tick, thrusters, tools, the shield hum), sound effects (clicks, chimes,
 warnings), and music. The menu also has its own Beacons line, cycling
-the same on/off/target-only choice as the B key below. Speech is never
-affected. In the
-sector, B cycles the four point-of-interest beacons between on, off,
-and only your selected nav target, for stretches of open flying when
-you'd rather not hear them — Tab, T, the map, and the lock tick still
-find every point. All of it is saved with your profile.
+the four point-of-interest beacons between on, off, and only your
+selected nav target, for stretches of open flying when you'd rather
+not hear them — Tab, T, the map, and the lock tick still find every
+point. Speech is never affected. All of it is saved with your profile.
 
 ## The timed delivery run (first item on the menu)
 
@@ -180,12 +178,12 @@ Right hand on the arrows, left hand on everything else.
 | F | Homing missile. Keep the target inside your missile zone for the whole flight |
 | D | Decoy. A burst that spoofs the missile coming at you, sending it ballistic at once — no shield needed, and a moment later you hear it pop clear. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
 | G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
-| B | Cycle the point-of-interest beacons: on, off, or only your selected nav target. The lock tick still finds every point with them off |
+| B | Tractor beam (mining), tiered like the lasers: pulls the selected rock or core toward you instead of flying to it — B again releases it. Shift+B steps your tier down, wrapping back to the top, for a delicate core you'd rather ease off |
 | Tab / T | Cycle targets / report the selected target. Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
 | Shift+T | Auto-target: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. A limited pool, not something you start with |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
-| Z | Tractor beam (mining): pulls the selected rock or core toward you instead of flying to it. Z again releases it. Barely moves a medium rock, does nothing to large or huge ones |
+| Z | Unbound — the tractor beam moved to B |
 | Shift+Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |

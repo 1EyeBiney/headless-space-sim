@@ -2077,9 +2077,9 @@ since
 3.24, plus the course** → **ideas12.txt** (Brian, 2026-09-05, from
 flying: **3.50 the offline buzz, DONE → 3.51 Y speaks the totals, DONE
 → 3.45 five volume steps and the Beacons line, DONE → 3.49 the course
-second pass, DONE** (all four, Round 33, Sonnet) **→ next: 3.44** B is
-the tractor
-in tiers → 3.48 F2's equipped laser per slot → 3.46 four new laser
+second pass, DONE → 3.44 B is the tractor in tiers, DONE** (all five,
+Round 33, Sonnet) **→ next: 3.48** F2's equipped laser per slot → 3.46
+four new laser
 families for slots 3–6 → L.5c the vortex as six presets; 3.47 the
 stats page is a discussion, not scheduled) → **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
@@ -4865,7 +4865,7 @@ the spacing, the radius, the turn angles — is a placeholder for Brian
 to fly and judge, same as every other tuning number in this file. Not
 yet heard or flown by Brian.
 
-#### 3.44 B is the tractor, in tiers; beacons move to the Sound menu (ideas12.txt) — proposed
+#### 3.44 B is the tractor, in tiers; beacons move to the Sound menu (ideas12.txt) — DONE
 
 - Brian: "Use B for Tractor Beam, treat this like lasers in that it
   will have levels. just use laser switch 5 for when this one switches.
@@ -4899,6 +4899,63 @@ yet heard or flown by Brian.
   clip and the refusal mid-switch; a tier-3 pull moves a large rock at
   10/s; Z says it does nothing; the Sound menu's Beacons line cycles
   and saves; `beaconKey` is gone from the raw-sim switch.
+
+**DONE (Round 33, Sonnet).** `B` now calls `tractorKey()` (was `Z`'s job);
+`Z` has no case left in the raw-sim switch at all, falling through to the
+generic "Z does nothing here" the switch's own `default` already gave
+every unbound key — no explicit `case 'z'` needed to say it. `Shift+Z`
+(the target-zone cycle) is completely untouched, still its own guarded
+`if` block ahead of the switch. **Tiers**: `TRACTOR_TIERS[0..2]` holds
+medium/large/huge pull rates per tier (core/small stays flat at
+`CFG.tractorPullCore` on every tier, per spec); `tractorLevel()` — the
+OWNED ceiling — reads module ownership directly (1 with the test fit,
+rising with `tractor_2`/`tractor_3` bought), the exact pattern
+`autoTargetTier()` already borrowed from this feature's own original
+3.30 shape. `tractorTier` — the SELECTED tier — is live session state
+(not saved to the profile, same as `tractor.active` itself), reset to
+the owned ceiling on every fresh mission/drill start (`clearMission()`)
+so a pilot who never touches Shift+B always gets their best, matching
+Brian's "generally the player will just use whichever one is there."
+**Shift+B** (`tractorTierDown()`) steps the selected tier down, wrapping
+to the top, playing `SLOT_SWITCH[2]` (`laser_switch5`, 2.2s) at its own
+natural length — no per-slot time-stretch, since this is one fixed clip
+reused, not a weight-varying delay — with B itself refused
+(`refusal_wait`) until it ends, the exact shape 1.14's own laser-slot
+switch established (`tractorSwitch`/`stopTractorSwitch()`/
+`tractorSwitchLeft()`, all direct mirrors of `laserSwitch`'s own
+machinery). Two new MODULES, `tractor_2`/`tractor_3`, each `requires`
+the one below, alloy-priced like the repair crew's, `cfg: {}` (ownership
+read directly, not a CFG overlay — same as `auto_target_2/3`). F2's
+Tractor heading now reads "Tier N owned, tier M selected" plus the
+tier-specific pull numbers; help (Mining and System headings),
+`KEY_DESCRIPTIONS.b`/`.z`, the mission-menu description for Sound, and
+README were all updated — a broader sweep than the item's own bullet
+called out turned up FOUR more stale "the B key"/"B cycles beacons"
+references left over from when 3.45 moved beacons into the Sound menu
+(a live-code one, `beaconNote()`'s own spoken hint at sector entry,
+would have kept telling a player with beacons off to press a B that no
+longer does that — fixed alongside three comments). `beaconKey()` itself
+is deleted outright (three call sites: the raw-sim switch, a
+mission-menu B-passthrough, and a Sound-menu B-passthrough — all three
+removed, not just the first) since nothing calls it once B means the
+tractor everywhere; `beaconModeText()` survives untouched, still backing
+the Sound menu's own Beacons line built in 3.45. New test hooks:
+`state().tractor` gained `owned`/`tier`/`switching`. Machine-tested at a
+local server against a profile seeded with `tractor_2` owned: Z
+confirmed answering "Z does nothing here", Shift+Z confirmed still
+cycling the zone exactly as before, a fresh mining-mission start
+confirmed `tractorTier` defaulting to the owned ceiling (2) automatically,
+a medium rock's pull rate measured at exactly 12/s at tier 2 and exactly
+4/s after Shift+B stepped down to tier 1 (both matching `TRACTOR_TIERS`
+precisely), a large rock confirmed refused at tier 1 ("Too massive for
+this tractor") and confirmed pulling at exactly 3/s once tier 2 was
+restored, B confirmed refusing mid-switch with the correct countdown,
+Shift+B's wrap-to-the-top confirmed (tier 1 → tier 2, the owned ceiling,
+not tier 3), F2's Tractor heading read correctly, the mission menu's B
+press correctly fell through to "No item starts with B," and the Sound
+menu's own Sound item description read cleanly with no B-key reference
+left. Zero console errors throughout. Every tier number and price is a
+placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — proposed
 
