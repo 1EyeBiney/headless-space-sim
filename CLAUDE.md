@@ -3092,3 +3092,19 @@ cycle, all confirmed with zero console errors. Not yet heard by Brian.
 This is lab work, same as Round 33's L.5c — it doesn't touch SPEC.md's
 numbered build order or unblock the standing "Brian flies everything
 since 3.24" checkpoint.
+
+**SPEC 3.52 written, explicitly NOT built (Brian, 2026-09-06)**: a
+further tractor-beam pass — a fourth tier with its own distinct
+recording (tiers 2/3/4 taking `tractor_beam7/8/9`, Sonnet's own read of
+"the last 3 numbered as the last 3 tiers," flagged as unconfirmed),
+reaction mass as a real per-second cost that falls as tier rises while
+range climbs (with the explicit design goal that a skilled pull should
+cost less RCS than flying the same distance manually), the pull's own
+stop distance moving to 250 (a new `CFG.tractorStopDist`, decoupled
+from the extractor's own 300 `vacRange`), and a laser/tractor exclusion
+that runs two different ways — B refuses while a laser burst is firing
+(the same lockout shields already use), but firing a laser while the
+tractor is active just cuts the tractor off rather than refusing the
+shot. Full detail in SPEC.md 3.52. Brian's own words: "don't do this
+yet, but add it to do" — this is queued after the standing "Brian
+flies everything since 3.24" checkpoint, not built.

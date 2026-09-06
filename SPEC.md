@@ -2082,7 +2082,9 @@ equipped laser per slot, DONE → 3.46 four new laser families for slots
 3–6, DONE → L.5c the vortex as six presets, DONE** (all eight, Round 33,
 Sonnet; 3.47 the
 stats page stays a discussion, not scheduled) → **Brian flies/hears
-everything since 3.24** → **3.42 escort in
+everything since 3.24** → **3.52 the tractor beam, second pass**
+(queued 2026-09-06, explicitly held back from building — see 3.52
+itself) → **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
 (ideas10: the economy lives
@@ -5085,6 +5087,86 @@ press correctly fell through to "No item starts with B," and the Sound
 menu's own Sound item description read cleanly with no B-key reference
 left. Zero console errors throughout. Every tier number and price is a
 placeholder for Brian to fly and judge. Not yet heard or flown by Brian.
+
+#### 3.52 Tractor beam, second pass (Brian, 2026-09-06) — queued, do NOT build yet
+
+Brian, in chat (not from an ideas*.txt file): a further pass on the
+tractor beam (3.30/3.44), explicitly held back from building — "don't
+do this yet, but add it to do." Captured here in full so nothing is
+lost before it's picked up.
+
+- **Four tiers, not three.** `TRACTOR_TIERS` gains a tier 4, above
+  today's tier 3 (medium 20/large 10/huge 3). Placeholder progression,
+  Brian's own numbers not yet given: tier 4 medium 28/large 16/huge 6 —
+  a genuine placeholder, needs his ear same as every other tier number
+  here. A fourth `tractor_4` module joins `MODULES`, requiring
+  `tractor_3`, same cost/mass/alloy shape as the existing three
+  (placeholder price).
+- **A distinct recording per tier, not one hum for all four.** "Use
+  different sounds... use the last 3 numbered as the last 3 tiers."
+  Read as: of the 8 `tractor_beam2-9` recordings on disk, tier 1 keeps
+  `tractor_beam2` (already wired, SPEC 3.44/Round 34); tiers 2, 3, 4
+  take `tractor_beam7`, `tractor_beam8`, `tractor_beam9` respectively —
+  the LAST three by number, onto the LAST three tiers. **Flagged, not
+  confirmed**: this is Sonnet's own reading of "the last 3 numbered as
+  the last 3 tiers," not verified against Brian's own ear — `tractor_
+  beam3-6` stay unused and available if this pairing turns out wrong.
+  Manifest keys for `tractor_beam` (tier 1, existing) plus three new
+  ones (e.g. `tractor_beam_2`/`_3`/`_4`, naming TBD at build time) all
+  preload; `tractorStartHum()`/`tractorTierDown()` pick the tier's own
+  key instead of the one flat `tractor_beam` constant they use today.
+- **Reaction mass becomes a real lever on the tractor, not free.**
+  Today's tractor spends nothing to run — this adds a per-second RCS
+  draw while active (`spendRcs()`, the same helper thrust/braking/
+  repair already use), so pulling something in costs the same resource
+  flying there manually would. **Higher tiers cost less AND reach
+  farther** — both axes move together, tier 1 the most expensive and
+  shortest-ranged, tier 4 the cheapest and longest. Placeholder
+  numbers (needs Brian's own tuning pass against `runBudget()`, SPEC
+  3.32, before shipping for real): tier 1 = 1.5 rcs/s, range 500 (today's
+  number, unchanged); tier 2 = 1.1 rcs/s, range 650; tier 3 = 0.75
+  rcs/s, range 800; tier 4 = 0.5 rcs/s, range 950. **The design goal,
+  stated by Brian and worth checking against real numbers before
+  shipping**: a skilled tractor pull should cost LESS reaction mass
+  than flying the same distance manually with W would — the tractor
+  is meant to reward good targeting/range judgment, not be a strictly
+  worse (or merely equal) alternative to just thrusting over. Whatever
+  final per-second cost is chosen should be checked against `CFG.
+  rcsPerSpeedShed`/thrust's own RCS cost over the same distance, not
+  just asserted.
+- **Pulled items stop at 250, not 300.** Today `updateTractor` stops
+  the pull at `dist <= CFG.vacRange + 0.5` (300, the extractor's own
+  reach) — this decouples the two: a new `CFG.tractorStopDist` (250)
+  replaces `vacRange` in that one check, so the tractor itself pulls a
+  target 50 units closer than the extractor strictly needs, without
+  touching `vacRange` (300) for anything else (the extractor's own
+  reach, E, stays exactly as it is).
+- **Tractor and laser become mutually exclusive, but asymmetrically.**
+  "Tractor Beams and lasers should not fire at the same time... trying
+  to tractor while lasering is the usual lockout, and using a laser
+  while tractoring just cuts the tractor off." Two different behaviors,
+  not one shared refusal:
+  - **B while a laser burst is running** refuses, the exact shape
+    shields (G) already use for the same conflict (`index.html`'s own
+    `if (beam && beam.tool === 'laser')` check, `refusal_wait`, "Laser
+    burst in progress, N seconds. Tractor after."). This is the "usual
+    lockout" — nothing new, just extending an existing pattern to a
+    new key.
+  - **Space while the tractor is active does NOT refuse the laser** —
+    the burst fires normally, and firing it silently releases the
+    tractor (`stopTractor()`) as a side effect, the same way a manual
+    B-release already works. Needs its own care about the SPEC 2.15
+    rule (never two synchronous `say()` calls in one tick) if the
+    burst's own announcement and a "Tractor released" line would
+    otherwise collide — likely folded into one combined line, or the
+    release left silent (a "cuts it off" is already audible as the
+    hum stopping) rather than separately announced.
+- Test (once built): a fourth tier exists and moves a huge rock;
+  each of the four tiers plays its own distinct recording; RCS drains
+  while tractoring, at a rate that goes down as tier goes up while
+  range goes up; a target now stops at 250, not 300; B refuses with
+  the laser-busy message while a burst is running; firing a laser
+  while the tractor is engaged cuts it off without refusing the shot.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
