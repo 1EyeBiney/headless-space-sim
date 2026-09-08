@@ -3376,3 +3376,26 @@ The Escape overlay over a live mission does NOT start it — the ship's
 own sound stays. Confirmed at a local server: `musicNode.src.loop` true
 and the buffer 219 s stereo, gone once Combat training starts, back
 after X; zero console errors. `audio/music/` staged explicitly.
+
+**Round 45 (Sonnet, 2026-09-08): built SPEC 3.65, the turret's second
+pass** (see SPEC.md's own DONE paragraph for the full shape): a
+sweet-spot score on every clear (`turretClearScore`), a pressure ramp
+shrinking the approach time across the drill (`turretRampFactor`), a
+second incoming kind (`'volley'`, a noise sweep only a shield can
+catch), a streak that snaps every zone's shield up for 6 s at 5 in a
+row, and a browsable debrief (`turretDebrief`/`openTurretDebrief`) with
+score/accuracy/timing/streak/volleys/missiles/weakest-zone, backed by a
+new `profile.turretRuns` board (`PROFILE_VERSION` → 9). One real bug
+found and fixed in testing: the loss path's debrief-opening `setTimeout`
+had no reference to which turret run it belonged to, so retrying or
+leaving before it fired crashed on a null (or stale) `turretState` —
+fixed by closing over the exact state object and checking it's still
+current. Machine-tested at a local server (exact sweet-spot/floor
+scores, volley refusal and shield-catch, the streak trigger and its
+restore, both debrief paths, the run log's persisted fields), zero
+console errors. Testing note worth keeping: the drill's background
+spawn/impact loop runs in real time between tool round-trips with no
+pause, so any test needing a clean sequence has to stay inside one
+script execution — splitting it across calls lets unmanaged zones
+accumulate real hits mid-test. Next per SPEC.md's Phase 3E order: 3.60
+(the haul), then 3.55/3.61-3.64, then 3.59b.

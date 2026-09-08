@@ -515,6 +515,17 @@ var CFG_DEFAULTS = {
     turretHullDmg: 12,               // an unhandled impact
     turretDrillS: 60,                // survive this long to win
 
+    // SPEC 3.65 (Brian, from playing 3.59): a sweet spot to clear at, a
+    // pressure ramp, a second noise only the shield answers, and a streak
+    // reward. turretSweetFrac/Width are in the SAME frac units as the
+    // spawn/impact code (1 = just spawned, 0 = impact).
+    turretSweetFrac: 0.45, turretSweetWidth: 0.45,
+    turretMaxPoints: 100, turretMinPoints: 10,
+    turretRampFloor: 0.6,             // time-to-impact shrinks to this fraction by drill's end
+    turretVolleyChance: 0.3,          // fraction of spawns that are shield-only
+    turretVolleyPoints: 40,           // flat — catching one is a timing act, not a score race
+    turretStreakFor: 5, turretStreakShieldS: 6,
+
     radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0   // +6 dB
 };
 
@@ -573,7 +584,7 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 8;
+var PROFILE_VERSION = 9;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
@@ -598,7 +609,10 @@ function defaultProfile() {
              contractRuns: [],
              // SPEC 3.41: the flight course's own best-10 log — a third
              // board, same reasoning as contractRuns above.
-             courseRuns: [] };
+             courseRuns: [],
+             // SPEC 3.65: the turret defense drill's own best-10 log, by
+             // score rather than time — a fourth board, same reasoning.
+             turretRuns: [] };
 }
 
 function loadProfile() {
@@ -695,6 +709,8 @@ function loadProfile() {
     // v6 -> v7 (SPEC 3.41): the flight course's own run log — a plain
     // backfill, same shape as contractRuns' own guard above.
     if (!Array.isArray(profile.courseRuns)) profile.courseRuns = [];
+    // v8 -> v9 (SPEC 3.65): the turret drill's own run log.
+    if (!Array.isArray(profile.turretRuns)) profile.turretRuns = [];
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -800,6 +816,20 @@ function recordCourseRun(seconds, avgOffset) {
     profile.courseRuns.push({ seconds: seconds, avgOffset: avgOffset, date: new Date().toISOString().slice(0, 10) });
     profile.courseRuns.sort(function (a, b) { return a.seconds - b.seconds; });
     profile.courseRuns = profile.courseRuns.slice(0, 10);
+    saveProfile();
+    return prevBest;
+}
+
+// SPEC 3.65: the turret drill's own board, ranked by SCORE (not time — a
+// drill of fixed length, so higher is simply better), keeping accuracy and
+// best streak alongside for the Run log's own one-line summary.
+function recordTurretRun(score, accuracyPct, bestStreak) {
+    if (!profile) return undefined;
+    var prevBest = profile.turretRuns.length ? profile.turretRuns[0].score : undefined;
+    profile.turretRuns.push({ score: score, accuracy: accuracyPct, bestStreak: bestStreak,
+                               date: new Date().toISOString().slice(0, 10) });
+    profile.turretRuns.sort(function (a, b) { return b.score - a.score; });
+    profile.turretRuns = profile.turretRuns.slice(0, 10);
     saveProfile();
     return prevBest;
 }
@@ -1891,6 +1921,7 @@ var demo = null;         // the timed delivery run, while active
 var contract = null;
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
 var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
+var turretDebrief = { open: false, idx: 0 };   // SPEC 3.65: the turret drill's end-of-run browse
 var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
 var resourceScreen = { open: false, idx: -1, lines: [] };   // F3 (SPEC 2.15)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
@@ -2097,8 +2128,10 @@ var HELP_SECTIONS = [
     { heading: 'Turret defense', items: [
         'The ship does not fly here at all — three fixed zones sit in front of you, left, centre, and right, and left and right arrows switch which one you are working.',
         'Space fires that zone\'s laser (it recharges after), F fires a missile from a small shared magazine (a guaranteed clear, any time), and G toggles that zone\'s own shield, instant, no spool.',
-        'Each zone holds at most one incoming at a time, closing in on its own clock — the tone rises in pitch and pace the nearer it gets. Clear it, or a shield up in that zone catches the hit; otherwise it lands on your hull.',
-        function () { return 'Survive ' + CFG.turretDrillS + ' seconds and it is over: I any time reads your hull, the selected zone, the clock, and the running tally.'; }
+        'Each zone holds at most one incoming at a time, closing in on its own clock — the tone rises in pitch and pace the nearer it gets. A second kind sounds as a noise sweep instead of a tone: it cannot be shot at all, only a raised shield catches it.',
+        'Clearing one scores by timing, not just success: a sweet spot partway through the approach pays the most, and firing too early or too late pays less either way. The approach gets a little faster as the drill goes on.',
+        'String clears and shield catches together without a hit and every zone\'s shield snaps up on its own for a few seconds — a reward, not something to chase directly.',
+        function () { return 'Survive ' + CFG.turretDrillS + ' seconds and a debrief opens: score, accuracy, whether you fire early or late on average, your best streak, volleys caught, missiles used, and which zone took the most hits. Up and down arrows browse it, Escape closes, Enter tries again. I any time reads your hull, the selected zone, score, streak, and the clock.'; }
     ] },
     { heading: 'Sector', items: [
         'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
@@ -4330,6 +4363,10 @@ function shipDestroyed(source) {
     // mission menu keeps the old instant retry (the else branch, untouched).
     var tugged = tugCandidate();
     if (tugged) startTug();
+    // SPEC 3.65: incomings are Web Audio nodes, not JS state updateTurret's
+    // own over() guard can freeze — silence them now, or a dying zone's
+    // tone rings on pointlessly through the debrief that follows.
+    if (mode === 'turret') stopAllTurretVoices();
     setTimeout(function () {
         var tail = tugged
             ? 'Tug dispatched from ' + tug.poiData.name + ', ' + Math.ceil(tug.total) + ' seconds' +
@@ -4337,6 +4374,18 @@ function shipDestroyed(source) {
               '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait — pays again for another halving, as long as credits allow.'
             : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
         say('Hull breached by ' + source + '. Ship lost. ' + tail);
+        // SPEC 3.65: a further real timer boundary, so this never collides
+        // with the line just spoken (SPEC 2.15) — the debrief opens with
+        // its own combined announcement, overriding the generic "Enter
+        // tries again" tail above with its own version of the same thing.
+        // Real bug found in testing: by the time this fires, the player may
+        // already have retried or left (turretState null, or a FRESH one
+        // from a new run) — guarded on the exact turretState this death
+        // belongs to, not just "still in turret mode".
+        if (mode === 'turret' && turretState) {
+            var deathState = turretState;
+            setTimeout(function () { if (turretState === deathState) openTurretDebrief(); }, 1200);
+        }
     }, 900);
 }
 
@@ -5048,12 +5097,16 @@ function startDustVac() {
     startBeam('dust');
 }
 
-// ---- turret defense (SPEC 3.59, ideas14.txt) -------------------------------
+// ---- turret defense (SPEC 3.59/3.65, ideas14.txt + Brian's own playtest) ---
 // Brian's own picture: three fixed zones in front of a stationary ship,
 // Left/Right switch between them, and Space/F/G act on whichever one is
 // selected — juggling a laser cooldown, a shield, and a limited missile
 // magazine across all three at once, "to represent defending the back of a
 // ship from a turret like thing." No lock, no Tab — the zone IS the aim.
+// SPEC 3.65 (from playing 3.59 — "I got most of the objects, hull hit maybe
+// once"): a sweet spot to clear at (too early or too late scores less), the
+// approach getting faster as the drill goes on, a second incoming kind only
+// a shield answers, a streak reward, and a debrief with more than points.
 // First pass is the 3-zone version only (3.59b, the numpad 3x3, is separate).
 var TURRET_ZONE_NAMES = ['left', 'centre', 'right'];
 
@@ -5061,13 +5114,16 @@ function makeTurretState() {
     var zones = TURRET_ZONE_NAMES.map(function () {
         return { laserReadyAt: 0, shieldUp: false, incoming: null, spawnIn: rand(CFG.turretSpawnGapMinS, CFG.turretSpawnGapMaxS) };
     });
-    return { zone: 1, zones: zones, elapsed: 0, cleared: 0, hits: 0, missiles: CFG.turretMissileMax };
+    return { zone: 1, zones: zones, elapsed: 0, cleared: 0, hits: 0, missiles: CFG.turretMissileMax,
+             score: 0, streak: 0, bestStreak: 0, streakShieldUntil: 0, streakPreShield: null,
+             volleyCaught: 0, volleyLanded: 0, zoneHits: [0, 0, 0], offsets: [] };
 }
 function rand(min, max) { return min + Math.random() * (max - min); }
 
 function turretIntro() {
     return 'Turret defense. Three zones: left, centre, and right — left and right arrows switch ' +
            'between them. Space fires the laser in the selected zone, F a missile, G its shield. ' +
+           'A second kind of incoming cannot be shot — only a raised shield catches it. ' +
            'Survive ' + CFG.turretDrillS + ' seconds. F1 for help.';
 }
 
@@ -5082,31 +5138,43 @@ function turretIncomingPos(zoneIdx, height, frac) {
     return add(ship.pos, scale(dir, dist));
 }
 
-// A continuous closing tone — pitch and pulse rate both rise as frac falls,
-// the same "it's getting closer" cue the lock tick and the mine field (3.61)
-// will reuse. Shape mirrors enemyBeamVoice/enemyCannonVoice: {g, p, oscs}.
+// A continuous closing voice — pitch/rate both rise as frac falls, the same
+// "it's getting closer" cue the lock tick and the mine field (3.61) will
+// reuse. SPEC 3.65: a 'volley' is a distinct timbre (filtered noise, not a
+// tone) so the ear can tell "can be shot" from "shield only" apart from the
+// zone's bearing/height alone. Shape mirrors enemyBeamVoice: {g, p, oscs}.
 function buildIncomingVoice(inc) {
     if (!SIM.audio.ctx) return null;
     var A = SIM.audio;
     var g = A.ctx.createGain(); g.gain.value = 0.0001;
     var p = A.makePanner(turretIncomingPos(inc.zone, inc.height, 1));
-    var o = A.ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 300;
     var pulseGain = A.ctx.createGain(); pulseGain.gain.value = 1;
     var pulse = A.ctx.createOscillator(); pulse.type = 'sine'; pulse.frequency.value = 2;
     var pulseDepth = A.ctx.createGain(); pulseDepth.gain.value = 0.5;
     pulse.connect(pulseDepth); pulseDepth.connect(pulseGain.gain);
-    o.connect(pulseGain); pulseGain.connect(g); g.connect(p); p.connect(A.worldBus);
-    o.start(); pulse.start();
+    var tone, filt;
+    if (inc.kind === 'volley') {
+        tone = A.ctx.createBufferSource(); tone.buffer = A.noiseBuf; tone.loop = true; tone.start();
+        filt = A.ctx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 500; filt.Q.value = 4;
+        tone.connect(filt); filt.connect(pulseGain);
+    } else {
+        tone = A.ctx.createOscillator(); tone.type = 'triangle'; tone.frequency.value = 300; tone.start();
+        tone.connect(pulseGain);
+    }
+    pulseGain.connect(g); g.connect(p); p.connect(A.worldBus);
+    pulse.start();
     A.ramp(g.gain, 0.22, 0.15);
-    return { g: g, p: p, oscs: [o, pulse], pulse: pulse, tone: o };
+    return { g: g, p: p, oscs: [tone, pulse], pulse: pulse, tone: tone, filt: filt };
 }
 function moveIncomingVoice(inc, frac) {
     if (!inc.nodes) return;
     SIM.audio.movePanner(inc.nodes.p, turretIncomingPos(inc.zone, inc.height, frac));
-    // Closer = higher pitch and a faster pulse — both from the same frac,
-    // 1 (just spawned) down to 0 (impact).
-    inc.nodes.tone.frequency.setTargetAtTime(300 + (1 - frac) * 500, SIM.audio.ctx.currentTime, 0.1);
-    inc.nodes.pulse.frequency.setTargetAtTime(2 + (1 - frac) * 10, SIM.audio.ctx.currentTime, 0.1);
+    // Closer = higher pitch/frequency and a faster pulse — both from the
+    // same frac, 1 (just spawned) down to 0 (impact) — for either kind.
+    var t = SIM.audio.ctx.currentTime;
+    if (inc.nodes.filt) inc.nodes.filt.frequency.setTargetAtTime(500 + (1 - frac) * 1200, t, 0.1);
+    else inc.nodes.tone.frequency.setTargetAtTime(300 + (1 - frac) * 500, t, 0.1);
+    inc.nodes.pulse.frequency.setTargetAtTime(2 + (1 - frac) * 10, t, 0.1);
 }
 function stopIncomingVoice(inc) {
     if (!inc.nodes) return;
@@ -5121,16 +5189,58 @@ function stopAllTurretVoices() {
     turretState.zones.forEach(function (z) { if (z.incoming) stopIncomingVoice(z.incoming); });
 }
 
+// SPEC 3.65: the drawn time-to-impact shrinks linearly across the drill,
+// from the full range down to turretRampFloor of it — the tone's own rise
+// IS the speed (moveIncomingVoice already derives pitch/pulse from frac),
+// so pressure needs no other mechanism.
+function turretRampFactor() {
+    var frac = clamp(turretState.elapsed / CFG.turretDrillS, 0, 1);
+    return 1 - (1 - CFG.turretRampFloor) * frac;
+}
+
 function spawnTurretIncoming(zoneIdx) {
     var z = turretState.zones[zoneIdx];
     var heights = ['low', 'mid', 'high'];
-    var total = rand(CFG.turretIncomingMinS, CFG.turretIncomingMaxS);
-    z.incoming = { zone: zoneIdx, height: heights[Math.floor(Math.random() * heights.length)], timeLeft: total, total: total };
+    var total = rand(CFG.turretIncomingMinS, CFG.turretIncomingMaxS) * turretRampFactor();
+    var kind = Math.random() < CFG.turretVolleyChance ? 'volley' : 'shot';
+    z.incoming = { zone: zoneIdx, height: heights[Math.floor(Math.random() * heights.length)],
+                    kind: kind, timeLeft: total, total: total };
     z.incoming.nodes = buildIncomingVoice(z.incoming);
 }
 
+// SPEC 3.65: score a clear by how close to the sweet spot it landed — full
+// marks at turretSweetFrac of the approach, falling either side, floored at
+// turretMinPoints so any clear still counts for something. Also logs the
+// signed timing offset (seconds; negative = early, positive = late) for the
+// debrief's own average.
+function turretClearScore(inc, frac) {
+    var off = (CFG.turretSweetFrac - frac) * inc.total;
+    turretState.offsets.push(off);
+    var s = CFG.turretMaxPoints * Math.max(0, 1 - Math.abs(frac - CFG.turretSweetFrac) / CFG.turretSweetWidth);
+    return Math.max(CFG.turretMinPoints, Math.round(s));
+}
+
+// A clear, or a shield catching a volley, extends the streak; a hull hit
+// (an unhandled impact) resets it. At turretStreakFor, every zone's shield
+// snaps up for turretStreakShieldS regardless of what the player had set,
+// then each zone is restored to its own prior state.
+function turretRegisterSuccess() {
+    turretState.streak++;
+    if (turretState.streak > turretState.bestStreak) turretState.bestStreak = turretState.streak;
+    if (turretState.streak > 0 && turretState.streak % CFG.turretStreakFor === 0) {
+        turretState.streakPreShield = turretState.zones.map(function (z) { return z.shieldUp; });
+        turretState.zones.forEach(function (z) { z.shieldUp = true; });
+        turretState.streakShieldUntil = turretState.elapsed + CFG.turretStreakShieldS;
+        SIM.audio.blip(700, 160, 0.18, 0, 'sine');
+        say('Streak! Shields up, ' + CFG.turretStreakShieldS + ' seconds.');
+        return true;   // caller must not also say() this tick (SPEC 2.15)
+    }
+    return false;
+}
+function turretRegisterFailure() { turretState.streak = 0; }
+
 // An incoming that ran its clock out: the zone's own shield absorbs it
-// silently (a splash cue, no hull damage) or it lands on the hull.
+// (silently for a shot, scored for a volley) or it lands on the hull.
 function turretImpact(zoneIdx) {
     var z = turretState.zones[zoneIdx];
     var inc = z.incoming;
@@ -5139,9 +5249,23 @@ function turretImpact(zoneIdx) {
     z.spawnIn = rand(CFG.turretSpawnGapMinS, CFG.turretSpawnGapMaxS);
     if (z.shieldUp) {
         SIM.cues.play('shield_splash');
-        say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone.');
+        if (inc.kind === 'volley') {
+            turretState.volleyCaught++;
+            turretState.score += CFG.turretVolleyPoints;
+            var streakLine = turretRegisterSuccess();
+            if (!streakLine) say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone, plus ' + CFG.turretVolleyPoints + '.');
+        } else {
+            say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone.');
+        }
+    } else if (inc.kind === 'volley') {
+        turretState.volleyLanded++;
+        turretState.zoneHits[zoneIdx]++;
+        turretRegisterFailure();
+        hullHit(CFG.turretHullDmg, 'Volley, ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone');
     } else {
         turretState.hits++;
+        turretState.zoneHits[zoneIdx]++;
+        turretRegisterFailure();
         hullHit(CFG.turretHullDmg, 'Incoming, ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone');
     }
 }
@@ -5149,6 +5273,12 @@ function turretImpact(zoneIdx) {
 function updateTurret(dt) {
     if (over()) return;
     turretState.elapsed += dt;
+    // The streak shield's own countdown, independent of the impact loop
+    // below — restores each zone to whatever it had before the streak.
+    if (turretState.streakPreShield && turretState.elapsed >= turretState.streakShieldUntil) {
+        turretState.zones.forEach(function (z, i) { z.shieldUp = turretState.streakPreShield[i]; });
+        turretState.streakPreShield = null;
+    }
     turretState.zones.forEach(function (z, i) {
         if (z.incoming) {
             z.incoming.timeLeft -= dt;
@@ -5163,49 +5293,126 @@ function updateTurret(dt) {
     if (turretState.elapsed >= CFG.turretDrillS) {
         won = true;
         stopAllTurretVoices();
-        say('Turret defense held. ' + turretState.cleared + ' cleared, ' + turretState.hits + ' hit' +
-            (turretState.hits === 1 ? '' : 's') + '. Enter tries again, X for the mission menu.');
+        openTurretDebrief();
     }
+}
+
+// SPEC 3.65: "more than points" — six measures Brian asked for without
+// naming which ones; each names something the player can change next run.
+function turretAccuracyPct() {
+    var attempted = turretState.cleared + turretState.hits;
+    return attempted > 0 ? Math.round(turretState.cleared / attempted * 100) : 0;
+}
+function turretTimingText() {
+    if (!turretState.offsets.length) return 'No shots timed — every incoming was a volley or a hit.';
+    var mean = turretState.offsets.reduce(function (a, b) { return a + b; }, 0) / turretState.offsets.length;
+    if (Math.abs(mean) < 0.05) return 'On average you fire right on the sweet spot.';
+    return 'On average you fire ' + Math.abs(mean).toFixed(1) + ' seconds ' + (mean < 0 ? 'early' : 'late') + '.';
+}
+function turretWeakestZoneText() {
+    var zh = turretState.zoneHits, total = turretState.hits + turretState.volleyLanded;
+    if (total <= 0) return 'No zone took a hit.';
+    var idx = 0;
+    for (var k = 1; k < zh.length; k++) if (zh[k] > zh[idx]) idx = k;
+    if (zh[idx] <= 0) return 'No zone took a hit.';
+    var name = TURRET_ZONE_NAMES[idx];
+    return name.charAt(0).toUpperCase() + name.slice(1) + ' zone took ' + zh[idx] + ' of your ' + total +
+           ' hit' + (total === 1 ? '' : 's') + '.';
+}
+function debriefLines() {
+    var t = turretState;
+    return [
+        'Score ' + Math.round(t.score) + '.',
+        'Accuracy ' + turretAccuracyPct() + ' percent — ' + t.cleared + ' cleared of ' + (t.cleared + t.hits) + '.',
+        turretTimingText(),
+        'Best streak ' + t.bestStreak + '.',
+        'Volleys: ' + t.volleyCaught + ' caught, ' + t.volleyLanded + ' landed.',
+        'Missiles used: ' + (CFG.turretMissileMax - t.missiles) + ' of ' + CFG.turretMissileMax + '.',
+        turretWeakestZoneText()
+    ];
+}
+// Opened automatically at the end of a run (win or loss, from updateTurret
+// and from shipDestroyed's own delayed line — never in the same tick as
+// either, per SPEC 2.15). Browsed like the Run log; Escape closes it back
+// to the same frozen-ship state that already existed without a debrief —
+// Enter/X are deliberately NOT claimed here, so they fall through to the
+// generic switch exactly as they did before this existed.
+function openTurretDebrief() {
+    var accuracy = turretAccuracyPct();
+    recordTurretRun(Math.round(turretState.score), accuracy, turretState.bestStreak);
+    turretDebrief.open = true;
+    turretDebrief.idx = 0;
+    var lines = debriefLines();
+    say('Turret defense ' + (won ? 'held' : 'over') + '. ' + lines[0] + ' ' +
+        'Up and down arrows browse the debrief, Escape closes it. ' +
+        'Enter tries again, X for the mission menu.');
+}
+function turretDebriefKey(lname) {
+    var lines = debriefLines();
+    if (lname === 'arrowdown') {
+        if (turretDebrief.idx < lines.length - 1) { turretDebrief.idx++; say(lines[turretDebrief.idx]); }
+        else { SIM.audio.blip(220, 80, 0.1); say('End of the debrief.'); }
+        return true;
+    }
+    if (lname === 'arrowup') {
+        if (turretDebrief.idx > 0) { turretDebrief.idx--; say(lines[turretDebrief.idx]); }
+        else { turretDebrief.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the debrief.'); }
+        return true;
+    }
+    if (lname === 'escape') {
+        turretDebrief.open = false;
+        say('Debrief closed. Enter tries again, X for the mission menu.');
+        return true;
+    }
+    if (lname === 'y') { speakTotals(); return true; }
+    return false;   // enter/x/f1/f2/f3/f12 fall through to the generic switch
 }
 
 // Space/F/G, and Left/Right to switch zones — the whole of turret's own
 // input. Everything else (arrows up/down, W/S, Tab/T/R, D/B/Z/E/V/Q/H/C)
 // is refused with the offline buzz: none of it means anything here.
 function turretKey(lname) {
+    if (turretDebrief.open) return turretDebriefKey(lname);
     var i = turretState.zone, z = turretState.zones[i], name = TURRET_ZONE_NAMES[i];
     if (lname === 'arrowleft' || lname === 'arrowright') {
         turretState.zone = (i + (lname === 'arrowright' ? 1 : -1) + 3) % 3;
         var nz = turretState.zones[turretState.zone];
         SIM.audio.blip(lname === 'arrowright' ? 500 : 420, 90, 0.12, 0, 'triangle');
         say(TURRET_ZONE_NAMES[turretState.zone] + '. ' +
-            (nz.incoming ? Math.ceil(nz.incoming.timeLeft) + ' seconds out, ' + nz.incoming.height + '.' : 'Clear.') +
+            (nz.incoming ? Math.ceil(nz.incoming.timeLeft) + ' seconds out, ' + nz.incoming.height +
+                (nz.incoming.kind === 'volley' ? ', shield only.' : '.') : 'Clear.') +
             (nz.shieldUp ? ' Shield up.' : ''));
         return true;
     }
-    if (lname === ' ') {
+    if (lname === ' ' || lname === 'f') {
+        var isMissile = lname === 'f';
+        if (isMissile && turretState.missiles <= 0) { SIM.cues.play('refusal_dud'); say('No missiles left.'); return true; }
         if (!z.incoming) { SIM.cues.play('refusal_dud'); say('Nothing in the ' + name + ' zone.'); return true; }
-        if (Date.now() < z.laserReadyAt) {
+        // SPEC 3.65: a volley can't be shot at all — the shield is the only answer.
+        if (z.incoming.kind === 'volley') {
+            SIM.cues.play('refusal_offline');
+            say('That one can\'t be shot. Shield, G.');
+            return true;
+        }
+        if (!isMissile && Date.now() < z.laserReadyAt) {
             SIM.cues.play('refusal_wait');
             say(name.charAt(0).toUpperCase() + name.slice(1) + ' laser recharging, ' + Math.ceil((z.laserReadyAt - Date.now()) / 1000) + ' seconds.');
             return true;
         }
-        SIM.cues.play('explosion_kill', { pos: turretIncomingPos(i, z.incoming.height, clamp(z.incoming.timeLeft / z.incoming.total, 0, 1)), size: 'small' });
-        stopIncomingVoice(z.incoming); z.incoming = null;
-        z.laserReadyAt = Date.now() + CFG.turretLaserCooldownS * 1000;
-        z.spawnIn = rand(CFG.turretSpawnGapMinS, CFG.turretSpawnGapMaxS);
-        turretState.cleared++;
-        say(name.charAt(0).toUpperCase() + name.slice(1) + ' cleared.');
-        return true;
-    }
-    if (lname === 'f') {
-        if (turretState.missiles <= 0) { SIM.cues.play('refusal_dud'); say('No missiles left.'); return true; }
-        if (!z.incoming) { SIM.cues.play('refusal_dud'); say('Nothing in the ' + name + ' zone.'); return true; }
-        turretState.missiles--;
-        SIM.cues.play('explosion_kill', { pos: turretIncomingPos(i, z.incoming.height, clamp(z.incoming.timeLeft / z.incoming.total, 0, 1)), size: 'small' });
+        var frac = clamp(z.incoming.timeLeft / z.incoming.total, 0, 1);
+        var points = turretClearScore(z.incoming, frac);
+        SIM.cues.play('explosion_kill', { pos: turretIncomingPos(i, z.incoming.height, frac), size: 'small' });
         stopIncomingVoice(z.incoming); z.incoming = null;
         z.spawnIn = rand(CFG.turretSpawnGapMinS, CFG.turretSpawnGapMaxS);
         turretState.cleared++;
-        say(name.charAt(0).toUpperCase() + name.slice(1) + ' cleared by missile. ' + turretState.missiles + ' left.');
+        turretState.score += points;
+        if (isMissile) turretState.missiles--;
+        else z.laserReadyAt = Date.now() + CFG.turretLaserCooldownS * 1000;
+        var streakLine = turretRegisterSuccess();
+        if (!streakLine) {
+            say(name.charAt(0).toUpperCase() + name.slice(1) + ' cleared' + (isMissile ? ' by missile' : '') +
+                ', plus ' + points + '.' + (isMissile ? ' ' + turretState.missiles + ' left.' : ''));
+        }
         return true;
     }
     if (lname === 'g') {
@@ -5216,9 +5423,10 @@ function turretKey(lname) {
     }
     if (lname === 'i') {
         var line = 'Your hull ' + hull + '. ' + name.charAt(0).toUpperCase() + name.slice(1) + ' selected, ' +
-            (z.incoming ? Math.ceil(z.incoming.timeLeft) + ' seconds out.' : 'clear.') +
+            (z.incoming ? Math.ceil(z.incoming.timeLeft) + ' seconds out' + (z.incoming.kind === 'volley' ? ', shield only.' : '.') : 'clear.') +
             (z.shieldUp ? ' Shield up.' : '') +
             ' ' + Math.max(0, Math.ceil(CFG.turretDrillS - turretState.elapsed)) + ' seconds left. ' +
+            'Score ' + Math.round(turretState.score) + '. Streak ' + turretState.streak + '. ' +
             turretState.cleared + ' cleared, ' + turretState.hits + ' hit, ' + turretState.missiles + ' missiles.';
         say(line);
         return true;
@@ -5416,18 +5624,25 @@ function runLogItems() {
     // SPEC 3.41: the flight course's own board — a third list, self-labeled
     // like the contract's own, so none of the three ever merge or sort
     // against each other.
-    return items.concat(profile.courseRuns.map(function (r, i) {
+    items = items.concat(profile.courseRuns.map(function (r, i) {
         // SPEC 3.53: older entries (before the accuracy readout) have no
         // avgOffset — omit the clause rather than speak "undefined".
         return 'Flight course number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
                (typeof r.avgOffset === 'number' ? ', average ' + Math.round(r.avgOffset) + ' off centre' : '') +
                ', ' + r.date + '.';
     }));
+    // SPEC 3.65: the turret drill's own board — ranked by score, not time.
+    return items.concat(profile.turretRuns.map(function (r, i) {
+        return 'Turret defense number ' + (i + 1) + ': score ' + r.score +
+               (typeof r.accuracy === 'number' ? ', ' + r.accuracy + ' percent accuracy' : '') +
+               (typeof r.bestStreak === 'number' ? ', best streak ' + r.bestStreak : '') +
+               ', ' + r.date + '.';
+    }));
 }
 
 function openRunLog() {
-    if (!profile.runs.length && !profile.contractRuns.length && !profile.courseRuns.length) {
-        say('No runs recorded yet. Finish a delivery run, a timed contract, or the flight course to set one.');
+    if (!profile.runs.length && !profile.contractRuns.length && !profile.courseRuns.length && !profile.turretRuns.length) {
+        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, or the turret drill to set one.');
         return;
     }
     runlog.open = true;
@@ -5438,6 +5653,7 @@ function openRunLog() {
     say('Run log. ' + profile.runs.length + ' delivery run' + (profile.runs.length === 1 ? '' : 's') +
         ', ' + profile.contractRuns.length + ' timed contract' + (profile.contractRuns.length === 1 ? '' : 's') +
         ', ' + profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's') +
+        ', ' + profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's') +
         '. Up and down arrows browse, Escape closes.');
 }
 
@@ -8177,9 +8393,16 @@ window.__sim = {
                                         .map(function (t) { return { pos: t.pos, fwd: t.fwd, cleared: t.courseCleared }; }) } : null,
             turret: turretState ? { zone: turretState.zone, elapsed: Math.round(turretState.elapsed * 10) / 10,
                           cleared: turretState.cleared, hits: turretState.hits, missiles: turretState.missiles,
+                          score: Math.round(turretState.score * 10) / 10, streak: turretState.streak,
+                          bestStreak: turretState.bestStreak, volleyCaught: turretState.volleyCaught,
+                          volleyLanded: turretState.volleyLanded, zoneHits: turretState.zoneHits.slice(),
+                          streakShieldActive: !!turretState.streakPreShield,
+                          debriefOpen: turretDebrief.open,
                           zones: turretState.zones.map(function (z) {
                               return { shieldUp: z.shieldUp, laserReady: Date.now() >= z.laserReadyAt,
-                                       incoming: z.incoming ? { height: z.incoming.height, timeLeft: Math.round(z.incoming.timeLeft * 10) / 10 } : null };
+                                       incoming: z.incoming ? { height: z.incoming.height, kind: z.incoming.kind,
+                                           timeLeft: Math.round(z.incoming.timeLeft * 100) / 100,
+                                           total: Math.round(z.incoming.total * 100) / 100 } : null };
                           }) } : null,
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), ports: (currentQuadrant() && currentQuadrant().ports) || {},
@@ -8310,9 +8533,15 @@ window.__sim = {
         // to reach an impact/clear deterministically without waiting out
         // the real random spawn gap.
         if (o && o.turretIncomingS !== undefined && turretState) {
-            var tz = turretState.zones[o.turretZone !== undefined ? o.turretZone : turretState.zone];
-            if (!tz.incoming) spawnTurretIncoming(o.turretZone !== undefined ? o.turretZone : turretState.zone);
-            tz.incoming.timeLeft = o.turretIncomingS;
+            var tzIdx = o.turretZone !== undefined ? o.turretZone : turretState.zone;
+            var tz = turretState.zones[tzIdx];
+            if (!tz.incoming) spawnTurretIncoming(tzIdx);
+            // SPEC 3.65 test hook: force the kind too, and set timeLeft as a
+            // FRACTION of the incoming's own total (not a raw second count)
+            // when o.turretFrac is given, so a test can land exactly on the
+            // sweet spot regardless of the randomized total.
+            if (o.turretKind) tz.incoming.kind = o.turretKind;
+            tz.incoming.timeLeft = o.turretFrac !== undefined ? o.turretFrac * tz.incoming.total : o.turretIncomingS;
         }
         if (o && o.enemyPos) {
             targets.forEach(function (t) {
@@ -8376,6 +8605,7 @@ function clearMission() {
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
     won = false; lost = false; locked = false; tug = null; mission = null; courseState = null;
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
+    turretDebrief.open = false;   // SPEC 3.65
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -8474,6 +8704,7 @@ var MENU_ITEMS = [
           if (profile.runs.length) parts.push(profile.runs.length + ' delivery run' + (profile.runs.length === 1 ? '' : 's'));
           if (profile.contractRuns.length) parts.push(profile.contractRuns.length + ' timed contract' + (profile.contractRuns.length === 1 ? '' : 's'));
           if (profile.courseRuns.length) parts.push(profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's'));
+          if (profile.turretRuns.length) parts.push(profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's'));
           return parts.length ? 'Your best times: ' + parts.join(', ') + '.' : 'No runs recorded yet.';
       },
       run: function () { openRunLog(); } },
@@ -8523,7 +8754,7 @@ var ENCOUNTER_ITEMS = [
     // SPEC 3.59: the ship doesn't fly here at all — see the CFG.turret* block
     // and turretKey() for the shape.
     { label: 'Turret defense',
-      desc: function () { return 'Three fixed zones, left, centre, and right. Left and right arrows switch between them; Space, F, and G act on whichever one is selected. Survive ' + CFG.turretDrillS + ' seconds.'; },
+      desc: function () { return 'Three fixed zones, left, centre, and right. Left and right arrows switch between them; Space, F, and G act on whichever one is selected. Score by timing, not just clearing. Survive ' + CFG.turretDrillS + ' seconds.'; },
       run: function () { startMission('turret'); } }
 ];
 var encounterIdx = 0;

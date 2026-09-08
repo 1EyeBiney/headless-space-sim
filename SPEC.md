@@ -2109,11 +2109,10 @@ C's cost-shape question is answered — see 3.52's own evaluation) →
 28–39, no problems (2026-09-07)** → **Phase 3E, the encounters**
 (ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 DONE →
 Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
-defense (3-zone) DONE → **3.65 the turret's second pass** (Brian, from
-playing it — NEXT) → 3.60 the haul → 3.55 the distress tow → 3.61 the
-minefield → 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run →
-3.59b (numpad 3×3) — with lettered audio sub-stages injected as Brian's
-recordings arrive) →
+defense (3-zone) DONE → **3.65 the turret's second pass, DONE** → 3.60
+the haul → 3.55 the distress tow → 3.61 the minefield → 3.62 the shadow
+→ 3.63 nebula transit → 3.64 the gate run → 3.59b (numpad 3×3) — with
+lettered audio sub-stages injected as Brian's recordings arrive) →
 **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5744,7 +5743,7 @@ ear, not a prerequisite. Every number (the bearings, the drill length,
 the cooldown, the hull damage, the magazine size) is a placeholder for
 Brian's ear.
 
-#### 3.65 Turret defense, second pass: the sweet spot, pressure, a second noise, streaks, and the debrief (Brian, 2026-09-07, from playing 3.59) — DECIDED, build before 3.59b
+#### 3.65 Turret defense, second pass: the sweet spot, pressure, a second noise, streaks, and the debrief (Brian, 2026-09-07, from playing 3.59) — DONE
 
 Brian played the 3-zone build: "I think I got most of the objects and
 my hull got hit maybe 1 time." Too easy, and points alone won't tell
@@ -5825,6 +5824,69 @@ him anything. Five changes, all inside `updateTurret`/`turretKey`:
   weakest-zone numbers match a hand count from `state().turret`; the
   Run log shows the new board; a v8 save migrates to v9 with an empty
   `turretRuns`.
+
+**DONE (Round 45, Sonnet).** Built as scoped above. `turretClearScore()`
+(sweet-spot falloff, floored, logging a signed timing offset in seconds
+for the debrief) and `turretRampFactor()` (linear 1 → `turretRampFloor`
+over `turretDrillS`, applied to a fresh spawn's own drawn total) are the
+two small pure functions everything else reads. `spawnTurretIncoming`
+now also rolls a `kind` (`'shot'`/`'volley'`, `turretVolleyChance`);
+`buildIncomingVoice` branches on it — a `'volley'` loops `SIM.audio.
+noiseBuf` through a bandpass filter instead of the triangle tone, and
+`moveIncomingVoice` sweeps the filter's own frequency instead of the
+tone's for that kind, keeping the "closer = higher/faster" cue for
+either. `turretKey`'s Space/F branch refuses a volley outright ("That
+one can't be shot. Shield, G.") before any cooldown/magazine check.
+`turretRegisterSuccess()`/`turretRegisterFailure()` are the streak's
+only two call sites (a clean clear or a shield-caught volley calls the
+first; an unshielded impact of either kind calls the second) —
+crossing a `turretStreakFor` multiple snapshots every zone's own
+`shieldUp` into `streakPreShield`, forces all three up, and sets
+`streakShieldUntil` on `turretState.elapsed` (the SIMULATED clock, not
+`Date.now()` — deliberately, so the whole mechanism is testable through
+`__sim.step()` the same as everything else in the drill, unlike the
+laser cooldown's existing real-time convention which was left alone);
+`updateTurret`'s own first line each frame restores the snapshot once
+`elapsed` passes it. The debrief (`openTurretDebrief`/
+`turretDebriefKey`/`debriefLines`) is a small browsable overlay in
+`turretKey`'s own style — Escape closes it, Enter/X are deliberately
+NOT claimed and fall through to the exact generic switch cases that
+already existed, so retrying or leaving needs no new code. **One real
+bug found in testing, fixed before it shipped**: the loss path's own
+debrief-opening `setTimeout` (900 ms then a further 1200 ms, chained
+from `shipDestroyed`'s existing delayed line so the two announcements
+never collide per the SPEC 2.15 rule) captured no reference to WHICH
+turret run it belonged to — if the player retried or left turret mode
+before that second timer fired, it ran anyway and crashed reading
+`.cleared` off a null (or a completely different, freshly-started)
+`turretState`. Fixed by closing over the exact `turretState` object
+live at the moment of death and checking it's still the current one
+before opening the debrief. Machine-tested at a local server: a clean
+clear at exactly the sweet spot (frac 0.45) scored precisely 100; frac
+0.98 and 0.05 both floored to `turretMinPoints`-adjacent values (10 and
+11); a volley refused Space/F by name and a raised shield caught it for
+flat 40; five clean successes (mixing laser and missile clears across
+zones to dodge the per-zone cooldown, each isolated in a single script
+so the drill's own always-running background spawns couldn't
+contaminate the count) triggered the streak shield exactly on the
+fifth, all three zones read `shieldUp: true`, and it correctly restored
+each zone's own prior state after `turretStreakShieldS`; a forced hit
+reset the streak to 0 while `bestStreak` held; the win-path debrief
+(synchronous, inside `updateTurret`, no real timer) and the loss-path
+debrief (the two chained real timers) were both exercised end to end —
+browsed line by line, Escape closed it, Enter retried with a fresh
+`turretState` (hull, score, streak all reset) — and `profile.
+turretRuns` in `localStorage` confirmed sorted by score with the right
+accuracy/streak fields, `version: 9`. **A real testing-methodology
+lesson, not a game bug**: this drill's background spawn/impact loop
+keeps running in real time between separate tool round-trips (there is
+no pause), so any multi-step test that leaves a zone unmanaged across
+more than one script execution will accumulate real hits and can lose
+the ship mid-test — every test above that needed a clean sequence did
+it inside ONE script execution with only short internal waits, never
+split across calls. Zero console errors in every confirmed run. Every
+number is still a placeholder for Brian's ear — this pass was about
+the mechanics his playtest asked for, not the tuning.
 
 #### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — proposed
 

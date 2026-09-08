@@ -186,7 +186,13 @@ front of you, left, centre, and right, and left/right arrows switch
 between them. Space fires that zone's laser, F a missile from a small
 shared magazine, G toggles that zone's own shield. Each zone can hold
 one incoming at a time, closing on its own clock — clear it, catch it on
-a shield, or take the hit. Survive the clock and it's over.
+a shield, or take the hit. A second kind sounds as a noise sweep instead
+of a tone and can't be shot at all, only caught on a shield. Clearing
+one scores by timing: a sweet spot partway through the approach pays the
+most, too early or too late pays less, and the approach gets a little
+faster as the drill goes on. String successes together and every zone's
+shield snaps up on its own for a few seconds. Survive the clock and a
+debrief opens — score, accuracy, timing, best streak, and more.
 
 ## Keys
 
