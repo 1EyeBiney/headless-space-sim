@@ -463,6 +463,17 @@ var CFG_DEFAULTS = {
     enemyMissileTurn: 60 * Math.PI / 180,
     evadeSpeed: 260, evadeKeep: 0.4,   // missile survivor's break-away burst and its decay
 
+    // SPEC 3.58 (ideas14.txt): every hostile ship gets a yaw-only `facing`
+    // that turns toward its own motion while moving and toward the pilot
+    // otherwise (turning to fire is the tell) — a cone on its engine voice
+    // makes that turn audible. A `weapon: 'cannon'` roster ship fires a
+    // steady rattle instead of the beam at close range: full damage inside
+    // the inner cone, none outside — side-stepping out of it is the defense.
+    enemyFacingTurnRateDeg: 90,       // deg/s the facing yaw turns
+    enemyConeInner: 70, enemyConeOuter: 160, enemyConeOuterGain: 0.35,
+    enemyCannonRange: 600,            // same reach as the beam (enemyLaserRange)
+    enemyCannonTicks: 4, enemyCannonTickS: 1, enemyCannonTickDmg: 5,   // 4 s, 20 total dead-center
+
     // delivery run (the timed demo)
     demoOreGoal: 15000,
 
@@ -1088,9 +1099,9 @@ function makeRoster() {
         { name: 'Freighter', hp: 120, pos: v3(0, 0, -300),    voice: { type: 'sawtooth', freq: 55,  trem: 3 },
           shipAsset: { name: 'ship_cruiser_1', rate: 0.8 } },
         { name: 'Raider',    hp: 80,  pos: v3(250, 40, -100), voice: { type: 'square',   freq: 110, trem: 8 },
-          shipAsset: { name: 'ship_interceptor_1', rate: 1.15 } },
+          shipAsset: { name: 'ship_interceptor_1', rate: 1.15 }, weapon: 'cannon' },
         { name: 'Scout',     hp: 60,  pos: v3(-200, 120, 150),voice: { type: 'triangle', freq: 330, vib: 5, vibDepth: 12 },
-          shipAsset: { name: 'ship_interceptor_3', rate: 1.35 } },
+          shipAsset: { name: 'ship_interceptor_3', rate: 1.35 }, weapon: 'cannon' },
         { name: 'Drone',     hp: 40,  pos: v3(100, -150, -400),voice:{ type: 'beat',     freq: 165 },
           shipAsset: { name: 'ship_drone_1', rate: 1 } },
         { name: 'Cruiser',   hp: 150, pos: v3(350, 60, 0),    voice: { type: 'detuned',  freq: 82,  trem: 2 },
@@ -2005,6 +2016,7 @@ var HELP_SECTIONS = [
         'So pick your fights: a ship killed in one burst never fires at all, and a wounded ship is an angry ship.',
         'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
         'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
+        'Some ships carry a cannon instead of a beam: a steady rattle at their own position with no warning chirps, loud and biting only while they are actually turned to face you, fading to a fraction off to the side and falling silent once you are clear of their nose. Every hostile ship\'s own engine gets a little brighter as it turns toward you, ahead of any attack — that turn is the tell.',
         function () { return 'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.'; },
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
@@ -2219,6 +2231,17 @@ function buildVoice(t) {
     var lp = SIM.audio.ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = CFG.lpMax;
     var panner = SIM.audio.makePanner(t.pos);
+    // SPEC 3.58 (ideas14.txt): a combat ship's engine is directional, oriented
+    // by its own `facing` yaw (turned toward its motion, or toward the pilot
+    // before it fires — stepCombatShips) — brighter when it's turned toward
+    // you, which is the "it's turning to shoot" tell. `t.kind` is falsy only
+    // for combat ships (rocks/POIs/friendlies all set it), so this never
+    // touches anything else's voice.
+    if (!t.kind) {
+        panner.coneInnerAngle = CFG.enemyConeInner;
+        panner.coneOuterAngle = CFG.enemyConeOuter;
+        panner.coneOuterGain = CFG.enemyConeOuterGain;
+    }
     gain.connect(lp); lp.connect(panner); panner.connect(SIM.audio.worldBus);
 
     // Recorded engine loop when available (same loop hygiene as the rocks:
@@ -2956,14 +2979,7 @@ function updateTargeting(dt) {
             if (t.poiType === 'gate' && dt) {
                 t.gatePhase = ((t.gatePhase || 0) + (360 / CFG.gateSweepS) * dt) % 360;
                 var rad = t.gatePhase * Math.PI / 180;
-                var ox = Math.sin(rad), oz = -Math.cos(rad);
-                if (t.nodes.panner.orientationX) {
-                    t.nodes.panner.orientationX.value = ox;
-                    t.nodes.panner.orientationY.value = 0;
-                    t.nodes.panner.orientationZ.value = oz;
-                } else if (t.nodes.panner.setOrientation) {
-                    t.nodes.panner.setOrientation(ox, 0, oz);
-                }
+                SIM.audio.setOrientation(t.nodes.panner, Math.sin(rad), 0, -Math.cos(rad));
             }
         }
         t.nodes.lp.frequency.setTargetAtTime(cutoff, SIM.audio.ctx ? SIM.audio.ctx.currentTime : 0, 0.1);
@@ -3883,6 +3899,21 @@ function alertTarget(t) {
     return words.join(' ');
 }
 
+// SPEC 3.58 (ideas14.txt): the ship's own facing (yaw only — Brian: "stay on
+// the same vertical plane") turns toward its own motion while it's actively
+// moving (an evade burst or an orbit's own spin — "turn in the direction
+// they thrust"), and toward the pilot the rest of the time ("then turn back
+// towards the human player in order to shoot"). One shared turn rate for
+// every ship; the cone on its engine voice (buildVoice) makes the turn
+// audible, and a cannon ship's damage (stepThreat) reads this same angle.
+function updateFacing(t, dt) {
+    var moving = t.vel && len(t.vel) > CFG.evadeSpeed * 0.15;
+    var dir = moving ? t.vel : sub(ship.pos, t.pos);
+    var desiredYaw = Math.atan2(dir.x, -dir.z);
+    if (t.facing === undefined) { t.facing = desiredYaw; return; }
+    t.facing = angleTowards(t.facing, desiredYaw, CFG.enemyFacingTurnRateDeg * Math.PI / 180 * dt);
+}
+
 // Per-frame motion for combat ships: evade bursts decay, orbiters keep
 // orbiting (plus any evade spin) around their offset.
 function stepCombatShips(dt) {
@@ -3905,6 +3936,10 @@ function stepCombatShips(dt) {
             moved = true;
         }
         if (moved && t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+        updateFacing(t, dt);
+        if (t.nodes && t.nodes.panner) {
+            SIM.audio.setOrientation(t.nodes.panner, Math.sin(t.facing), 0, -Math.cos(t.facing));
+        }
     });
 }
 
@@ -3936,7 +3971,10 @@ function updateEnemies(dt) {
     var pool = alert.length ? alert : cands;
     var t = pool[Math.floor(Math.random() * pool.length)];
     t.alert = false;
-    if (!t.missileOnly && len(sub(t.pos, ship.pos)) <= CFG.enemyLaserRange) startEnemyLaser(t);
+    // SPEC 3.58: a `weapon: 'cannon'` ship (Raider, Scout) uses the cannon
+    // in place of the beam at the same range; every other ship is unchanged.
+    if (!t.missileOnly && len(sub(t.pos, ship.pos)) <= CFG.enemyCannonRange && t.weapon === 'cannon') startEnemyCannon(t);
+    else if (!t.missileOnly && len(sub(t.pos, ship.pos)) <= CFG.enemyLaserRange) startEnemyLaser(t);
     else startEnemyMissile(t);
 }
 
@@ -3971,6 +4009,51 @@ function enemyBeamVoice(t) {
     o.start(); vib.start();
     SIM.audio.ramp(g.gain, 0.22, 0.08);
     return { g: g, p: p, oscs: [o, vib] };
+}
+
+// SPEC 3.58 (ideas14.txt): a synthesized stand-in for the cannon rattle
+// Brian's own aside describes (bullets walking in, a shield twang on a hit)
+// — a real recording lands later as a 3.58a audio sub-stage, unwired here.
+// Loops SIM.audio's shared noise buffer through a bandpass filter, pulsed
+// by a square LFO into a live gain that stepThreat drives frame by frame
+// from the facing-cone angle — full, half, or nothing, same shape as the
+// laser voice's {g, p, oscs} so endThreat's generic cleanup needs no change.
+function enemyCannonVoice(t) {
+    if (!SIM.audio.ctx) return null;
+    var A = SIM.audio;
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var bp = A.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 3;
+    var p = A.makePanner(t.pos);
+    var src = A.ctx.createBufferSource(); src.buffer = A.noiseBuf; src.loop = true;
+    var rg = A.ctx.createGain(); rg.gain.value = 0.75;
+    var lfo = A.ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 12;
+    var lfoDepth = A.ctx.createGain(); lfoDepth.gain.value = 0.25;
+    lfo.connect(lfoDepth); lfoDepth.connect(rg.gain);
+    src.connect(bp); bp.connect(rg); rg.connect(g); g.connect(p); p.connect(A.worldBus);
+    src.start(); lfo.start();
+    return { g: g, p: p, oscs: [src, lfo] };
+}
+
+function startEnemyCannon(t) {
+    threat = { type: 'cannon', t: t, clock: 0, ticks: 0, absorbed: 0, dealt: 0, nodes: null };
+    threat.nodes = enemyCannonVoice(t);
+    say(t.name + ' cannon opens up!' + shieldCoach());
+}
+
+// The facing-cone angle (degrees) between a ship's own yaw and the true
+// bearing to the pilot, flattened to yaw (SPEC 3.58's "same vertical
+// plane") — shared by the cannon's damage/volume and available for any
+// later encounter (3.58) that needs the same geometry.
+function facingConeAngle(t) {
+    var toShip = sub(ship.pos, t.pos);
+    var dirFlat = norm(v3(toShip.x, 0, toShip.z));
+    var facingVec = v3(Math.sin(t.facing || 0), 0, -Math.cos(t.facing || 0));
+    return Math.acos(clamp(dot(facingVec, dirFlat), -1, 1)) * 180 / Math.PI;
+}
+function coneMulFor(angleDeg) {
+    if (angleDeg <= CFG.enemyConeInner) return 1;
+    if (angleDeg <= CFG.enemyConeOuter) return CFG.enemyConeOuterGain;
+    return 0;
 }
 
 function startEnemyMissile(t) {
@@ -4087,6 +4170,41 @@ function stepThreat(dt) {
             var abs = th.absorbed;
             endThreat();
             if (abs > 0) say(abs === CFG.enemyLaserTicks ? 'Shields held.' : 'Shields caught the rest.');
+        }
+        return;
+    }
+    // SPEC 3.58 (ideas14.txt): the cannon rattles continuously — no fixed-
+    // duration beam, no telegraph — with a live volume AND damage that
+    // both track the same facing-cone angle every frame: full inside the
+    // inner cone, a fraction in the outer band, nothing beyond it. Side-
+    // stepping out of the cone (or the ship failing to turn fast enough to
+    // follow) is the whole defense, no key needed.
+    if (th.type === 'cannon') {
+        th.clock += dt;
+        if (th.nodes) {
+            SIM.audio.movePanner(th.nodes.p, t.pos);
+            SIM.audio.setOrientation(th.nodes.p, Math.sin(t.facing || 0), 0, -Math.cos(t.facing || 0));
+            th.coneMul = coneMulFor(facingConeAngle(t));
+            if (SIM.audio.ctx) th.nodes.g.gain.setTargetAtTime(th.coneMul, SIM.audio.ctx.currentTime, 0.08);
+        }
+        if (len(sub(t.pos, ship.pos)) > CFG.enemyCannonRange * 1.5) {
+            endThreat();
+            say(t.name + ' loses the cannon. Out of range.');
+            return;
+        }
+        if (th.clock < CFG.enemyCannonTickS) return;
+        th.clock -= CFG.enemyCannonTickS; th.ticks++;
+        var dmg = Math.round(CFG.enemyCannonTickDmg * (th.coneMul || 0));
+        if (dmg > 0) {
+            th.dealt += dmg;
+            if (shield.up) { th.absorbed += dmg; absorbShield(dmg); }
+            else hullHit(dmg, t.name);
+            if (lost) return;
+        }
+        if (th.ticks >= CFG.enemyCannonTicks) {
+            var absC = th.absorbed, dealtC = th.dealt;
+            endThreat();
+            if (dealtC > 0 && absC > 0) say(absC === dealtC ? 'Shields held.' : 'Shields caught the rest.');
         }
         return;
     }
@@ -7733,7 +7851,14 @@ window.__sim = {
                      burstLeft: beamSecondsLeft() },
             shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided,
+                                coneMul: threat.coneMul, dealt: threat.dealt,
                                 pos: threat.pos ? { x: Math.round(threat.pos.x), y: Math.round(threat.pos.y), z: Math.round(threat.pos.z) } : null } : null,
+            // SPEC 3.58: per-ship facing (degrees) and weapon, for testing the
+            // facing-cone/cannon geometry directly rather than by ear alone.
+            facings: targets.filter(function (t) { return !t.kind && t.alive; }).map(function (t) {
+                return { name: t.name, facingDeg: Math.round((t.facing || 0) * 180 / Math.PI),
+                         weapon: t.weapon || null, coneAngle: Math.round(facingConeAngle(t)) };
+            }),
             missile: missile ? { guided: missile.guided, dist: Math.round(len(sub(missile.target.pos, missile.pos))),
                                   speed: Math.round(missile.speed), vel: Math.round(len(missile.vel)) } : null,
             demo: demo ? { elapsed: Math.round(demo.elapsed), combatCleared: demo.combatCleared, delivered: demo.delivered } : null,
@@ -7910,6 +8035,22 @@ window.__sim = {
         // without needing to fly to a rock of the exact size by hand.
         if (o && o.targetPos !== undefined) { var tt = targets[selected]; if (tt) tt.pos = v3(o.targetPos.x, o.targetPos.y, o.targetPos.z); }
         if (o && o.targetSize !== undefined) { var tt2 = targets[selected]; if (tt2 && tt2.kind === 'rock') tt2.size = o.targetSize; }
+        // SPEC 3.58 test hook: force a named combat ship's own facing (deg)
+        // directly, to engineer the cone-angle geometry without waiting for
+        // updateFacing's own turn rate to get there.
+        if (o && o.enemyFacingDeg !== undefined) {
+            targets.forEach(function (t) {
+                if (!t.kind && t.alive && (!o.enemyName || t.name === o.enemyName)) t.facing = o.enemyFacingDeg * Math.PI / 180;
+            });
+        }
+        if (o && o.enemyPos) {
+            targets.forEach(function (t) {
+                if (!t.kind && t.alive && t.name === o.enemyPos.name) {
+                    t.pos = v3(o.enemyPos.x, o.enemyPos.y, o.enemyPos.z);
+                    if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+                }
+            });
+        }
         if (o && o.tractorTestFit !== undefined) CFG.tractorTestFit = o.tractorTestFit;
         if (o && o.repairAllSystems) repairAllSystems();
         if (o && o.depleteField && profile.quadrants[profile.quadrantId]) {

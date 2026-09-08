@@ -3281,3 +3281,19 @@ after the Start click and resets `menuSub` — a test that opens the
 sublist within ~1 s of booting sees it silently closed. Wait longer
 after boot. Brian paused here so Sonnet builds the rest, starting at
 3.58.
+
+**Round 41 (Sonnet, 2026-09-07): built SPEC 3.58** (the facing cone and
+the cannon — see SPEC.md's own DONE paragraph for the full shape).
+`t.facing`, `updateFacing()`, `facingConeAngle()`/`coneMulFor()`, the
+cannon's own `startEnemyCannon`/`enemyCannonVoice`, and a new shared
+`SIM.audio.setOrientation()` (replacing the gate's old inline
+orientation branch too) are all in `index.html`/`audio_engine.js`.
+Machine-tested at a local server (Veteran-difficulty facing convergence
+measured over real geometry, a live cannon threat's damage matching
+CFG exactly, the untouched laser/shield path re-confirmed alongside
+it), zero console errors. Two permanent test hooks added:
+`poke({enemyFacingDeg, enemyName})` and `poke({enemyPos})` — the latter
+is a no-op against the Cruiser specifically, since its `orbit` field
+overwrites `t.pos` every frame regardless (a testing wrinkle, not a
+gameplay one). Next per SPEC.md's Phase 3E order: 3.59 (turret
+defense, 3-zone then numpad 3×3), then 3.60/3.55/3.61-3.64.

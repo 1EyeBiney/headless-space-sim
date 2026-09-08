@@ -5536,7 +5536,7 @@ the landing page to chase, not a missing feature — **asked** (Part C).
   while cruising forward reverses in one press; S ends it; Shift+W from
   reverse flips forward; I reads "Auto-reverse on."
 
-#### 3.58 Enemies that turn toward you: the facing cone and the cannon (ideas14.txt) — proposed
+#### 3.58 Enemies that turn toward you: the facing cone and the cannon (ideas14.txt) — DONE
 
 - Brian: "enemy ships approach and get within laser range; we use the
   cone effect on sound so that they can be heard when they turn towards
@@ -5576,6 +5576,58 @@ the landing page to chase, not a missing feature — **asked** (Part C).
   player is inside the cone and stops when they thrust out of it; the
   beam and missile attacks, and Rookie's passive-until-hit rule, are
   unchanged.
+
+**DONE (Round 41, Sonnet).** Built as scoped above, no changes to the
+shape. `t.facing` (yaw-only radians, `updateFacing`/`angleTowards` —
+reusing 3.38's own helper) turns at `enemyFacingTurnRateDeg` (90°/s)
+toward the ship's own velocity while it's actively moving (an evade
+burst, or an orbit's spin kick) and toward the pilot otherwise;
+`buildVoice` fits every combat ship's panner with a cone
+(`enemyConeInner`/`Outer`/`OuterGain` — 70°/160°/0.35, the gate's own
+shape at 3.31/L.9 reused, not copied: a new shared `SIM.audio.
+setOrientation()` replaces both the gate's inline branch and this
+one) and `stepCombatShips` drives its orientation every frame from
+`t.facing`. A `weapon: 'cannon'` roster field (Raider, Scout) is read
+in `updateEnemies`'s existing range dispatch — ahead of the beam check
+at the same range — to call `startEnemyCannon` instead of
+`startEnemyLaser`; the cannon (`enemyCannonVoice`, a looped noise
+buffer through a bandpass filter pulsed by a square LFO — a
+synthesized placeholder, flagged for the 3.58a audio sub-stage once a
+real recording exists) has no telegraph and no fixed beam-length
+voice swap: `stepThreat`'s new `cannon` branch recomputes
+`facingConeAngle(t)`/`coneMulFor()` every frame, drives the voice's
+live gain from it, and scales each tick's damage by the same
+multiplier — full inside the inner cone, `enemyConeOuterGain` in the
+outer band, zero beyond it — reusing `absorbShield`/`hullHit`
+unchanged either way. Two small permanent test hooks:
+`poke({enemyFacingDeg, enemyName})` and `poke({enemyPos: {name, x, y,
+z}})`, plus a `facings` array and `threat.coneMul`/`dealt` in
+`state()`. Machine-tested at a local server: booting a fresh Combat
+training drill at Veteran (so every ship starts hostile) showed each
+ship's own initial `coneAngle` genuinely varied by its actual spawn
+geometry (53°–180° across the five), then converged toward 0° after
+a few seconds of `__sim.step()` as `updateFacing` turned every ship
+toward the player — confirming the turn-rate math, not just that a
+number exists; forcing the Raider (a cannon ship) into range produced
+a real `threat.type === 'cannon'` with `dealt` landing at exactly
+`CFG.enemyCannonTickDmg` (5) per tick while `coneMul === 1`, and
+`endThreat` tore the voice down cleanly with the threat returning to
+`null` and the encounter otherwise unaffected; the untouched laser
+path (Cruiser, no `weapon` field) was exercised in the same session
+and absorbed correctly into a raised shield (pool 45→15, hull
+untouched), confirming `buildVoice`'s new cone block doesn't disturb
+a non-cannon ship's ordinary attack. **One real testing snag, not a
+game bug**: `Cruiser`'s `orbit` field overwrites `t.pos` from its own
+orbit formula every `stepCombatShips` frame, so the `enemyPos` test
+poke (built this round to relocate a named ship out of range) cannot
+actually move it — harmless for real play, since nothing else tries
+to reposition an orbiting ship either, but it means a test aimed at
+isolating one non-orbiting ship's cannon should pick targets other
+than the Cruiser to push aside. Zero console errors throughout. Every
+number (the turn rate, the two cone angles, the outer gain, the
+cannon's own tick count/damage) is a placeholder for Brian's ear —
+this pass was about the mechanism (turn-to-face, cone-gated damage),
+not the tuning.
 
 #### 3.59 Turret defense: three zones, then the numpad 3×3 (ideas14.txt) — proposed
 

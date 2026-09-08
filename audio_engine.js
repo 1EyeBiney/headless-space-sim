@@ -226,6 +226,18 @@ SIM.audio = {
         }
     },
 
+    // A panner's facing direction, set directly (no ramp — every caller
+    // already drives this every frame, and a ramp would just lag it).
+    // Shared by the gate's own sweep (Phase 3L, L.9) and the enemy facing
+    // cone (SPEC 3.58).
+    setOrientation: function (p, ox, oy, oz) {
+        if (p.orientationX) {
+            p.orientationX.value = ox; p.orientationY.value = oy; p.orientationZ.value = oz;
+        } else if (p.setOrientation) {
+            p.setOrientation(ox, oy, oz);
+        }
+    },
+
     // A throwaway HRTF panner at a world position that cleans itself up.
     worldOut: function (pos, ms) {
         var A = SIM.audio;
