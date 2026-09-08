@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Headless Space Sim — HRTF Combat Demo</title>
+<title>The Silence</title>
 <!--
-  Headless Space Sim — 3D-audio (HRTF) combat tech demo.
+  The Silence (working name: Headless Space Sim) — a 3D-audio (HRTF)
+  space sim played entirely by ear.
 
   Purpose: evaluate whether Web Audio's PannerNode in HRTF mode (the browser
   equivalent of OpenAL) is good enough to carry a full audio-only space sim.
@@ -48,8 +49,8 @@
 <div id="announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
 <div id="game" tabindex="0" hidden
-     aria-label="Headless Space Sim. A space sim played entirely by ear. Press F1 for help, or F12 to hear what any key does without doing it.">
-    <h1 aria-hidden="true">Headless Space Sim — HRTF demo</h1>
+     aria-label="The Silence. A space sim played entirely by ear. Press F1 for help, or F12 to hear what any key does without doing it.">
+    <h1 aria-hidden="true">The Silence</h1>
     <div id="status" aria-hidden="true"></div>
 </div>
 
@@ -211,6 +212,7 @@ var CFG_DEFAULTS = {
     // before jumping.
     undockDist: 1000,
     stationAmbientVol: 0.35, // the docked interior loop (music bus)
+    menuMusicVol: 0.3,       // Round 44: the mission menu's own loop (music bus)
     // Lock tones by target kind (ideas6): a ship gets the solid tone; a
     // rock or dust field the soft pulse; a point of interest the solid
     // tone much softer WITH the guidance ticks still running underneath,
@@ -1974,7 +1976,7 @@ var liveEl = null, statusEl = null;
 // speaks it for any other key pressed before Enter (onKeyDown), since the
 // body is role=application and NVDA is in focus mode from the first frame —
 // a Down arrow before Enter used to reach onKeyDown and die on !running.
-var BEGIN_LINE = 'Headless Space Sim. Press Enter to begin. Wear headphones.';
+var BEGIN_LINE = 'The Silence. Press Enter to begin. Wear headphones.';
 
 // One voice. aria-live assertive gives free barge-in through NVDA's own synth.
 function say(text) {
@@ -8809,6 +8811,15 @@ function soundKey(lname) {
     }
 }
 
+// Round 44: Brian's own track loops under the mission menu — started here
+// and at the begin gesture, stopped by clearMission() (which every mission
+// start runs through) and crossfaded out by the docked interior loop. The
+// Escape overlay over a live mission does NOT start it: the ship's own
+// sound stays. Level: the Sound menu's Music line, on the music bus.
+function startMenuMusic() {
+    if (SIM.audio.ctx) SIM.audio.playMusic('menu_celestial', { vol: CFG.menuMusicVol, fadeS: 1.5 });
+}
+
 function exitToMenu() {
     clearMission();
     sectorHome = null;
@@ -8817,6 +8828,7 @@ function exitToMenu() {
     menuResumable = false;
     menuOpen = true;
     if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    startMenuMusic();
     menuAnnounce();
 }
 
@@ -8899,6 +8911,7 @@ function init() {
             }, 800);
         } else {
             menuOpen = true;
+            startMenuMusic();
             setTimeout(function () {
                 menuAnnounce(SIM.audio.ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
             }, 800);

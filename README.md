@@ -1,4 +1,7 @@
-# Headless Space Sim
+# The Silence
+
+(The working name was Headless Space Sim — the repository and the URL
+still carry it.)
 
 A space sim played entirely by ear. No graphics: the world is 3D positional
 audio (Web Audio HRTF panning) and a screen reader's speech. Built by Brian,

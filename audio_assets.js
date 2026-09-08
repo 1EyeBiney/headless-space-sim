@@ -1,4 +1,4 @@
-// audio_assets.js — Headless Space Sim
+// audio_assets.js — The Silence (working name: Headless Space Sim)
 //
 // SPEC 2.19: a manifest, not an embedded sound bank. Every recording the
 // game references by key, mapped to its file under audio/. Loaded by a
@@ -226,7 +226,14 @@ window.AUDIO_MANIFEST = {
   way_the_way: 'audio/demo/be_the_way1.mp3',
   way_the_truth: 'audio/demo/be_the_truth1.mp3',
   way_the_light: 'audio/demo/be_the_light.mp3',
-  way_outro: 'audio/demo/outro_C_15s_full_song_ending.mp3'
+  way_outro: 'audio/demo/outro_C_15s_full_song_ending.mp3',
+
+  // Menu music (Round 44): Brian's own track, looped on the music bus
+  // while the mission menu is up (from the begin gesture, and again on
+  // every return to the menu); every mission start stops it through
+  // clearMission(). Stereo 48k, ~3.6 min, served as placed — fetched at
+  // the begin gesture, not preloaded, since it's 5 MB.
+  menu_celestial: 'audio/music/celestial/fingerprints_of_God.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
@@ -238,5 +245,5 @@ window.AUDIO_MANIFEST = {
 // real station voices in the live game as of SPEC 3.31, same as the ship
 // engine loops.
 window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
-  return !/^(vortex\d|propeller_plane\d|station_interior|way_)/.test(k);
+  return !/^(vortex\d|propeller_plane\d|station_interior|way_|menu_)/.test(k);
 });

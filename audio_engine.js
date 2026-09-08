@@ -1,4 +1,4 @@
-// audio_engine.js — Headless Space Sim
+// audio_engine.js — The Silence (working name: Headless Space Sim)
 //
 // The generic Web Audio layer: context/bus setup, the recorded-asset bank,
 // and the small set of generative primitives (tone, noise, chord, arpeggio,

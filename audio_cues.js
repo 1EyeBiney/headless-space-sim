@@ -1,4 +1,4 @@
-// audio_cues.js — Headless Space Sim
+// audio_cues.js — The Silence (working name: Headless Space Sim)
 //
 // The discrete, one-shot "moment" layer: explosions, chimes, clicks,
 // warnings — anything gameplay fires and forgets. This is the layer Brian

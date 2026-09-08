@@ -1,4 +1,4 @@
-# SPEC.md — Headless Space Sim
+# SPEC.md — The Silence (working name: Headless Space Sim)
 
 The one planning document. Merges the old PHASE_PLAN.md (near-term build
 order, Rounds 11+) with Brian's ideas2 notes (the long-range game), because

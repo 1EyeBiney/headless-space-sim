@@ -1,8 +1,11 @@
-# CLAUDE.md — Headless Space Sim
+# CLAUDE.md — The Silence (working name: Headless Space Sim)
 
 ## What this is
 
-Brian's audio-only ("headless" = no visuals) space sim, played entirely through
+**Named "The Silence" on 2026-09-08** (Brian; the page title, heading,
+begin line, aria-label, README, and the sound lab all say so — the repo,
+the Pages URL, and `hss_profile` keep the working name). Brian's
+audio-only ("headless" = no visuals) space sim, played entirely through
 3D positional audio (Web Audio `PannerNode`, HRTF — the browser's OpenAL) and
 NVDA speech. Started 2026-09-01 as an HRTF tech demo; grew into a game with
 three connected states plus a timed delivery run. Brian is blind; every design
@@ -3353,3 +3356,23 @@ volleys caught, missiles used, weakest zone — with a `turretRuns` board
 for "more than points"; Brian has said he doesn't know how to measure
 this, so they're his to cut. Docs only beyond the landing fix. Next:
 Sonnet builds 3.65.
+
+**Round 44 (Fable, 2026-09-08): the game is "The Silence", and the menu
+has music.** Brian named it; the page title, the header comment, the
+`#game` aria-label, the h1, `BEGIN_LINE`, README's title, the sound
+lab's title/subtitle/"Back to The Silence" links, and every file's
+header comment now say so — the repo name, the Pages URL, and the
+`hss_profile` localStorage key deliberately keep the working name (a
+rename there would orphan every tester's save). And his own track,
+`audio/music/celestial/fingerprints_of_God.mp3` (stereo 48k, 219 s,
+5.3 MB with embedded cover art, served as placed — NOT re-encoded), is
+manifest key `menu_celestial`, excluded from `AUDIO_PRELOAD` (a
+`menu_` prefix in the regex), looped on the music bus at
+`CFG.menuMusicVol` 0.3 by `startMenuMusic()` from the begin gesture's
+menu branch and from `exitToMenu()`; `clearMission()`'s existing
+`stopMusic` already ends it on every mission start, and the docked
+interior loop crossfades over it via `playMusic`'s own prev-node fade.
+The Escape overlay over a live mission does NOT start it — the ship's
+own sound stays. Confirmed at a local server: `musicNode.src.loop` true
+and the buffer 219 s stereo, gone once Combat training starts, back
+after X; zero console errors. `audio/music/` staged explicitly.
