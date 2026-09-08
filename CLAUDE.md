@@ -1735,10 +1735,17 @@ top · Z unbound ("Z does nothing here") · Shift+Z zone size · Q map ·
 H warp · C call · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
 objective) · X leave · F1 help · F12 explore · Escape opens the mission
-menu (SPEC 1.18 — see below; no separate pause any more). Menu: arrows +
-Enter (first letters D/S/C/M/H jump, S cycles Sector, then Sound, then
-Sound Lab); Left/Right on the Difficulty line cycles
-Rookie/Veteran/Ace in place. Beacons (on/off/target only) live in the
+menu (SPEC 1.18 — see below; no separate pause any more). Shift+S auto-reverse (SPEC 3.57 — `autoThrust` is now `false |
+'fwd' | 'rev'`, 'rev' reads as a held S in `simTick`; either chord flips
+the other's direction in one press). Menu: arrows +
+Enter (first letters D/S/E/H jump, S cycles Sector, then Sound, then
+Sound Lab; **as of SPEC 3.56 the five drills — Combat training, Mining,
+Flight course, Escort drill, Defend drill — live under one
+`Encounters` item (`ENCOUNTER_ITEMS`, opened with Right/Enter, closed
+with Left/Escape, its own remembered cursor `encounterIdx`, `menuSub`
+non-null while open, handled by `menuSubKey`); every new Phase 3E
+encounter is appended to `ENCOUNTER_ITEMS`, never to `MENU_ITEMS`**);
+Left/Right on the Difficulty line cycles Rookie/Veteran/Ace in place. Beacons (on/off/target only) live in the
 Sound menu as of SPEC 3.45, not on a direct key any more.
 
 ## Accessibility architecture (non-negotiable)
@@ -3248,3 +3255,29 @@ line, but per the standing rule nothing past what Brian has explicitly
 asked for should be started without further word from him — the
 quadrant-2 items (3.18/3.14/3.22/3.11/etc.) stay off-limits until he's
 flown everything since 3.24, including this round.
+
+**Round 40 (Fable, 2026-09-07): Brian ear-tested Rounds 28–39 ("no
+problems so far") — the standing playtest checkpoint is PASSED. Next
+stage: encounters.** `ideas14.txt` (untracked) plus chat became SPEC.md's
+new **Phase 3E — the encounters** block (right after 3.55): **3.56** the
+Encounters submenu (DONE this round), **3.57** Shift+S auto-reverse
+(DONE this round), then in order **3.58** enemy facing cone + cannon →
+**3.59** turret defense (3 zones, then a numpad 3×3) → **3.60** the haul
+(Brian's force-balanced tow — his tow picture was the OLD 2.1 tether,
+not 3.55; both kept) → **3.55** the distress tow → **3.61** minefield →
+**3.62** the shadow → **3.63** nebula transit (the staged pulsar/
+space_loop audio's job) → **3.64** the gate run. Audio for each lands
+later as lettered sub-items (3.60a etc.) as Brian records it — never a
+blocker. Part C carries three open questions from ideas14 (is 3.39's
+Press-Enter repeat actually silent for him on Pages?; the non-numpad
+3×3 map; whether the 3-zone turret survives the 3×3). 3.56/3.57 were
+machine-tested at a local server (sublist open/browse/wrap/letter-jump/
+Tab/Left-and-Escape-close/remembered cursor/select-and-start, Escape
+inside the sublist over a live mission closing the sublist first and a
+second Escape resuming; Shift+S on/status/flip-to-forward/off and a
+plain S cancelling reverse), zero console errors. **Testing gotcha
+found here**: the boot handler's own `menuAnnounce()` fires on a delay
+after the Start click and resets `menuSub` — a test that opens the
+sublist within ~1 s of booting sees it silently closed. Wait longer
+after boot. Brian paused here so Sonnet builds the rest, starting at
+3.58.

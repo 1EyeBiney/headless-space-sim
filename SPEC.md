@@ -2105,6 +2105,13 @@ it exists to let Brian reach those missions for the playtest) →
 accuracy readout** (ideas13.txt, small) → **3.52 the tractor beam,
 second pass** (queued 2026-09-06, held back from building until Part
 C's cost-shape question is answered — see 3.52's own evaluation) →
+**3.54/3.53/3.52 all DONE (Round 39)** → **Brian ear-tested Rounds
+28–39, no problems (2026-09-07)** → **Phase 3E, the encounters**
+(ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 first,
+then Shift+S 3.57, then 3.58 the facing cone and cannon → 3.59 turret
+defense → 3.60 the haul → 3.55 the distress tow → 3.61 the minefield →
+3.62 the shadow → 3.63 nebula transit → 3.64 the gate run, with lettered
+audio sub-stages injected as Brian's recordings arrive) →
 **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5418,6 +5425,278 @@ A-section, and it bears directly on the encounters note below.
   the existing generic path with no new code; the station-offered
   Escort/Defend/Contract missions are unaffected.
 
+### Phase 3E — the encounters (ideas14.txt + Brian in chat + Fable's five, 2026-09-07)
+
+Brian, 2026-09-07, having ear-tested "almost all" of Rounds 28–39 with
+no problems so far: "we will tweak things as I playtest more. Let's move
+on to the next stages." The stage is **more encounters** — self-contained
+instances, each reachable from the main page for testers before any of
+them is tucked away inside a quadrant. `ideas14.txt` (untracked, like
+every ideas file) carries his own three; the chat added Shift+S and a
+correction about the tow; Fable added five more at his request ("give
+me 5 suggestions" — "I like them all, at least to try the new ideas").
+Build order: **3.56 the Encounters submenu first** ("let's build the menu
+stuff first then work on the encounters"), then **3.57 Shift+S** (five
+lines, and 3.60 needs it), then the encounters in the order below —
+cheap modifiers to combat before whole new instances, and Brian's own
+before Fable's. Same rules as everything in Phase 3: one commit per
+item, machine-tested at a local server muted with beacons off, docs in
+sync, every number a placeholder for Brian's ear.
+
+**Audio sub-stages.** Brian: "I will probably be collecting other audio
+assets while we do this so at some point I think we'll be injecting
+sub-stages for these audio assets while we add encounters." Convention:
+an encounter ships first on whatever the game already has (synthesized
+where nothing recorded fits, the way every cue started), and when a
+batch of recordings arrives for it, that lands as its own lettered
+sub-item — **3.60a "the haul's own sounds"**, say — a manifest edit plus
+whichever call site swaps its fallback for the asset, the same shape
+Rounds 34/35 used for the core voices, the crumbles, the tractor hums,
+and the ship explosions. Never a blocker: no encounter waits on a
+recording to be built or played.
+
+**One correction, for the record (Brian: "correct me if I am wrong").**
+Brian's picture of the tow — "balancing the forces put when trying to
+tug and not allowing someone to auto-thrust backwards or they lose
+tether on the asteroid" — is the OLD 2.1 shape (a real tow line that
+strains above `towMaxSpeed` and parts at `towSnapSpeed`), not 3.55 as
+Fable wrote it, which deliberately has no tether at all: tractor closes
+the gap, E recovers the derelict, it despawns, fly home. Both are kept:
+3.55 stays the gentle navigate-and-recover intro, and Brian's version —
+which is the better encounter — becomes **3.60 the haul**, its own
+item, the one that needs Shift+S to exist so it can be the thing that
+ruins you.
+
+**ideas14.txt, line 1 — "press enter to begin" needs to repeat.** This
+is 3.39, built Round 28: the line speaks at load, again at 10 s, then
+every 20 s until Enter (`CFG.beginRemindFirstMs`/`EveryMs`). If Brian
+is not hearing it on the Pages build, that's an NVDA/aria-live bug on
+the landing page to chase, not a missing feature — **asked** (Part C).
+
+#### 3.56 The Encounters submenu (ideas14.txt) — DECIDED, build first
+
+- Brian: "think we now need a main menu option for 'Encounters' and tuck
+  all our examples of them inside this menu, using right arrow to access
+  this submenu from the main menu and then up and down arrows to select
+  the encounter to try." And: "don't think we need to demo page these"
+  — the game's own menu is the demo page; nothing goes in the lab.
+- **Shape**: one new `MENU_ITEMS` entry, **Encounters**, between Sector
+  and Help, carrying a `sub` list (`ENCOUNTER_ITEMS`) that takes over
+  the five drills currently sitting top-level — Combat training, Mining,
+  Flight course, Escort drill, Defend drill — and every encounter this
+  phase adds after them. The top level shrinks to Delivery run, Sector,
+  Encounters, Help, Difficulty, Sound, Run log, Sound Lab (plus Resume
+  when the menu is open over a live mission).
+- **Keys**: on the Encounters line, **Right or Enter opens** the sublist
+  (a click, "Encounters. N to try. Up and down browse, Enter starts one,
+  Left or Escape returns." plus the current item); Left on it just says
+  how to open it. Inside: Up/Down wrap with the click, Enter or Right
+  selects with the same two-note/"X selected"/600 ms beat the main list
+  uses, **Left or Escape returns** to the main list on the Encounters
+  line, Tab repeats, a first letter jumps and cycles (`c` for Combat
+  training, `m` Mining, `f` Flight course, `e` Escort, `d` Defend —
+  today's top-level letters `c`/`m`/`f` stop working at the top level,
+  since those items are no longer there; `e` jumps to Encounters
+  itself). The sublist remembers its own cursor across trips out and
+  back, like the main list does. Escape inside the sublist closes the
+  sublist — never resumes a live mission directly; a second Escape does
+  that, so the two levels behave the same way.
+- **Nothing else changes**: `startMission`/`startMissionDrill` are
+  called exactly as before; `RESUME_ITEM` stays appended after
+  `MENU_ITEMS` (its index moves down by four, which is why it's
+  appended, not fixed); `exitToMenu()`/`openMissionMenuOverlay()` close
+  any open sublist so a return to the menu always lands on the main
+  list. `KEY_DESCRIPTIONS` for the moved first letters, the help
+  section that lists the menu, README's menu paragraph and its drill
+  sections, and `__sim.state().menuSub` all follow.
+- Test: Right on Encounters opens it and reads Combat training; Down
+  ×4 reads Defend drill, Down again wraps; Left returns to "Encounters"
+  on the main list; Right again reopens on the remembered item; Enter
+  on Mining starts mining exactly as before; Escape from the sublist
+  over a live mission closes the sublist, a second Escape resumes; `c`
+  at the top level says "No item starts with c"; the delivery run and
+  the sector are untouched.
+
+#### 3.57 Shift+S: auto-thrust in reverse (Brian, chat, 2026-09-07) — DECIDED
+
+- Brian: "we are going to need to use Shift S to auto-thrust backwards,
+  like we use Shift W for auto-forwards."
+- `autoThrust` becomes a direction — `false`, `'fwd'`, `'rev'` — and
+  `simTick`'s effective-keys object synthesizes a held `s` instead of a
+  held `w` for `'rev'`, at `brakeThrust` (35, half of W) exactly as a
+  held S already is: it decelerates, stops, and backs up. Shift+S from
+  off turns it on ("Auto-reverse on. W, S, or shift S ends it."), from
+  `'rev'` off, from `'fwd'` flips it to reverse in one press (and Shift+W
+  from `'rev'` flips forward — a cruise doesn't have to be stopped to be
+  reversed). Every existing cancel path (any W or S press, a warp jump,
+  docking, `clearMission`, undocking) already reads the flag's truthiness
+  and needs no change; `statusReport` and the docking/undock lines name
+  the direction. Reaction mass is spent as a held S would spend it.
+- Test: Shift+S from rest backs the ship up at the brake rate; Shift+S
+  while cruising forward reverses in one press; S ends it; Shift+W from
+  reverse flips forward; I reads "Auto-reverse on."
+
+#### 3.58 Enemies that turn toward you: the facing cone and the cannon (ideas14.txt) — proposed
+
+- Brian: "enemy ships approach and get within laser range; we use the
+  cone effect on sound so that they can be heard when they turn towards
+  the player... a steady machine gun sounding effect so that it sounds
+  different when the enemy ship is pointed at the player, this is to
+  simulate a 'turning towards me' effect." Also: "probably stay on the
+  same vertical plane; they can move horizontally but need to turn in
+  the direction they thrust and then turn back towards the human player
+  in order to shoot."
+- Two modifiers to combat as it exists, not a new instance. **(a) The
+  cone**: every enemy's engine voice gets a `PannerNode` cone (the Jump
+  Gate already has one, 3.31/L.9 — `gateConeInner`/`Outer`/`OuterGain`
+  become per-ship `enemyConeInner`/`Outer`/`OuterGain`), oriented along
+  the ship's own facing, which today's enemies don't HAVE — they orbit
+  or sit, and the telegraph is the three chirps. So each hostile gains
+  a `facing` yaw that turns toward its own velocity while it moves and
+  **toward the player before it fires**: the telegraph phase (the 1.2 s
+  chirps) becomes "yaw onto the player, then chirp" — the engine
+  brightens through the cone as the nose comes round, and that
+  brightening IS the first warning, ahead of the chirps. Same vertical
+  plane: `facing` is yaw only, pitch stays flat, per Brian. **(b) The
+  cannon**: a third enemy weapon alongside the beam and the missile, a
+  steady rattle (`enemy_cannon`, synthesized until a recording exists —
+  3.58a) that is the cone's own sound: fully loud only inside the inner
+  cone, fading to `OuterGain` outside it, so "it's pointed at me" and
+  "it's shooting" are the same sound, and side-stepping out of the cone
+  is the defense. Damage per second inside the cone, none outside;
+  shields absorb it like the beam. Which ships carry a cannon is a
+  roster field (`weapon: 'cannon'`), Raider and Scout first.
+- Brian's own aside — bullets walking in, thumps on dirt, the twang of
+  a hit shield — is written down here as the sound design brief for
+  3.58a, not built: the rattle gets a "walking in" sweep as the cone
+  closes on you and a distinct shield-twang variant of the existing
+  splash.
+- Test: a hostile's engine measured brighter inside its cone than
+  outside at equal distance; a cannon ship damages only while the
+  player is inside the cone and stops when they thrust out of it; the
+  beam and missile attacks, and Rookie's passive-until-hit rule, are
+  unchanged.
+
+#### 3.59 Turret defense: three zones, then the numpad 3×3 (ideas14.txt) — proposed
+
+- Brian: "the player has 3 zones in front of them, using arrow keys
+  moves between the zones... with 3 enemy ships in front, spaced and
+  using HRTF, so the player cycles through their own zones using left/
+  right arrows and would fire missiles in zone 2, put up shields, go to
+  zone 3, use laser, go to zone 1 while laser in 3 is shooting and put
+  down shields in 1... to represent maybe defending the back of a ship
+  from a turret like thing." Then the numpad: "each key on the numpad
+  firing a laser in that cell of a 3×3 grid... based on perceived
+  height, fires a laser on the far left using 1, 4, 7, and it either
+  misses in that cell going out or hits and destroys the incoming, with
+  cooldown on the fired laser so a miss at some point means damage."
+- A new `mode`, `'turret'`, the first encounter where **the ship does
+  not move**. Left/Right pick a zone (three fixed bearings, −40° / 0° /
+  +40°, spoken as left / centre / right); Space, F, G act **in the
+  selected zone only** — each zone has its own laser cooldown and its
+  own shield, so the sequence Brian describes (missile in 2, shield 2,
+  laser 3, back to 1, drop shield, laser 1...) is the whole skill.
+  Incoming things (ships, or later projectiles) each sit in one zone at
+  one of three heights, drawn from a wave table, closing on their own
+  clock; a miss or a cooldown gap means a hit on the hull. Score is
+  waves survived. Built on the existing target/lock/beam machinery with
+  `aim()` bypassed — the zone IS the aim.
+- **Second pass, 3.59b: the 3×3.** Nine cells (three bearings × three
+  elevations) on the numpad, `7 8 9 / 4 5 6 / 1 2 3`, with a non-numpad
+  map — Fable proposes `Q W E / A S D / Z X C` on the letter block,
+  same shape under the left hand — and the rule that a laser fired into
+  the wrong cell "misses, going out." Elevation is the new thing the ear
+  has to read, which is exactly what this encounter is for. Whether
+  the 3-zone version survives once the 3×3 exists is Brian's call after
+  hearing both.
+- Test (3-zone): three targets spawn one per zone at three heights; a
+  laser in the selected zone hits only that zone's target; a zone's
+  shield absorbs only that zone's incoming; a missed cooldown window
+  costs hull; Left/Right at the ends wrap or refuse (decide by ear).
+
+#### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — proposed
+
+- Brian's own picture, quoted above under "One correction". The tractor
+  latches a huge rock (or a derelict) and **stays latched while you fly
+  it home** — this is the one place the tractor trails a moving puller,
+  which 3.55 deliberately avoided; here it's the whole game. A live
+  tension line: a creak whose pitch tracks the strain between the ship's
+  velocity and the load's, `haulStrainWarn` where it starts to rise,
+  `haulSnap` where the line parts ("Tow line parted.") and the load
+  coasts on at whatever it had — go catch it and re-latch. What breaks
+  it: thrusting too hard forward (the load lags, strain climbs),
+  turning too sharply, and above all **braking or reversing into your
+  own load** — S held, or Shift+S, drives strain to the snap point in
+  under a second, which is Brian's "not allowing someone to auto-thrust
+  backwards or they lose tether." Reaction mass is the score: the
+  tractor's work-based cost (3.52) plus every thruster puff, against a
+  par per haul.
+- Shape: a `mode` of `'mining'` with a `haul` object on top (the
+  `demo`/`contract`/`mission` pattern), one target with `haulable:
+  true`, a home beacon at a fixed distance; complete by bringing the
+  load within `tractorStopDist` of the beacon with the line intact.
+  Reuses `updateTractor` with one new branch (a latched load follows
+  the ship's velocity through a spring, not a close-to-stop-distance
+  pull) — flagged: this is the `updateTractor` change 3.55 stepped
+  around, done here on purpose, gated on `haul` so mining's tractor is
+  byte-for-byte untouched.
+- Test: latching, a gentle haul home completing under par; a hard W
+  raising the creak and parting the line at the configured strain;
+  Shift+S parting it inside a second; re-latching a coasting load; the
+  reaction-mass total spoken at the end against par.
+
+#### 3.61 The minefield — proposed (Fable)
+
+- Nothing to shoot. A field of slow-drifting proximity mines, each with
+  its own tick that quickens as you close (the lock tick's own shape,
+  one per mine, world-positioned), a speed ceiling (`mineSafeSpeed`)
+  above which a mine within `mineTriggerDist` detonates on you, and a
+  beacon on the far side to reach. Pure listening and throttle control —
+  the skill every other encounter assumes and none of them teach.
+  Reuses rock voices for the mines, `updateCollisions` for the
+  detonation check, a clock for the score.
+- Test: crossing at the ceiling clears; one mine passed too fast
+  detonates with a hull hit; the far beacon ends it with the time.
+
+#### 3.62 The shadow — proposed (Fable)
+
+- Tail a ship that keeps cutting its engine. It flies a route with
+  random silent legs (`shadowSilentMinS`–`MaxS`, engine loop ramped to
+  nothing, no lock, no tick); you hold within `shadowRange` for
+  `shadowNeedS` seconds total, and while it's dark you fly on the last
+  bearing and `R`'s closing/opening readout until it lights up again.
+  Trains tracking. Reuses the escort friendly's route code and the
+  sensor-offline lock rule from 3.27 for the dark legs.
+- Test: contact time accrues only within range; a silent leg drops the
+  lock and the tick; re-acquiring after the leg resumes accrual; the
+  total reached ends it with the time.
+
+#### 3.63 Nebula transit — proposed (Fable; the staged pulsar/space_loop audio finally gets a job)
+
+- Inside the cloud the sensor runs at 3.27's "half" state (lock zone
+  halved, tick doubled) and a **pulsar** — one of Brian's `pulsar1-8`
+  recordings, world-positioned, on a fixed rhythm — is the only stable
+  bearing; a `space_loop` bed is the cloud itself. Find the exit gate
+  before the hull ablates (`nebulaHullPerS`, slow). Danger variants take
+  Brian's own nebula prompts (#3/5/8/10 in `audio/stations/"sound
+  description for nebulae.txt"`) as sub-stages. This is the "nebula
+  muffling" the Deferred list has held since Phase 1, given a place to
+  live.
+- Test: sensor state reads half inside and ok outside; the pulsar's
+  bearing is stable while everything else drifts; reaching the gate
+  ends it; the hull drain stops at the boundary.
+
+#### 3.64 The gate run — proposed (Fable)
+
+- The Jump Gate's cone already sweeps every `gateSweepS` (L.9, 3.31).
+  Rule: you can only jump while inside the beam. Fly to it, time the
+  approach, hit H on the pass — a timing game the ear does better than
+  the eye, and it teaches gates before quadrant 2 exists (3.22 can then
+  adopt the rule wholesale). A wrong-time H refuses with the wait
+  ("Beam passes in 6 seconds."). Score: time, and passes wasted.
+- Test: H outside the beam refuses naming the wait; H inside jumps; the
+  wasted-pass count is spoken at the end.
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -6553,6 +6832,24 @@ no second board; 3.53 built to that shape. 8. confirmed as specced —
 pick, confirmed ("do your recommendation") — see 3.55 below;
 `backstory.md` is noted but not folded into A.15 yet ("ignore the
 backstory file for now").
+
+**Decided (Brian, 2026-09-07, on Phase 3E)**: Rounds 28–39 ear-tested
+"well, no problems so far" — the standing "Brian flies everything since
+3.24" checkpoint is passed, tweaks to come as he plays. The next stage
+is encounters, each on the main page for testers before it moves into
+a quadrant: `ideas14.txt`'s three (the facing cone/cannon 3.58, turret
+defense 3.59, the Encounters submenu 3.56) plus Shift+S (3.57) and
+Fable's five (3.60–3.64), "all of them, at least to try" — **the menu
+first, then the encounters**. Audio arrives as lettered sub-stages.
+Brian's tow picture is the OLD 2.1 tether, not 3.55 — kept as 3.60,
+3.55 stays as written.
+
+**DECIDE (open, from ideas14.txt)**: 1. line 1 says "press enter to
+begin" must repeat on the landing page — 3.39 already does this (load,
+10 s, then every 20 s). Is it silent for you on the Pages build? If so
+it's an NVDA/aria-live problem to chase, not a feature to add. 2. The
+non-numpad map for 3.59b (`Q W E / A S D / Z X C` proposed). 3. Whether
+the 3-zone turret survives once the 3×3 exists.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts

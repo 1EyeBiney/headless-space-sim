@@ -1774,7 +1774,7 @@ var won = false;
 var running = false;     // true after the init button
 var lastLaserAt = 0;
 var radarBusy = false;
-var autoThrust = false;  // Shift+W cruise (SPEC 1.15): thrusts as if W were held until cancelled
+var autoThrust = false;  // Shift+W cruise (SPEC 1.15): false | 'fwd' (held W) | 'rev' (held S, SPEC 3.57) until cancelled
 var zoneIdx = 0;         // start Wide: a big center for first-time pilots
 // SPEC 3.30 gave Z the tractor beam (a tool used constantly), moving the
 // zone cycle it used to be to Shift+Z (a setting changed rarely) — SPEC
@@ -1961,7 +1961,7 @@ var HELP_SECTIONS = [
     { heading: 'Flying', items: [
         'Left and Right arrows yaw the ship.',
         'Up and Down arrows pitch the nose up and down.',
-        'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it.',
+        'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it. Shift S is the same in reverse: auto-reverse slows you, stops you, and backs you up at the brake thruster\'s half push; shift W from reverse flips forward in one press, and back.',
         'S is a reverse thruster: hold it to actively slow down, roughly half the push of W. Thrust, braking, and the automatic stabilizers all draw on your reaction mass tank — running out drops you to a weaker battery-power fraction of all three, never a full stop, and the ship warns you at 50 and 25 percent as it drains. Landing at a station fills the tank free; mining ice cores and combat kills refill it a little; a hail can buy more.',
         'S brakes to a stop.',
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
@@ -2024,7 +2024,7 @@ var HELP_SECTIONS = [
         'Your run time is spoken on delivery. Losing your ship fails the run; Enter restarts it from the beginning.'
     ] },
     { heading: 'Mining', items: [
-        'The mission menu lists the delivery run, the sector, combat training, space mining, the flight course, help, and difficulty. Up and down arrows browse it, Enter selects, and a first letter jumps to an item. X leaves any mission and returns to the menu.',
+        'The mission menu lists the delivery run, the sector, Encounters, help, difficulty, sound, the run log, and the sound lab. Up and down arrows browse it, Enter selects, and a first letter jumps to an item. Right arrow or Enter on Encounters opens its own list — combat training, space mining, the flight course, the escort and defend drills — and Left or Escape returns. X leaves any mission and returns to the menu.',
         'Difficulty is Rookie, Veteran, or Ace: left and right arrows change it right there on the menu line. Rookie ships hold their fire until hit; Veteran and Ace are hostile from the moment an encounter starts.',
         'Asteroids drift inside a cloud, and each type sings its own looping sound: Ice is soft and splits easily, Iron is hard and chips, Stone is in between.',
         'The mining laser chips away at a rock, but you never know exactly how much a stage needs — every rock rolls its strength in secret.',
@@ -2147,7 +2147,7 @@ var KEY_DESCRIPTIONS = {
     arrowup: 'Pitch the nose up. Hold to keep turning.',
     arrowdown: 'Pitch the nose down. Hold to keep turning.',
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
-    s: 'Reverse thruster: hold to actively slow down, about half the push of W. At the mission menu, jumps to the sector, then to the sound settings.',
+    s: 'Reverse thruster: hold to actively slow down, about half the push of W. Shift S toggles auto-reverse, which keeps backing up until you press W, S, or shift S again; shift W flips it forward. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.',
     '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles among owned levels; shift 1 cycles back. Higher levels are bought at the station with credits and alloy, and wear with use — the shipyard repairs them. Switching or cycling takes a moment, longer for the heavier slots.'; },
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles among owned levels backward.',
@@ -2159,20 +2159,20 @@ var KEY_DESCRIPTIONS = {
     b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining — tier ' + tractorLevel() + ' owned, pulling, reaching, and costing reaction mass accordingly. Firing a laser, the extractor, or the vacuum cuts it off.'; },
     g: 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.',
     d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, sending it ballistic at once, no shield needed. A moment later you hear it pop clear. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
-    m: 'At the mission menu, jumps to space mining.',
+    m: 'Inside the Encounters list, jumps to space mining.',
     tab: 'Cycle to the next target and speak its bearing. Shift Tab cycles back.',
     t: 'Report the selected target: bearing, distance, and hull, without cycling. Shift T hands the stabilizers your selected target instead — they aim the ship at it for you, holding through the tracking, from a limited pool. Never fires, never damages.',
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: 'Status. Speaks speed, the selected target bearing, and targets remaining.',
     y: 'Speaks your resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys. Works anywhere, including inside the station and its submenus.',
     z: 'Z does nothing on its own any more — the tractor beam moved to B. Shift Z still cycles the target zone size: wide, standard, or narrow.',
-    e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered.',
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
     h: 'Hyperwarp to your nav target, in open sector space. Spends warp charge by distance; a jump past the tank drops you out where it runs dry. Refuses this close to any point of interest.',
-    c: function () { return 'At the mission menu, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ', reaches its transporter within ' + CFG.stationTransporterRange + ' once it knows you, and docks within ' + CFG.stationDockRange + ' once it trusts you, and once you have come to a full stop.'; },
-    enter: function () { return 'At the mission menu, selects the highlighted item. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run — repeatable, each payment halving whatever is left, as long as credits allow.'; },
+    e: 'The ore extractor. Works on a rock mined down to its glowing core, up close and centered. At the mission menu, jumps to Encounters.',
+    c: function () { return 'Inside the Encounters list, jumps to combat training. In open sector space, calls the selected point of interest — a station hails within ' + CFG.stationCommRange + ', reaches its transporter within ' + CFG.stationTransporterRange + ' once it knows you, and docks within ' + CFG.stationDockRange + ' once it trusts you, and once you have come to a full stop.'; },
+    enter: function () { return 'At the mission menu, selects the highlighted item, or opens the Encounters list; Right arrow does too, and Left or Escape closes it. After a victory, starts a fresh run of the same mission. After a lost ship: a fresh run in a standalone training drill, or pays ' + CFG.tugFeeCredits + ' credits to rush the tug in the sector campaign or the delivery run — repeatable, each payment halving whatever is left, as long as credits allow.'; },
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
     escape: 'Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves. Escape again also resumes.',
@@ -4954,11 +4954,18 @@ function radarPing() {
 // Shift+W (SPEC 1.15). Ends on Shift+W again, any W or S press, a warp
 // jump, docking, or leaving the mode — the first three speak, the rest
 // fold "Auto-thrust off" into their own line or go quietly with the reset.
-function toggleAutoThrust() {
-    autoThrust = !autoThrust;
-    SIM.audio.blip(autoThrust ? 520 : 380, 90, 0.14, 0, 'triangle');
-    say(autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.' : 'Auto-thrust off.');
+// SPEC 3.57: `dir` is 'fwd' (Shift+W) or 'rev' (Shift+S). Pressing the
+// chord for the direction already running turns it off; the other chord
+// flips direction in one press — a cruise doesn't have to stop to reverse.
+function toggleAutoThrust(dir) {
+    autoThrust = (autoThrust === dir) ? false : dir;
+    SIM.audio.blip(autoThrust ? (dir === 'rev' ? 440 : 520) : 380, 90, 0.14, 0, 'triangle');
+    say(autoThrust === 'rev' ? 'Auto-reverse on. W, S, or shift S ends it.'
+      : autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.'
+      : autoOffText(dir));
 }
+function autoOffText(dir) { return (dir || autoThrust) === 'rev' ? 'Auto-reverse off. ' : 'Auto-thrust off. '; }
+function autoOnText()  { return autoThrust === 'rev' ? 'Auto-reverse on. ' : autoThrust ? 'Auto-thrust on. ' : ''; }
 
 // SPEC 3.51 (ideas12.txt): "Y to announce resource totals... hopefully
 // this can be used anywhere, as I was using the station and needed this
@@ -4981,7 +4988,7 @@ function speakTotals() {
 
 function statusReport() {
     var speed = Math.round(len(ship.vel));
-    var line = 'Speed ' + speed + '. ' + (autoThrust ? 'Auto-thrust on. ' : '');
+    var line = 'Speed ' + speed + '. ' + autoOnText();
     var t = targets[selected];
     if (t && t.alive) line += bearingText(t) + ' ';
     if (mode === 'mining') {
@@ -5795,7 +5802,7 @@ function dockAtStation(poi, extra) {
     // pilot already cleared Trusted (favorTierAtLeast gated the call that
     // got here), so restating it would just repeat what the hail already
     // said on the way in.
-    var greeting = (autoThrust ? 'Auto-thrust off. ' : '');
+    var greeting = (autoThrust ? autoOffText() : '');
     autoThrust = false;
     if (demo && !demo.delivered && ore >= CFG.demoOreGoal) {
         var delivered = ore;
@@ -7032,7 +7039,7 @@ function startWarp() {
         say('Warp core below ' + CFG.warpMinChargePct + ' percent. Let it cool, or fly it.');
         return;
     }
-    var autoOff = autoThrust ? 'Auto-thrust off. ' : '';
+    var autoOff = autoThrust ? autoOffText() : '';
     autoThrust = false;
     var dir = norm(sub(t.pos, ship.pos));
     var need = warpNeed(d);
@@ -7360,12 +7367,13 @@ function onKeyDown(e) {
     // 'w' and would otherwise just be a held thrust key. SPEC 3.38 rebinds
     // Shift+T specifically from cycle-back to auto-target; Shift+Tab keeps
     // cycle-back alone.
-    if (e.shiftKey && (lname === 'w' || lname === 't' || lname === 'tab' || lname === 'r')) {
+    if (e.shiftKey && (lname === 'w' || lname === 's' || lname === 't' || lname === 'tab' || lname === 'r')) {
         if (e.repeat) return;
         if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
         if (mission && over()) { say('X returns to the sector.'); return; }
         if (over()) { say('Enter restarts.'); return; }
-        if (lname === 'w') toggleAutoThrust();
+        if (lname === 'w') toggleAutoThrust('fwd');
+        else if (lname === 's') toggleAutoThrust('rev');   // SPEC 3.57
         else if (lname === 'r') radarPing();
         else if (lname === 't') autoTargetKey();
         else cycleTarget(-1);
@@ -7374,9 +7382,10 @@ function onKeyDown(e) {
     // Any manual thrust or brake press ends auto-thrust (the press itself
     // still lands as a normal held key).
     if (autoThrust && (lname === 'w' || lname === 's') && !e.repeat) {
+        var offLine = autoOffText();
         autoThrust = false;
         SIM.audio.blip(380, 90, 0.14, 0, 'triangle');
-        say('Auto-thrust off.');
+        say(offLine);
     }
     if (HELD[lname]) {
         keysDown[lname] = true;
@@ -7575,7 +7584,8 @@ function simTick(dt) {
     var mass = shipMass();
     // Auto-thrust (SPEC 1.15) reads as a held W to everything below —
     // thrust, the thruster sound, and the stabilizers' "coasting" test.
-    var k = autoThrust ? Object.assign({}, keysDown, { w: true }) : keysDown;
+    // SPEC 3.57: 'rev' reads as a held S instead (the brake/reverse thruster).
+    var k = autoThrust ? Object.assign({}, keysDown, autoThrust === 'rev' ? { s: true } : { w: true }) : keysDown;
     if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate / mass * dt;
     if (keysDown.arrowright) ship.yaw   += CFG.turnRate / mass * dt;
     if (keysDown.arrowup)    ship.pitch += CFG.turnRate / mass * dt;
@@ -7696,6 +7706,7 @@ window.__sim = {
     state: function () {
         return {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
+            menuSub: menuSub ? { idx: encounterIdx, label: itemLabel(menuSub[encounterIdx]), count: menuSub.length } : null,
             tug: tug ? { remaining: Math.round(tug.remaining * 10) / 10, total: Math.round(tug.total * 10) / 10, paid: tug.paid, poi: tug.poiData.name } : null,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
             hull: hull, missiles: missiles, chaff: chaff, threatIn: Math.round(threatIn * 10) / 10, laserHot: laserHot(),
@@ -8021,34 +8032,12 @@ var MENU_ITEMS = [
     { label: 'Sector',
       desc: 'Open space in a quadrant: two stations, two planets, a jump gate, the star, a combat zone, and asteroid fields. Free flight, no clock.',
       run: function () { startMission('sector'); } },
-    { label: 'Combat training',
-      desc: function () {
-          return 'Five ships in a training zone. ' + (TIERS[tierIdx].alwaysHostile
-              ? 'Every ship is hostile from the start.'
-              : 'They hold their fire until you hit them.');
-      },
-      run: function () { startMission('combat'); } },
-    { label: 'Mining',
-      desc: 'An asteroid cloud to laser apart, vacuum, and extract.',
-      ready: function () {
-          if (SIM.audio.assetsReady()) return true;
-          say('The asteroid sounds are still loading. Try again in a moment.');
-          return false;
-      },
-      run: function () { startMission('mining'); } },
-    { label: 'Flight course',
-      desc: 'Eight beacons to fly through in order, against the clock. Weapons cold, teaches the controls.',
-      run: function () { startMission('course'); } },
-    // SPEC 3.54: the same missions offered from a station's hail menu,
-    // playable directly so a pilot can hear them without flying to a
-    // station first. No sectorHome, no favor, no cooldown, credits kept,
-    // Enter replays after either outcome — see startMissionDrill.
-    { label: 'Escort drill',
-      desc: 'Stay near a freighter and clear the drones that engage you, for ' + CFG.missionEscortLegS + ' seconds. A drill: no station, no favor, replayable.',
-      run: function () { startMissionDrill('escort'); } },
-    { label: 'Defend drill',
-      desc: 'Defend a miner from two waves of raiders. A drill: no station, no favor, replayable.',
-      run: function () { startMissionDrill('defend'); } },
+    // SPEC 3.56 (ideas14.txt): every self-contained encounter lives under
+    // one item, opened with Right or Enter, so the top level stays short as
+    // Phase 3E adds more. `sub` marks it; menuKey() handles the two levels.
+    { label: 'Encounters',
+      desc: function () { return ENCOUNTER_ITEMS.length + ' to try: drills and instances, each on its own. Right arrow or Enter opens the list.'; },
+      sub: function () { return ENCOUNTER_ITEMS; } },
     { label: 'Help',
       desc: 'The help screen. F1 also opens it anywhere.',
       run: function () { openHelp(); } },
@@ -8080,6 +8069,42 @@ var MENU_ITEMS = [
       desc: 'A separate page for auditioning every game sound, cue, and the vortex orbit demo. Leaves this page — Back returns.',
       run: function () { location.href = 'soundlab.html'; } }
 ];
+// The Encounters sublist (SPEC 3.56). Same item shape as MENU_ITEMS (label/
+// desc/ready/run), browsed by the same menuKey() once menuSub is set. Its
+// cursor is remembered in encounterIdx across trips out and back, like the
+// main list's menuIdx. Every new Phase 3E encounter is appended here.
+var ENCOUNTER_ITEMS = [
+    { label: 'Combat training',
+      desc: function () {
+          return 'Five ships in a training zone. ' + (TIERS[tierIdx].alwaysHostile
+              ? 'Every ship is hostile from the start.'
+              : 'They hold their fire until you hit them.');
+      },
+      run: function () { startMission('combat'); } },
+    { label: 'Mining',
+      desc: 'An asteroid cloud to laser apart, vacuum, and extract.',
+      ready: function () {
+          if (SIM.audio.assetsReady()) return true;
+          say('The asteroid sounds are still loading. Try again in a moment.');
+          return false;
+      },
+      run: function () { startMission('mining'); } },
+    { label: 'Flight course',
+      desc: 'Eight beacons to fly through in order, against the clock. Weapons cold, teaches the controls.',
+      run: function () { startMission('course'); } },
+    // SPEC 3.54: the same missions offered from a station's hail menu,
+    // playable directly so a pilot can hear them without flying to a
+    // station first. No sectorHome, no favor, no cooldown, credits kept,
+    // Enter replays after either outcome — see startMissionDrill.
+    { label: 'Escort drill',
+      desc: 'Stay near a freighter and clear the drones that engage you, for ' + CFG.missionEscortLegS + ' seconds. A drill: no station, no favor, replayable.',
+      run: function () { startMissionDrill('escort'); } },
+    { label: 'Defend drill',
+      desc: 'Defend a miner from two waves of raiders. A drill: no station, no favor, replayable.',
+      run: function () { startMissionDrill('defend'); } }
+];
+var encounterIdx = 0;
+var menuSub = null;   // SPEC 3.56: the open sublist's items while one is open, else null
 // Resume (SPEC 1.18): appended after MENU_ITEMS, never spliced in, so every
 // other item keeps its own index whether or not Resume is showing — a
 // prepended Resume would shift every index by one and desync menuIdx the
@@ -8099,11 +8124,28 @@ function menuSelectSound() { SIM.cues.play('menu_select'); }
 function itemLabel(item) { return typeof item.label === 'function' ? item.label() : item.label; }
 function itemDesc(item)  { return typeof item.desc  === 'function' ? item.desc()  : item.desc; }
 function menuItemText(i) { var items = activeMenuItems(); return itemLabel(items[i]) + '. ' + itemDesc(items[i]); }
+function subItemText(i) { return itemLabel(menuSub[i]) + '. ' + itemDesc(menuSub[i]); }
 
 // Entering the menu: the full instruction plus the current item.
 function menuAnnounce(prefix) {
+    menuSub = null;
     say((prefix || '') + 'Mission menu. Use up and down arrows to navigate and Enter to select. ' +
         menuItemText(menuIdx));
+}
+
+// SPEC 3.56: open/close the Encounters sublist. The main cursor stays on the
+// Encounters line underneath, so Left/Escape lands back exactly there.
+function openMenuSub(item) {
+    menuSub = item.sub();
+    if (encounterIdx >= menuSub.length) encounterIdx = 0;
+    menuClick();
+    say(itemLabel(item) + '. ' + menuSub.length + ' to try. Up and down browse, Enter starts one, Left or Escape returns. ' +
+        subItemText(encounterIdx));
+}
+function closeMenuSub() {
+    menuSub = null;
+    menuClick();
+    say('Mission menu. ' + menuItemText(menuIdx));
 }
 
 // Escape, from the raw sim (SPEC 1.18): opens this same list over the live
@@ -8114,6 +8156,7 @@ function menuAnnounce(prefix) {
 function openMissionMenuOverlay() {
     menuResumable = true;
     menuOpen = true;
+    menuSub = null;
     menuIdx = MENU_ITEMS.length;   // the appended Resume slot
     keysDown = {};
     thrusterSync(null);
@@ -8131,6 +8174,7 @@ function openMissionMenuOverlay() {
 function resumeFromMenu() {
     menuOpen = false;
     menuResumable = false;
+    menuSub = null;
     if (menuIdx >= MENU_ITEMS.length) menuIdx = MENU_ITEMS.length - 1;
     if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
     say('Resumed.');
@@ -8153,8 +8197,69 @@ function startMission(m) {
     }
 }
 
+// Select an item from either level: the two-note sound, "X selected", and
+// the 600 ms beat before its run(). Shared by the main list and the
+// Encounters sublist (SPEC 3.56).
+function menuSelectItem(item) {
+    if (item.ready && !item.ready()) return;
+    menuSelectSound();
+    say(itemLabel(item) + ' selected.');
+    menuBusy = true;
+    setTimeout(function () {
+        menuBusy = false;
+        if (!menuOpen) return;            // (a browser reload in the gap)
+        menuSub = null;
+        item.run();
+    }, 600);
+}
+
+// First-letter jump, cycling from the item after the cursor. Returns the
+// new index or -1.
+function menuLetterJump(items, idx, lname) {
+    var n = items.length;
+    for (var i = 1; i <= n; i++) {
+        var k = (idx + i) % n;
+        if (itemLabel(items[k]).toLowerCase().charAt(0) === lname) return k;
+    }
+    return -1;
+}
+
+// The Encounters sublist (SPEC 3.56): the same shell one level down. Escape
+// here closes the sublist only — a second Escape resumes a live mission —
+// so the two levels behave the same way.
+function menuSubKey(lname, name) {
+    var n = menuSub.length;
+    if (lname === 'escape' || lname === 'arrowleft') { closeMenuSub(); return; }
+    if (lname === 'arrowdown') {
+        menuClick(); encounterIdx = (encounterIdx + 1) % n; say(subItemText(encounterIdx));
+    } else if (lname === 'arrowup') {
+        menuClick(); encounterIdx = (encounterIdx - 1 + n) % n; say(subItemText(encounterIdx));
+    } else if (lname === 'enter' || lname === 'arrowright') {
+        menuSelectItem(menuSub[encounterIdx]);
+    } else if (lname === 'f1') {
+        openHelp();
+    } else if (lname === 'f2') {
+        openShipScreen();
+    } else if (lname === 'f3') {
+        openResourceScreen();
+    } else if (lname === 'f12') {
+        describeMode = true;
+        say('Explore mode on. Press any key to hear what it does. F12 or Escape turns it off.');
+    } else if (lname === 'tab') {
+        say(subItemText(encounterIdx));
+    } else if (lname.length === 1 && /[a-z]/.test(lname)) {
+        var next = menuLetterJump(menuSub, encounterIdx, lname);
+        if (next >= 0) { menuClick(); encounterIdx = next; say(subItemText(encounterIdx)); }
+        else { SIM.audio.blip(220, 80, 0.1); say('No encounter starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter starts one, Left returns.'); }
+    } else {
+        SIM.audio.blip(220, 80, 0.1);
+        say('Up and down arrows browse the encounters, Enter starts one, Left or Escape returns to the mission menu. ' + itemLabel(menuSub[encounterIdx]) + '.');
+    }
+}
+
 function menuKey(lname, name) {
     if (menuBusy) return;
+    if (menuSub) { menuSubKey(lname, name); return; }
     // Escape again also resumes (accepted by default) — only when the menu
     // was opened over a live mission; at the plain boot list it falls
     // through to the generic hint below, same as any other unbound key.
@@ -8173,15 +8278,13 @@ function menuKey(lname, name) {
             say(menuItemText(menuIdx));
             return;
         }
-        if (item.ready && !item.ready()) return;
-        menuSelectSound();
-        say(itemLabel(item) + ' selected.');
-        menuBusy = true;
-        setTimeout(function () {
-            menuBusy = false;
-            if (!menuOpen) return;            // (a browser reload in the gap)
-            item.run();
-        }, 600);
+        // SPEC 3.56: a sublist opens on Right or Enter; Left on it explains.
+        if (item.sub) {
+            if (lname === 'arrowleft') { say('Right arrow or Enter opens ' + itemLabel(item) + '.'); return; }
+            openMenuSub(item);
+            return;
+        }
+        menuSelectItem(item);
     } else if (lname === 'f1') {
         openHelp();
     } else if (lname === 'f2') {
@@ -8194,12 +8297,7 @@ function menuKey(lname, name) {
     } else if (lname === 'tab') {
         say(menuItemText(menuIdx));
     } else if (lname.length === 1 && /[a-z]/.test(lname)) {
-        // First-letter jump, cycling from the item after the cursor.
-        var next = -1;
-        for (var i = 1; i <= n; i++) {
-            var k = (menuIdx + i) % n;
-            if (itemLabel(items[k]).toLowerCase().charAt(0) === lname) { next = k; break; }
-        }
+        var next = menuLetterJump(items, menuIdx, lname);
         if (next >= 0) { menuClick(); menuIdx = next; say(menuItemText(menuIdx)); }
         else { SIM.audio.blip(220, 80, 0.1); say('No item starts with ' + prettyKey(name) + '. Up and down arrows browse, Enter selects.'); }
     } else {

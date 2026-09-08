@@ -14,7 +14,11 @@ skip the menu and jump straight into the timed delivery run.
 Wear headphones: the whole game is in the stereo image.
 
 Press Enter to begin, then pick a mission from the menu: up and down arrows
-browse it, Enter selects, and a first letter jumps to an item. Everything is
+browse it, Enter selects, and a first letter jumps to an item. The
+**Encounters** item holds every self-contained drill and instance — combat
+training, mining, the flight course, the escort and defend drills, and more
+as they arrive: right arrow or Enter opens that list, left arrow or Escape
+returns. Everything is
 announced through an ARIA live region, so a screen reader (NVDA, JAWS,
 VoiceOver, Narrator) reads it. Sighted players can follow the small text
 status line, but the game does not need it.
@@ -167,7 +171,7 @@ times land in the Run log, their own board.
 ## Escort and Defend drills
 
 The same two missions a station's Missions list offers, playable
-directly from the mission menu so you can hear them without flying to a
+directly from the Encounters list so you can hear them without flying to a
 station first. No station means no favor and no cooldown — they're
 replayable any time, and pay credits on a win the same as the
 station-offered versions do.
@@ -179,7 +183,7 @@ Right hand on the arrows, left hand on everything else.
 | Key | Does |
 | --- | --- |
 | Arrows | Yaw and pitch |
-| W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
+| W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again. Shift+S is auto-reverse, the same at the brake thruster's half push; either chord flips the other's direction in one press |
 | 1-6 | Select a laser slot. Slots 1 and 2 start fitted with mining and rapid-pulse; slots 3-6 start empty until the station's Lasers shop fits one of four more families (rugged mining, fast fighter, rotary cannon, burst plasma) into them. Pressing a fitted slot's key again cycles among the levels you own, Shift+ the key cycles back. Higher levels are bought at the station with credits and alloy, and wear down with use until the shipyard repairs them. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (one block per fitted slot: level, damage, matchups, health — left and right cycle that slot's level within what you own, and the block re-reads with the new numbers), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, tractor beam, sensor, repair crew, broken systems, cargo, modules, station access (your comm/transporter/docking ranges). H jumps between headings, a letter jumps to one, arrows read line by line |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
