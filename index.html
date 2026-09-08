@@ -40,10 +40,15 @@
      key goes to the game. -->
 <button id="initBtn" autofocus>Press Enter to Begin</button>
 
+<!-- One voice. Nothing else in the page is ever read. It lives OUTSIDE the
+     hidden game container on purpose (Round 43): a live region inside a
+     display:none subtree is not in the accessibility tree, so the SPEC 3.39
+     "Press Enter to begin" line and its repeats were written but never
+     exposed to the screen reader until Enter unhid the container. -->
+<div id="announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
 <div id="game" tabindex="0" hidden
      aria-label="Headless Space Sim. A space sim played entirely by ear. Press F1 for help, or F12 to hear what any key does without doing it.">
-    <!-- One voice. Nothing else in the page is ever read. -->
-    <div id="announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
     <h1 aria-hidden="true">Headless Space Sim — HRTF demo</h1>
     <div id="status" aria-hidden="true"></div>
 </div>
@@ -1965,6 +1970,11 @@ function round10(x) { return Math.round(x / 10) * 10; }
 
 // ============================== 4. SPEECH ===================================
 var liveEl = null, statusEl = null;
+// SPEC 3.39: spoken at load and on a timer until Enter; Round 43 also
+// speaks it for any other key pressed before Enter (onKeyDown), since the
+// body is role=application and NVDA is in focus mode from the first frame —
+// a Down arrow before Enter used to reach onKeyDown and die on !running.
+var BEGIN_LINE = 'Headless Space Sim. Press Enter to begin. Wear headphones.';
 
 // One voice. aria-live assertive gives free barge-in through NVDA's own synth.
 function say(text) {
@@ -7591,7 +7601,16 @@ function isBrowserKey(e) {
 var HELD = { arrowleft: 1, arrowright: 1, arrowup: 1, arrowdown: 1, w: 1, s: 1 };
 
 function onKeyDown(e) {
-    if (!running) return;
+    if (!running) {
+        // Before Enter: Enter and Space activate the focused button natively;
+        // anything else (a stray arrow, Ctrl to silence the reader, a letter)
+        // re-speaks the begin line instead of silence. Browser keys pass.
+        if (isBrowserKey(e) || e.repeat) return;
+        var pre = String(keyName(e)).toLowerCase();
+        if (pre === 'enter' || pre === ' ' || pre === 'tab') return;
+        say(BEGIN_LINE);
+        return;
+    }
     if (isBrowserKey(e) && !describeMode) return;
     // Single characters lower-cased so Caps Lock, the NVDA laptop modifier,
     // never silences the game.
@@ -8842,7 +8861,6 @@ function init() {
     // at load, then again if it's missed: once at beginRemindFirstMs, then
     // every beginRemindEveryMs after that, both cleared the instant the
     // begin gesture fires below.
-    var BEGIN_LINE = 'Headless Space Sim. Press Enter to begin. Wear headphones.';
     var beginRemindInterval = null;
     say(BEGIN_LINE);
     var beginRemindTimeout = setTimeout(function () {

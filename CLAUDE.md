@@ -1768,7 +1768,19 @@ Sound menu as of SPEC 3.45, not on a direct key any more.
   spoken at load and unchanged (no hair space) through 2.8s; a genuine
   ~10.4s real wait showed the repeat had landed; clicking Enter and
   waiting 22 more real seconds confirmed both timers are fully dead.
-  Zero console errors. Not yet heard by Brian.
+  Zero console errors. **Brian heard NONE of it (2026-09-07) — a real
+  bug, fixed Round 43 (Fable)**: `#announce` sat inside `<div id="game"
+  hidden>`, and a `display:none` subtree is not in the accessibility
+  tree, so every `say()` before Enter wrote text NVDA could never see.
+  The live region now lives on the body beside the button. A second
+  hole: `<body role="application">` puts NVDA in focus mode from the
+  first frame, so a Down arrow before Enter reached `onKeyDown` and died
+  on `if (!running) return;` — now any pre-Enter key other than Enter/
+  Space/Tab re-speaks `BEGIN_LINE` (hoisted to module scope). **Testing
+  rule from this**: a live region must be tested for EXPOSURE, not just
+  for text — `read_page` (the accessibility tree) before the gesture,
+  never `textContent` alone. Round 28's test passed because it checked
+  the wrong thing.
 - Speech = single aria-live assertive div (`say()`), hair-space trick for
   repeats. NOT speechSynthesis. All visuals aria-hidden. Ship's own hull is
   always "Your hull N" so it never collides with a target's "Hull N percent".
@@ -3316,3 +3328,28 @@ numpad 3×3) is deliberately NOT built — the spec frames it as a later
 pass to compare against the 3-zone version by ear, not a prerequisite.
 Next per SPEC.md's Phase 3E order: 3.60 (the haul, Brian's own
 force-balanced tow — needs 3.57, already built), then 3.55/3.61-3.64.
+
+**Round 43 (Fable, 2026-09-07): the landing page was silent — fixed —
+and the turret's second pass specced.** Brian loaded Pages, pressed
+Ctrl to silence NVDA, and never heard "Press Enter to begin" again; Down
+arrow before Enter was silent too. Root cause and fix are in the 3.39
+bullet under Accessibility architecture (the live region was inside the
+hidden container; `onKeyDown` bailed on `!running`). Confirmed at a
+local server via `read_page`: the live region is in the accessibility
+tree with the begin line BEFORE Enter, and a synthetic Down and Ctrl
+each re-speak it; Enter still boots to the menu; zero console errors.
+Then Brian's turret notes from playing 3.59 ("got most of the objects,
+hull hit maybe once" — too easy, and points aren't enough) became
+**SPEC 3.65**, DECIDED, next to build, ahead of 3.60 and 3.59b: a
+sweet-spot score (max at `turretSweetFrac` 0.45 of the approach,
+falling either way), time-to-impact shrinking to `turretRampFloor` 0.6×
+over the drill (the tone rise IS the speed — gentle for now, Brian's
+words), a second incoming kind `'volley'` (a noise sweep, not a tone)
+that only a raised zone shield answers, shields confirmed instant as
+built, a streak shield (5 clears → all zones up 6 s), and a spoken then
+browsable debrief — score, accuracy, timing early/late, best streak,
+volleys caught, missiles used, weakest zone — with a `turretRuns` board
+(`PROFILE_VERSION` → 9). The six debrief measures are Fable's proposal
+for "more than points"; Brian has said he doesn't know how to measure
+this, so they're his to cut. Docs only beyond the landing fix. Next:
+Sonnet builds 3.65.

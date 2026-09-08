@@ -2109,10 +2109,11 @@ C's cost-shape question is answered — see 3.52's own evaluation) →
 28–39, no problems (2026-09-07)** → **Phase 3E, the encounters**
 (ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 DONE →
 Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
-defense (3-zone) DONE, 3.59b (numpad 3×3) still proposed → 3.60 the
-haul → 3.55 the distress tow → 3.61 the minefield → 3.62 the shadow →
-3.63 nebula transit → 3.64 the gate run, with lettered audio sub-stages
-injected as Brian's recordings arrive) →
+defense (3-zone) DONE → **3.65 the turret's second pass** (Brian, from
+playing it — NEXT) → 3.60 the haul → 3.55 the distress tow → 3.61 the
+minefield → 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run →
+3.59b (numpad 3×3) — with lettered audio sub-stages injected as Brian's
+recordings arrive) →
 **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5470,9 +5471,24 @@ ruins you.
 
 **ideas14.txt, line 1 — "press enter to begin" needs to repeat.** This
 is 3.39, built Round 28: the line speaks at load, again at 10 s, then
-every 20 s until Enter (`CFG.beginRemindFirstMs`/`EveryMs`). If Brian
-is not hearing it on the Pages build, that's an NVDA/aria-live bug on
-the landing page to chase, not a missing feature — **asked** (Part C).
+every 20 s until Enter (`CFG.beginRemindFirstMs`/`EveryMs`). Brian
+confirmed it silent (2026-09-07: loaded the page, pressed Ctrl to
+silence NVDA, never heard it again; Down arrow before Enter also
+silent). **Found and fixed (Round 43, Fable)**: the `#announce` live
+region sat INSIDE `<div id="game" hidden>` — a `display:none` subtree
+is not in the accessibility tree, so every 3.39 `say()` wrote text the
+screen reader could never see until Enter unhid the container. Round
+28's test checked the DOM text changed, not that it was exposed. Moved
+the live region out to the body, beside the button. The Down-arrow
+silence was a second hole: the body is `role=application`, so NVDA is
+in focus mode from the first frame and arrows reach `onKeyDown` — whose
+first line was `if (!running) return;`. Now any key before Enter other
+than Enter/Space/Tab re-speaks the begin line. Confirmed at a local
+server via the accessibility tree (the live region present with the
+begin line before Enter) and a synthetic Down and Ctrl each re-speaking
+it. Lesson, for CLAUDE.md: **a live region must be tested for
+exposure, not just for text** — `read_page` before the gesture, not
+`textContent` after.
 
 #### 3.56 The Encounters submenu (ideas14.txt) — DECIDED, build first
 
@@ -5727,6 +5743,88 @@ already frames the 3×3 as a distinct later pass to compare against by
 ear, not a prerequisite. Every number (the bearings, the drill length,
 the cooldown, the hull damage, the magazine size) is a placeholder for
 Brian's ear.
+
+#### 3.65 Turret defense, second pass: the sweet spot, pressure, a second noise, streaks, and the debrief (Brian, 2026-09-07, from playing 3.59) — DECIDED, build before 3.59b
+
+Brian played the 3-zone build: "I think I got most of the objects and
+my hull got hit maybe 1 time." Too easy, and points alone won't tell
+him anything. Five changes, all inside `updateTurret`/`turretKey`:
+
+- **1. Score by where you hit it.** Brian: "a player gets rewarded for
+  hitting the target at a certain spot and that value goes down further
+  the farther the incoming object is from that spot — hit way too early,
+  it's not worth as much; hit right before it hits the player, not as
+  much either." Every incoming has a **sweet spot** at
+  `turretSweetFrac` (0.45) of its approach — `frac = timeLeft / total`,
+  so 1 is "just spawned" and 0 is impact. A clear at `frac` scores
+  `turretMaxPoints` (100) × `max(0, 1 − |frac − sweet| / turretSweetWidth)`
+  (width 0.45 — so a clear at spawn or at the last instant scores ~0,
+  and the sweet spot is the middle of the approach, where the tone has
+  risen enough to be read but there's still time to act), floored at
+  `turretMinPoints` (10) so any clear is worth something. Spoken with
+  the clear ("Centre cleared, 82." — one say(), SPEC 2.15), and a pitch
+  cue on the clear chime that tracks the score. A missile clear scores
+  the same way (it's still a timing choice). Running total on I.
+- **2. Pressure: the tone rises faster.** Brian: "we would alter the
+  speed that the incoming object is by making the tone rise faster,
+  thus shortening the reaction time... for now, the incoming noises
+  can't be too fast." The time-to-impact drawn at spawn
+  (`turretIncomingMinS`–`MaxS`, 4–7 today) is multiplied by a ramp that
+  falls from 1 at the start to `turretRampFloor` (0.6) at the end of the
+  drill, linearly over `turretDrillS` — the tone rise IS the speed
+  (moveIncomingVoice already derives pitch and pulse from `frac`), so
+  nothing else needs to change for it to sound faster. Gentle by
+  Brian's own instruction; the floor is the knob.
+- **3. A second noise that only the shield answers.** Brian: "we also
+  need to inject a 2nd noise for the player to have to use shields."
+  Each spawn is one of two kinds: `'shot'` (today's — laser or missile
+  clears it) or `'volley'` (`turretVolleyChance` 0.3): a distinct
+  timbre — a filtered-noise sweep, not a tone, rising the same way —
+  that **cannot be shot**: Space/F on a volley refuses ("That one can't
+  be shot. Shield, G." with the offline buzz) and the only defense is
+  the zone's shield up at impact, which catches it (a splash, +
+  `turretVolleyPoints` 40, spoken) — otherwise it lands on the hull like
+  any other. So the ear has to tell the two apart and pick the right
+  key, which is the whole point of the encounter. A volley never counts
+  as "cleared" for the streak below unless the shield catches it.
+- **4. Shields instant.** Brian: "we need to make shields be instant
+  up and down for this encounter." Already true as built (G toggles
+  `shieldUp` with no spool, no pool) — confirmed as the rule, not an
+  accident; the pilot's real shield (1.5 s spool, a pool) stays as it
+  is everywhere else.
+- **5. Streaks earn a temporary shield.** Brian: "add something that
+  gives a temp boost for a temp shield if a player strings kills in a
+  row as a defense mech as this encounter gets harder." `streak`
+  counts consecutive clears (shot clears and shield-caught volleys)
+  with no hull hit in between; at `turretStreakFor` (5) it fires a
+  **streak shield**: every zone's shield goes up for
+  `turretStreakShieldS` (6 s) whatever the player has set, a distinct
+  rising cue and "Streak! Shields up, 6 seconds.", then each zone drops
+  back to what the player had set. A hull hit resets the streak to 0
+  (no cue beyond the hit itself). `bestStreak` is kept for the debrief.
+- **6. The debrief.** Brian: "after the 60 seconds, we need some
+  scoring and other evaluation data (I've no idea how to measure this
+  but we need more than just points)." At the end (won, or the hull
+  gone), ONE spoken debrief, then browsable: the score; **accuracy**
+  (clears ÷ everything that came, as a percentage); **timing** (mean
+  distance from the sweet spot in seconds, and whether you run early or
+  late on average — "you fire 0.8 seconds early" — the course's own
+  "average off centre" readout, in time); **best streak**; **volleys
+  caught vs. landed**; **missiles used**; and the **weakest zone** (the
+  zone that landed the most on the hull — "Right zone took 3 of your 4
+  hits"). Those six are Fable's proposal for "more than points": each
+  one names something the player can *change* next run. The debrief is
+  read line by line like the run log (arrows), Escape/Enter/X as
+  today. `profile.turretRuns` keeps the best 10 by score, one line each
+  in the Run log (score, accuracy, streak) — `PROFILE_VERSION` → 9.
+- Test: a clear at frac 0.45 scores 100, at 0.9 and 0.05 ~10; the
+  drawn time-to-impact at elapsed 59 s is 0.6× the one at 0 s; Space on
+  a volley refuses and G-up catches it for 40; five clears in a row
+  raise all three shields for 6 s and then restore each zone's own
+  setting; a hit resets the streak; the debrief's accuracy/timing/
+  weakest-zone numbers match a hand count from `state().turret`; the
+  Run log shows the new board; a v8 save migrates to v9 with an empty
+  `turretRuns`.
 
 #### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — proposed
 
@@ -6958,12 +7056,20 @@ first, then the encounters**. Audio arrives as lettered sub-stages.
 Brian's tow picture is the OLD 2.1 tether, not 3.55 — kept as 3.60,
 3.55 stays as written.
 
-**DECIDE (open, from ideas14.txt)**: 1. line 1 says "press enter to
-begin" must repeat on the landing page — 3.39 already does this (load,
-10 s, then every 20 s). Is it silent for you on the Pages build? If so
-it's an NVDA/aria-live problem to chase, not a feature to add. 2. The
-non-numpad map for 3.59b (`Q W E / A S D / Z X C` proposed). 3. Whether
-the 3-zone turret survives once the 3×3 exists.
+**DECIDE (open, from ideas14.txt)**: 1. **ANSWERED** — it was silent;
+a real bug (the live region inside the hidden container), fixed Round
+43, see the Phase 3E preamble. 2. The non-numpad map for 3.59b (`Q W E
+/ A S D / Z X C` proposed). 3. Whether the 3-zone turret survives once
+the 3×3 exists.
+
+**Decided (Brian, 2026-09-07, from playing 3.59)**: the turret's second
+pass is **3.65** — score by a sweet spot on the approach, the tone
+rising faster as the drill goes on (gently, for now), a second noise
+only the shield answers, shields instant (already), a streak shield,
+and a debrief with more than points. Fable's six debrief measures are
+a proposal (accuracy, timing early/late, best streak, volleys caught,
+missiles used, weakest zone) — Brian: "I've no idea how to measure
+this," so these are for his ear to keep or cut. Built before 3.59b.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts
