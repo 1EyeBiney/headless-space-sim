@@ -167,6 +167,33 @@ var CFG_DEFAULTS = {
     tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
     tractorRcsPerMassUnit: 0.004,   // reaction-mass cost per (rock mass unit x distance closed), before tier costMul
 
+    // SPEC 3.60 (Brian's own tow picture, ideas14.txt): the tractor trails a
+    // MOVING puller — the one place it does (3.55 deliberately avoided
+    // this). The load chases an ideal point behind the ship; how far it
+    // actually lags that point IS the strain, so hard accel or a sharp turn
+    // (the ideal point darting away faster than the tier can correct for)
+    // naturally strains the line with no separate rule needed for either.
+    // Reversing into the load is the one thing that gets its own explicit
+    // rule — Brian: "not allowing someone to auto-thrust backwards or they
+    // lose tether."
+    haulTowDist: 220,             // the load's ideal trailing distance behind the ship
+    haulSpringK: 6, haulDamping: 4,   // how tightly the load's velocity chases the ship's — generous
+    haulMaxAccel: 500,            // safety clamp on the spring — see updateHaulTow's own comment
+    // Strain is three independent, explicit gains (Brian named three
+    // things that should strain the line), not something inferred purely
+    // from how far the load has visibly lagged — gentle flying under all
+    // three stays quiet, on purpose, after an early build snapped almost
+    // instantly under ordinary forward thrust.
+    haulSafeSpeed: 90,            // ship speed below this: thrust alone adds no strain
+    haulSpeedStrainPerS: 0.5,     // strain/second per 100 units/s of speed over haulSafeSpeed
+    haulTurnStrainPerS: 0.5,      // strain/second per 90 deg/s of combined yaw+pitch rate
+    haulReverseStrainPerS: 1.3,   // extra strain/second while S or auto-reverse is held
+    haulStrainDecayPerS: 0.4,     // strain bleeds off this fast when none of the above apply
+    haulCreakWarnFrac: 0.5,       // the creak becomes audible above this fraction of the snap point
+    haulRcsPerMassUnit: 0.01,     // reaction-mass cost per (rock mass x corrective accel x dt), before tier costMul
+    haulHomeDist: 1600,           // the home beacon's fixed distance from the load's start
+    haulPar: 40,                  // reaction mass a clean haul should cost, for the end-of-run comparison
+
     // Auto-target (SPEC 3.38, ideas10.txt): Shift+T hands the stabilizers
     // the selected target — steers the nose onto it, then holds through a
     // few seconds of tracking so a moving/orbiting target's lock actually
@@ -1869,6 +1896,13 @@ var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mo
 // zone IS the aim, same as the spec's own framing) so they own their own
 // lightweight voice nodes, tracked on the incoming object itself.
 var turretState = null;
+// SPEC 3.60 (ideas14.txt): the haul — a mode of 'mining' with this object
+// layered on top (the demo/contract/mission pattern), while a single
+// haulable rock is latched and towed home. { targetIdx, homeIdx, latched,
+// strain, rcsSpent } while set; null otherwise, including in plain mining
+// (`tractor` itself, the module-level rig state, is untouched either way —
+// updateTractor's new haul branch is gated on this object specifically).
+var haul = null;
 // The game clock (SPEC 2.17, persisted as of SPEC 3.10 — see profile.clock):
 // counts whenever the sim is live and not under an overlay, independent of
 // the delivery run's own `demo.elapsed`. Backs mission cooldowns and, as of
@@ -2132,6 +2166,13 @@ var HELP_SECTIONS = [
         'Clearing one scores by timing, not just success: a sweet spot partway through the approach pays the most, and firing too early or too late pays less either way. The approach gets a little faster as the drill goes on.',
         'String clears and shield catches together without a hit and every zone\'s shield snaps up on its own for a few seconds — a reward, not something to chase directly.',
         function () { return 'Survive ' + CFG.turretDrillS + ' seconds and a debrief opens: score, accuracy, whether you fire early or late on average, your best streak, volleys caught, missiles used, and which zone took the most hits. Up and down arrows browse it, Escape closes, Enter tries again. I any time reads your hull, the selected zone, score, streak, and the clock.'; }
+    ] },
+    { heading: 'The haul', items: [
+        'A rock waits ahead and a home beacon sits out there somewhere — Tab cycles between them, T reports whichever is selected.',
+        'Fly up close and centered on the rock, then B engages the tractor exactly like mining does. From there it tows behind your own ship as you fly — the one place the tractor trails a moving puller instead of pulling something to a stop.',
+        'The tow line has a strain: fly smoothly and it stays quiet. Hard thrust, a sharp turn, and above all braking or backing into the load all strain it — a creak rises to warn you before it parts. A parted line lets the load coast on its own; B re-engages once you catch up to it.',
+        'Bring the load within reach of the home beacon, still latched, to finish — the run reports the reaction mass it cost against a par.',
+        'Weapons still work here the same as any mining trip; there is no reason to fire on the load, but nothing stops you either.'
     ] },
     { heading: 'Sector', items: [
         'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
@@ -2558,6 +2599,13 @@ function buildPoiVoice(t) {
         // Placeholder until every gate has a beaconAsset (SPEC 3.31).
         osc('sawtooth', 55).connect(gain);
         tremolo(0.15, G * 0.4);
+    } else if (t.poiType === 'haulHome') {
+        // SPEC 3.60: a warm, steady welcoming tone — distinct from the
+        // station's own gated beacon, since "bring it home" wants something
+        // inviting rather than a nav-fix chirp.
+        osc('triangle', 300).connect(gain);
+        var haulB = osc('triangle', 300 * 1.5); haulB.connect(gain);
+        tremolo(0.5, G * 0.3);
     } else if (t.poiType === 'course') {
         // SPEC 3.41: one clean tone per gate, each detuned a little by its
         // own index ("slight variations between the tones") so a run of
@@ -4921,6 +4969,10 @@ function updateTractor(dt) {
     if (!tractor.active) return;
     var t = targets[tractor.targetIdx];
     if (!t || !t.alive || t.kind !== 'rock') { stopTractor('Tractor lost its target.'); return; }
+    // SPEC 3.60: the one place the tractor trails a MOVING puller instead of
+    // closing to a fixed stop distance from the ship — gated on `haul` so
+    // every other tractor use (ordinary mining) never reaches this branch.
+    if (haul && t.haulable) { updateHaulTow(t, dt); return; }
     var tier = TRACTOR_TIERS[tractor.tier - 1];
     var rel = sub(ship.pos, t.pos);
     var dist = len(rel);
@@ -4946,6 +4998,152 @@ function updateTractor(dt) {
         if (tractor.nodes.isAsset) SIM.audio.ramp(tractor.nodes.src.playbackRate, 1 + frac * 1.89, 0.2);
         else SIM.audio.ramp(tractor.nodes.src.frequency, 90 + frac * 170, 0.2);
     }
+}
+
+// ---- the haul (SPEC 3.60, ideas14.txt — Brian's own tow picture) -----------
+// The one place the tractor trails a MOVING puller. The load chases an
+// ideal point behind the ship; how far it actually falls behind that point
+// IS the strain — hard accel or a sharp turn (the ideal point darting away
+// faster than the tier's own pull rate can correct for) strains the line
+// with no separate rule needed for either, the way a real tow would. The
+// one thing that gets an explicit rule on top: reversing into the load
+// (Brian: "not allowing someone to auto-thrust backwards or they lose
+// tether"). tractor.active/targetIdx/tier (the ordinary rig state) still
+// drive this — only updateTractor's own dispatch and this function are new.
+var haulCreakNodes = null;
+
+function haulCreakVoice() {
+    if (!SIM.audio.ctx) return null;
+    var A = SIM.audio;
+    var g = A.ctx.createGain(); g.gain.value = 0.0001;
+    var lp = A.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+    var o = A.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 60;
+    o.connect(lp); lp.connect(g); g.connect(A.uiBus);
+    o.start();
+    return { g: g, o: o };
+}
+function startHaulCreak() { if (!haulCreakNodes && SIM.audio.ctx) haulCreakNodes = haulCreakVoice(); }
+function stopHaulCreak() {
+    if (!haulCreakNodes) return;
+    var n = haulCreakNodes; haulCreakNodes = null;
+    SIM.audio.ramp(n.g.gain, 0.0001, 0.2);
+    setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 300);
+}
+
+function haulHomeTarget() { return haul ? targets[haul.homeIdx] : null; }
+
+// SPEC 3.60: strain is three explicit, independent gains — hard thrust
+// (ship speed over a safe threshold), sharp turning (combined yaw+pitch
+// rate over a threshold), and reversing (an outright rule, not a threshold:
+// any S or auto-reverse pumps it hard). Gentle flying under all three
+// decays back to zero — an early build inferred strain purely from how far
+// the load visibly lagged and snapped almost instantly under ordinary
+// forward thrust, since the tractor's own pull-rate numbers (tuned for the
+// kinematic mining pull, a distance-per-second budget) were the wrong unit
+// entirely for an acceleration cap on matching the ship's cruising speed.
+// The load's actual MOTION is separate from strain on purpose: a generous,
+// forgiving spring-damper toward an ideal trailing point, so it stays
+// visibly/audibly connected under ordinary play regardless of how strained
+// the line is — strain is a warning, not a physical leash length.
+function updateHaulTow(t, dt) {
+    var tier = TRACTOR_TIERS[tractor.tier - 1];
+    var idealPos = sub(ship.pos, scale(shipForward(), CFG.haulTowDist));
+    var toIdeal = sub(idealPos, t.pos);
+    var relVel = sub(t.vel, ship.vel);
+    var accel = add(scale(toIdeal, CFG.haulSpringK), scale(relVel, -CFG.haulDamping));
+    // Safety clamp: continuous flight never displaces idealPos far in one
+    // frame, so this never engages in ordinary play — it exists only to
+    // keep a pathological single-frame jump (an external poke, a stale
+    // reference) from resonating into a runaway explicit-Euler blowup.
+    var accelLen = len(accel);
+    if (accelLen > CFG.haulMaxAccel) accel = scale(accel, CFG.haulMaxAccel / accelLen);
+    t.vel = add(t.vel, scale(accel, dt));
+    if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+
+    var cost = rockMass(t) * len(accel) * dt * CFG.haulRcsPerMassUnit * tier.costMul;
+    spendRcs(cost);
+    haul.rcsSpent += cost;
+
+    var speedOver = Math.max(0, len(ship.vel) - CFG.haulSafeSpeed);
+    var yawRate = Math.abs(angleDiff(haul.lastYaw, ship.yaw)) * 180 / Math.PI / dt;
+    var pitchRate = Math.abs(ship.pitch - haul.lastPitch) * 180 / Math.PI / dt;
+    haul.lastYaw = ship.yaw; haul.lastPitch = ship.pitch;
+    var turnRate = yawRate + pitchRate;
+    var gain = (speedOver / 100) * CFG.haulSpeedStrainPerS + (turnRate / 90) * CFG.haulTurnStrainPerS;
+    if (keysDown.s || autoThrust === 'rev') gain += CFG.haulReverseStrainPerS;
+    haul.strain = clamp(haul.strain + gain * dt - CFG.haulStrainDecayPerS * dt, 0, 1.5);
+
+    if (haul.strain > CFG.haulCreakWarnFrac) {
+        startHaulCreak();
+        var creakFrac = clamp((haul.strain - CFG.haulCreakWarnFrac) / (1 - CFG.haulCreakWarnFrac), 0, 1);
+        if (haulCreakNodes) {
+            SIM.audio.ramp(haulCreakNodes.g.gain, 0.05 + creakFrac * 0.35, 0.1);
+            haulCreakNodes.o.frequency.setTargetAtTime(60 + creakFrac * 220, SIM.audio.ctx.currentTime, 0.1);
+        }
+    } else {
+        stopHaulCreak();
+    }
+
+    if (haul.strain >= 1) {
+        stopHaulCreak();
+        stopTractor('Tow line parted.');
+        return;
+    }
+
+    var home = haulHomeTarget();
+    if (home) {
+        var homeDist = len(sub(t.pos, home.pos));
+        if (homeDist <= CFG.tractorStopDist) finishHaul();
+    }
+}
+
+function finishHaul() {
+    stopHaulCreak();
+    stopTractor(null);   // silent — the line below is the one combined say() (SPEC 2.15)
+    won = true;
+    var spent = Math.round(haul.rcsSpent);
+    say('Home. Tow complete. Reaction mass spent: ' + spent + ', par ' + CFG.haulPar + '. ' +
+        (spent <= CFG.haulPar ? 'Under par.' : 'Over par by ' + (spent - CFG.haulPar) + '.') +
+        ' Enter tries again, X for the mission menu.');
+}
+
+// A single haulable rock and a home beacon, nothing else — reuses spawnRock
+// and buildPoiVoice wholesale, so the rock's own voice/collapse/core logic
+// and the beacon's own lock/tick/beacon-mode plumbing all just work.
+function makeHaulRoster() {
+    rockSeq = 0;
+    var type = ROCK_TYPES[Math.floor(Math.random() * ROCK_TYPES.length)];
+    // A 'medium' rock, deliberately: tier 1 (CFG.tractorTestFit, what
+    // everyone starts with) can't move 'large' or 'huge' at all — see
+    // TRACTOR_TIERS. Brian's own picture is a huge rock; that's a tier 3+
+    // fantasy for once tiers are actually earned, flagged here rather than
+    // silently built un-completable at the default fit.
+    var size = ROCK_SIZES.length - 2;
+    var rock = spawnRock(type, size, v3(0, 0, -400), v3(0, 0, 0));
+    rock.haulable = true;
+    var ang = Math.random() * Math.PI * 2;
+    var homePos = v3(Math.cos(ang) * CFG.haulHomeDist, 0, -400 + Math.sin(ang) * CFG.haulHomeDist);
+    var home = { name: 'Home Beacon', poiType: 'haulHome', kind: 'poi', desc: 'tow it here',
+                 pos: homePos, alive: true, resource: false };
+    buildPoiVoice(home);
+    return [rock, home];
+}
+
+function haulIntro() {
+    return 'The haul. A rock waits ahead, and a home beacon sits out there — Tab finds each. ' +
+           'B engages the tractor once you are close and centered; once latched it tows behind you as you fly. ' +
+           'Fly smoothly: hard thrust, sharp turns, and above all backing into it strain the line, and a creak ' +
+           'warns you before it parts — drop back and re-latch if it does. Bring it within reach of the home ' +
+           'beacon, latched, to finish. F1 for help.';
+}
+
+function startHaulMission() {
+    menuOpen = false;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    autoTargetCharges = CFG.autoTargetCharges;
+    refillRcs(); collisionDamage = 0; repairAllSystems();
+    newGame('mining', null, true);
+    say(haulIntro());
 }
 
 // ---- rock lifecycle ---------------------------------------------------------
@@ -5046,7 +5244,10 @@ function loseRock(t) {
 }
 
 function checkMiningEnd() {
-    if (mode !== 'mining' || won) return;
+    // SPEC 3.60: the haul's own completion is home-distance-based, not
+    // "every rock accounted for" — defensive gate alongside the loseRock
+    // fix above, in case anything else ever calls this during a haul run.
+    if (mode !== 'mining' || won || haul) return;
     if (aliveRocks().length > 0) return;
     if (debrisTotal() > 0) {
         // The rocks are done but the harvest isn't: sweep the dust to finish.
@@ -8061,15 +8262,24 @@ function onKeyDown(e) {
                 if (mode === 'mining' && !sectorHome) ore = 0;
                 if (!sectorHome) { missiles = CFG.missileMax; chaff = CFG.chaffMax; autoTargetCharges = CFG.autoTargetCharges; }
                 if (lost || !sectorHome) { hull = CFG.shipHull; repairAllSystems(); }
-                newGame();
-                if (mode === 'course') {
-                    courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0, offsets: [] };
-                    activateCourseGate(0, courseIntro());
-                } else if (mode === 'turret') {
-                    turretState = makeTurretState();
-                    say(turretIntro());
+                // SPEC 3.60: captured BEFORE newGame() — its own clearMission()
+                // call is about to null `haul`, same reasoning courseState/
+                // turretState already need on this exact line.
+                var wasHaul = mode === 'mining' && !!haul;
+                if (wasHaul) {
+                    newGame(null, null, true);
+                    say(haulIntro());
                 } else {
-                    say(mode === 'mining' ? miningIntro() : combatIntro());
+                    newGame();
+                    if (mode === 'course') {
+                        courseState = { activeIndex: 0, elapsed: 0, started: false, made: 0, missed: 0, offsets: [] };
+                        activateCourseGate(0, courseIntro());
+                    } else if (mode === 'turret') {
+                        turretState = makeTurretState();
+                        say(turretIntro());
+                    } else {
+                        say(mode === 'mining' ? miningIntro() : combatIntro());
+                    }
                 }
             }
             else say('Enter does nothing here. F1 for help.');
@@ -8229,7 +8439,14 @@ function simTick(dt) {
             t.pos = add(t.pos, scale(t.vel, dt));
             t.vel = scale(t.vel, Math.pow(CFG.rockFriction, dt));
             if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
-            if (len(t.pos) > CFG.cloudRadius) loseRock(t);
+            // SPEC 3.60: the cloud-radius check is measured from the world
+            // ORIGIN, which is exactly where a normal mining cloud sits —
+            // but the haul's whole point is towing a rock far from its
+            // spawn point as the ship flies, so this would "lose" it (and,
+            // via checkMiningEnd, silently WIN the run) the moment it left
+            // an ordinary cloud's radius. Real bug found in testing: gated
+            // out for any haulable rock.
+            if (!t.haulable && len(t.pos) > CFG.cloudRadius) loseRock(t);
         });
         updateTractor(dt);
     }
@@ -8380,6 +8597,14 @@ window.__sim = {
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
                        dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null,
                        owned: tractorLevel() },
+            // SPEC 3.60
+            haul: haul ? { latched: tractor.active && tractor.targetIdx === haul.targetIdx,
+                           strain: Math.round(haul.strain * 1000) / 1000,
+                           rcsSpent: Math.round(haul.rcsSpent * 100) / 100,
+                           rockPos: targets[haul.targetIdx] ? targets[haul.targetIdx].pos : null,
+                           homePos: targets[haul.homeIdx] ? targets[haul.homeIdx].pos : null,
+                           homeDist: targets[haul.targetIdx] && targets[haul.homeIdx] ?
+                               Math.round(len(sub(targets[haul.targetIdx].pos, targets[haul.homeIdx].pos))) : null } : null,
             autoTarget: { active: !!autoTarget, holding: autoTarget ? autoTarget.holding : false,
                           holdRemaining: autoTarget ? Math.round(autoTarget.holdRemaining * 10) / 10 : null,
                           charges: autoTargetCharges, tier: autoTargetTier(),
@@ -8606,6 +8831,7 @@ function clearMission() {
     won = false; lost = false; locked = false; tug = null; mission = null; courseState = null;
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     turretDebrief.open = false;   // SPEC 3.65
+    stopHaulCreak(); haul = null;   // SPEC 3.60
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -8620,10 +8846,14 @@ function clearMission() {
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
 
-function newGame(m, missionSpec) {
+function newGame(m, missionSpec, startHaulRun) {
     if (m) mode = m;
     clearMission();
     if (missionSpec) mission = missionSpec;   // SPEC 2.17: set AFTER clearMission clears the old one
+    // SPEC 3.60: same reasoning as missionSpec above — clearMission() just
+    // nulled `haul`, so a fresh one is set AFTER, only when this call is
+    // actually starting (or restarting) a haul run.
+    if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, strain: 0, rcsSpent: 0, lastYaw: ship.yaw, lastPitch: ship.pitch };
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'course') {
@@ -8633,6 +8863,11 @@ function newGame(m, missionSpec) {
         // are their own state (turretState), built by startMission() right
         // after this call, same relationship courseState has to newGame().
         targets = [];
+    } else if (mode === 'mining' && haul) {
+        // SPEC 3.60: a dedicated one-rock-and-a-beacon roster, not the
+        // standard cloud — mining's own makeMiningRoster() is completely
+        // untouched by this branch.
+        targets = makeHaulRoster();
     } else if (mode === 'mining') {
         // SPEC 3.10: sectorHome.poiName names the field this visit is
         // against (set by callPoi before this runs) — its type biases the
@@ -8755,7 +8990,12 @@ var ENCOUNTER_ITEMS = [
     // and turretKey() for the shape.
     { label: 'Turret defense',
       desc: function () { return 'Three fixed zones, left, centre, and right. Left and right arrows switch between them; Space, F, and G act on whichever one is selected. Score by timing, not just clearing. Survive ' + CFG.turretDrillS + ' seconds.'; },
-      run: function () { startMission('turret'); } }
+      run: function () { startMission('turret'); } },
+    // SPEC 3.60: Brian's own tow picture — the tractor trails a moving
+    // puller, the one place it does. See updateHaulTow() for the shape.
+    { label: 'The haul',
+      desc: 'Tractor a rock and tow it home behind your own ship. Fly smoothly — hard thrust, sharp turns, and backing into it strain the tow line, and it can part.',
+      run: function () { startHaulMission(); } }
 ];
 var encounterIdx = 0;
 var menuSub = null;   // SPEC 3.56: the open sublist's items while one is open, else null

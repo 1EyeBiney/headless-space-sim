@@ -194,6 +194,17 @@ faster as the drill goes on. String successes together and every zone's
 shield snaps up on its own for a few seconds. Survive the clock and a
 debrief opens — score, accuracy, timing, best streak, and more.
 
+## The haul
+
+A rock waits ahead and a home beacon sits somewhere out there. Fly up
+close and B engages the tractor, same as mining — but here it tows behind
+your own ship as you fly instead of pulling the rock to a stop. The tow
+line has a strain: fly smoothly and it's quiet, but hard thrust, sharp
+turns, and above all braking or backing into the load all strain it, with
+a creak warning before it parts. A parted line lets the load coast; catch
+up and re-engage. Bring it home, still latched, and the run reports the
+reaction mass it cost against a par.
+
 ## Keys
 
 Right hand on the arrows, left hand on everything else.

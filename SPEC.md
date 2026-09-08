@@ -2109,10 +2109,11 @@ C's cost-shape question is answered — see 3.52's own evaluation) →
 28–39, no problems (2026-09-07)** → **Phase 3E, the encounters**
 (ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 DONE →
 Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
-defense (3-zone) DONE → **3.65 the turret's second pass, DONE** → 3.60
-the haul → 3.55 the distress tow → 3.61 the minefield → 3.62 the shadow
-→ 3.63 nebula transit → 3.64 the gate run → 3.59b (numpad 3×3) — with
-lettered audio sub-stages injected as Brian's recordings arrive) →
+defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
+**3.60 the haul, DONE** → 3.55 the distress tow → 3.61 the minefield →
+3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
+(numpad 3×3) — with lettered audio sub-stages injected as Brian's
+recordings arrive) →
 **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5888,7 +5889,7 @@ split across calls. Zero console errors in every confirmed run. Every
 number is still a placeholder for Brian's ear — this pass was about
 the mechanics his playtest asked for, not the tuning.
 
-#### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — proposed
+#### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — DONE
 
 - Brian's own picture, quoted above under "One correction". The tractor
   latches a huge rock (or a derelict) and **stays latched while you fly
@@ -5918,6 +5919,83 @@ the mechanics his playtest asked for, not the tuning.
   raising the creak and parting the line at the configured strain;
   Shift+S parting it inside a second; re-latching a coasting load; the
   reaction-mass total spoken at the end against par.
+
+**DONE (Round 46, Sonnet).** Built largely as scoped, with the strain
+model redesigned mid-build after an early version failed a basic
+sanity check. `haul` (module-level, the `demo`/`contract`/`mission`
+pattern) layers onto `mode: 'mining'`; `newGame()` gained a third
+optional param (`startHaulRun`, set the exact way `missionSpec` already
+is — AFTER `clearMission()` runs, since that's what nulls it) and a
+`makeHaulRoster()` branch ahead of the ordinary mining roster.
+`updateTractor()` gained one dispatch line (`if (haul && t.haulable)
+{ updateHaulTow(t, dt); return; }`) — every existing tractor code path
+(`tractorKey`'s own engage/refuse logic, the ordinary kinematic pull)
+is untouched, exactly as scoped. **The strain model was rebuilt once
+during testing, not shipped as first drafted.** The original design
+inferred strain purely from how far the load had visibly fallen behind
+an ideal trailing point, using the tractor's own `TRACTOR_TIERS` pull
+numbers as an acceleration budget for matching the ship's velocity —
+those numbers were tuned for the KINEMATIC mining pull (a distance
+closed per second), the wrong unit entirely for capping how fast a
+load's velocity can change, and the mismatch was severe enough that
+ordinary gentle forward flight snapped the line in under two seconds,
+confirmed the first time it was actually flown rather than just read.
+Rebuilt around three independent, explicit gains matching Brian's own
+three named triggers — ship speed over `haulSafeSpeed`, combined yaw+
+pitch rate over a threshold, and an outright rule for S/auto-reverse —
+accumulating into `haul.strain` with a constant decay so calm flying
+under all three settles back to zero; the load's own MOTION is a
+separate, generous spring-damper (`haulSpringK`/`haulDamping`) toward
+an ideal trailing point (`haulTowDist` behind the ship), deliberately
+decoupled from strain so it stays visibly/audibly connected under
+ordinary play regardless of how strained the line reads — strain is a
+warning, not a physical leash length. A safety clamp (`haulMaxAccel`)
+on the spring's own per-frame acceleration was added after an
+unrelated test (an instantaneous 1,500-unit ship teleport) produced a
+numerically unstable explicit-Euler blowup; harmless in real play,
+where the ship's position never jumps between frames, but cheap
+insurance regardless. **A second real bug, more serious, found in the
+same testing pass**: the ordinary mining rock-drift code marks a rock
+"lost" (and, via `checkMiningEnd()`, silently WINS the whole encounter)
+once `len(t.pos)` — distance from the world ORIGIN, exactly where a
+normal mining cloud sits — exceeds `CFG.cloudRadius`. The haul's entire
+premise is towing a rock far from its spawn point as the ship flies, so
+the very first test that actually drove any real distance triggered
+this within about 20 seconds, producing a bogus instant "win" with the
+rock nowhere near home — confirmed by tracing `won`'s own true source
+through several dead-end hypotheses (a stale `tractor.targetIdx`, test
+round-trip real-time contamination) before finding `loseRock()`/
+`checkMiningEnd()`. Fixed with `!t.haulable` on the distance check and
+a `haul` early-return in `checkMiningEnd()` itself as a second, defense
+guard — mining's own cloud/rock lifecycle for every OTHER rock is
+untouched. Machine-tested at a local server, entirely inside single
+unbroken script executions (per the turret round's own testing lesson
+— this drill's tractor/rock physics run in real time between tool
+round-trips exactly like the turret's spawn loop did): a full haul flown
+on the ACTUAL bearing to a randomly-placed home (computed from
+`state().haul.homePos`/`rockPos`, not guessed) completed cleanly —
+strain stayed at 0 the entire flight, home distance shrank from 1,600
+to 249, `finishHaul()` fired with "Home. Tow complete. Reaction mass
+spent: 15, par 40. Under par." and `won: true`; holding S from a fresh
+latch drove strain from 0.045 to 0.945 in exactly 1 second and snapped
+the line on the next tick, matching "inside a second" precisely; a
+sharp sustained turn alone (no thrust, no reverse) drove strain past 1
+and snapped it, confirming that trigger independently; Enter after a
+finish rebuilt a fresh `haul` (a new randomized home direction) and
+re-spoke the intro; X returned to the mission menu and nulled `haul`
+correctly. Zero console errors throughout. One deliberate, flagged
+simplification: `makeHaulRoster()` spawns a 'medium' rock, not the
+'huge' one Brian's own picture describes — `TRACTOR_TIERS`' tier 1
+(what `tractorTestFit` gives everyone today) can't move 'large' or
+'huge' at all, so a huge rock would be uncompletable at the default
+fit; the bigger fantasy waits on tiers actually being earned. Weapons
+are NOT disabled during a haul (mining's own rule), so a player could
+in principle laser the haul rock mid-tow — `updateTractor`'s existing
+`!t.alive` guard degrades this gracefully to "Tractor lost its target"
+rather than a crash, but the interaction isn't specifically engineered
+either way. Every number is a placeholder for Brian's ear; this pass
+was about the mechanism (chase, strain, snap, re-latch, complete), not
+the tuning.
 
 #### 3.61 The minefield — proposed (Fable)
 

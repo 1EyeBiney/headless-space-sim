@@ -3399,3 +3399,35 @@ pause, so any test needing a clean sequence has to stay inside one
 script execution — splitting it across calls lets unmanaged zones
 accumulate real hits mid-test. Next per SPEC.md's Phase 3E order: 3.60
 (the haul), then 3.55/3.61-3.64, then 3.59b.
+
+**Round 46 (Sonnet, 2026-09-08): built SPEC 3.60, the haul** (see
+SPEC.md's own DONE paragraph for the full shape and both bugs found):
+`haul` (module-level, the `demo`/`contract`/`mission` pattern) layers
+onto `mode: 'mining'`; `updateTractor()` gained one dispatch line to
+`updateHaulTow()` when a `haulable` rock is latched, tow'd behind the
+ship via a spring-damper toward an ideal trailing point, with strain as
+three independent explicit gains (speed, turn rate, an outright rule
+for reversing) rather than inferred from lag — the first design DID
+infer it from lag using the tractor's own pull-rate numbers as an
+accel budget, and snapped under ordinary gentle flight the first time
+it was actually flown; rebuilt. **A second, more serious bug**: the
+ordinary mining rock-drift code measures "has this rock drifted out of
+the cloud" from the world ORIGIN and silently WINS the encounter once
+a rock passes that radius — the haul's whole premise (towing a rock
+far from spawn) triggered this within ~20 seconds of real flight,
+producing a bogus instant win nowhere near home. Fixed with `!t.haulable`
+on that check plus a `haul` guard in `checkMiningEnd()`. Both bugs were
+found only by actually flying the mechanic end to end with a computed
+real bearing to the (randomized) home beacon, not by inspecting the
+code — worth remembering for 3.61-3.64, which will move things through
+world-relative space the same way. Machine-tested at a local server,
+entirely within single unbroken script executions (the turret round's
+own testing lesson applies here too — this drill's physics run in real
+time between tool round-trips): a full clean haul completed under par
+with strain at 0 throughout; holding S snapped the line in exactly 1
+second; a sharp turn alone also snapped it; Enter/X both correctly
+rebuild/clear `haul`. Zero console errors. One flagged simplification:
+the haul rock is 'medium', not 'huge' as Brian's own picture describes
+— tier 1 (today's default fit) can't move large/huge at all. Next per
+SPEC.md's Phase 3E order: 3.55 (the distress tow), then 3.61-3.64, then
+3.59b.
