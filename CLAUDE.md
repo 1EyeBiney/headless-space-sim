@@ -3431,3 +3431,30 @@ the haul rock is 'medium', not 'huge' as Brian's own picture describes
 — tier 1 (today's default fit) can't move large/huge at all. Next per
 SPEC.md's Phase 3E order: 3.55 (the distress tow), then 3.61-3.64, then
 3.59b.
+
+**Round 47 (Fable, docs only, 2026-09-08)**: Brian's `ideas15.txt`
+(untracked, like every ideas file; `todo.txt` beside it is just his
+saved copy of Sonnet's Round 45/46 summaries) reviewed and written into
+SPEC.md Phase 3E as **3.66–3.69**, to build in the order 3.67 → 3.66 →
+3.68 → 3.69, ahead of the encounters already queued (3.55, 3.61–3.64,
+3.59b): **3.67** the deep space ambient bed (`audio/quadrant/deep_space/
+deep_space_10r.mp3`, untracked until Sonnet wires it — stage it
+explicitly — manifest key `space_ambient`, preloaded, the music slot
+under EVERY mode so docking's interior crossfades over it and undock
+brings it back); **3.66** Z (idle since 3.44) cycles the ship's systems
+one line a press, skipping WHOLE health categories but never counts and
+never hull, with a "Hull 100. All systems whole." line when nothing
+else would speak — plus field repairs that stop at an 80 cap, −10 per
+repeat knockout, floor 50, cleared by docking (`shipSystems` grows a
+`cap`); **3.68** blink on **Ctrl+arrows** (Left/Right sidestep, Up
+forward, Down back), facing and velocity kept, 300 units, 4 rcs, 3 s
+cooldown, stops at a station's hull radius, no auto-retarget (Shift+T
+does that) — **Brian asked for Ctrl+W/S: Ctrl+W closes the browser tab,
+unpreventable, and is already in `isBrowserKey`'s escape hatch, so
+forward/back moved to Ctrl+Up/Down**; **3.69** the capital ship as an
+encounter: turrets are ordinary hostile targets riding a moving parent
+(a `parent` follow in `stepCombatShips`), a shield "door" per turret
+that opens 4 s before it fires and closes 2 s after — the door IS the
+telegraph — a new `lockToneKind` 'shielded' (solid + slow tremolo) as
+the reticle, 3.35's `capital` explosion pool on the kill. Six questions
+in Part C. Nothing built. Next: Sonnet builds 3.67.

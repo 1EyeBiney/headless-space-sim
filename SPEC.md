@@ -2110,7 +2110,9 @@ C's cost-shape question is answered — see 3.52's own evaluation) →
 (ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 DONE →
 Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
-**3.60 the haul, DONE** → 3.55 the distress tow → 3.61 the minefield →
+**3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
+space bed → 3.66 Z reads the ship + field repair caps → 3.68 blink →
+3.69 the capital ship** → 3.55 the distress tow → 3.61 the minefield →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -5997,6 +5999,192 @@ either way. Every number is a placeholder for Brian's ear; this pass
 was about the mechanism (chase, strain, snap, re-latch, complete), not
 the tuning.
 
+**ideas15.txt (Brian, 2026-09-08, reviewed by Fable the same day)** —
+four notes after playing the Round 41–46 builds. Written as 3.66–3.69
+below; verdicts and the one real conflict in Part C. `todo.txt`
+alongside it is Brian's own saved copy of Sonnet's Round 45/46
+summaries, not new direction. `audio/quadrant/deep_space/
+deep_space_10r.mp3` (20 s stereo loop, 480 KB — the `r` is Brian's own
+loop marker, and "10" suggests siblings not dropped yet) arrived with
+it, for 3.67.
+
+#### 3.66 Z reads the ship, one system a press — and field repairs stop short of whole (ideas15.txt) — DECIDED
+
+- Brian: "using Z (I think it is unbound now) to cycle through ship
+  component status, like pressing Z and it says 'hull 80%', press Z and
+  it says '7 missiles left' and so on through a handful of categories to
+  get quick info instead of having to pull up the Ship Status screen
+  with F2. ... if they are at 100% then they do not get announced."
+  Z has been unbound since 3.44 — this is its job.
+- **The cycle**: Hull → Shields → the selected laser (level and health)
+  → Missiles → Decoys → Reaction mass → Warp → Systems (every broken one
+  by name and health) → Auto-target charges (only when fitted), then
+  wraps. One line a press, the same numbers F2 reads, never F2's
+  prose. A press within `zStatusChainS` (4 s) of the last continues
+  the cycle; a press after that starts over at Hull — so a single Z
+  always means "hull", the number Brian reaches for most.
+- **Skipping full, with one guard against silence.** Brian's rule
+  applies to the *health* categories only — Shields (pool full, up),
+  the laser (health 100), Reaction mass (100), Warp (100), Systems
+  (none broken) are skipped when whole. The *count* categories —
+  Missiles, Decoys, Auto-target — always speak: a full magazine is a
+  number, not a 100%, and "how many do I have" is the question. Hull
+  always speaks. If everything skippable is whole, the cycle collapses
+  to Hull → Missiles → Decoys (→ charges), and Hull's own line says
+  "Hull 100. All systems whole." — a pilot who hears fewer stops than
+  expected must be told why, or a skipped Shields reads as "shields
+  aren't a thing". Never a silent press (Working agreements).
+- **Field repairs don't reach 100 (the second half of the note).**
+  Brian: "when a repair crew fixes something, it should not go all the
+  way back to 100%, rather it is degraded somehow until full ship
+  repairs can be made at a station... think about appropriate amounts
+  and if there is variance in max cap after damage has been taken."
+  3.27/3.36's crew now stops at a **field cap** — `repairFieldCap` 80
+  for a system, `repairHullFieldCap` 80 for the hull — "X at 80, field
+  repair. Dock for full." replacing 3.27's "X repaired." The
+  **variance**: every knockout a system takes lowers ITS cap by
+  `repairCapLossPerHit` 10, floored at `repairCapFloor` 50 — a laser
+  slot knocked out three times this sortie comes back at 50 and stays
+  there until docking. `shipSystems` keeps a `cap` beside each health;
+  docking's `repairAllSystems()` clears caps with everything else. Play
+  consequence, deliberately small in v1: a capped system is closer to
+  its next 'half'/'off' threshold, so the same hit that a whole system
+  would shrug off degrades a field-repaired one — no separate penalty
+  invented. F2, I, and Z all read the cap ("Sensor 80 of 80, field
+  cap"). Numbers are placeholders for Brian's ear; his own open
+  question ("appropriate amounts... variance") is answered with these
+  defaults, not settled.
+- Test: Z from cold reads Hull; Z again within 4 s reads Shields
+  (unless full, then the laser...); a 5 s pause then Z reads Hull; with
+  everything whole, Z reads "Hull 100. All systems whole." then
+  Missiles, Decoys; a knocked-out sensor repaired in the field stops at
+  exactly 80 with the field-repair line; a second knockout of the same
+  system caps it at 70; docking restores 100 and clears every cap.
+
+#### 3.67 Deep space, the ambient bed (ideas15.txt) — DECIDED, build first
+
+- Brian: "need to try out new deep space ambient background sound so
+  set that as ambient background for anything in space, quadrant/
+  encounter. I think the only place we would not use it now is when
+  inside the station."
+- `deep_space_10r.mp3` → manifest key `space_ambient` (`audio/quadrant/
+  deep_space/`, staged explicitly), IN `AUDIO_PRELOAD` (480 KB, and it
+  plays in every encounter). `startSpaceAmbient()` — `playMusic('space_
+  ambient', {vol: CFG.spaceAmbientVol 0.25})` — is called at the end of
+  `newGame()` for EVERY mode: sector, combat, mining, course, turret,
+  the escort/defend drills and missions, the haul. It uses the same
+  music slot as everything else on purpose: docking's station interior
+  crossfades over it (`playMusic`'s own prev-node fade) and `undock()`
+  calls `startSpaceAmbient()` to bring it back; `exitToMenu()`'s menu
+  music replaces it; `clearMission()`'s `stopMusic` still ends it on
+  every mission start a beat before `newGame` restarts it. The Sound
+  menu's Music line is its level. Not positioned — a bed, stereo, on
+  the music bus, not the HRTF world. It rides *under* the turret drill
+  too (Brian: anything in space).
+- Test: a Combat training start has `musicNode` playing `space_ambient`
+  looping; docking in the sector crossfades to the interior; undocking
+  brings the bed back; X to the menu swaps it for the menu track; a
+  turret drill has it too.
+
+#### 3.68 Blink: Ctrl+arrows jump the ship a fixed distance, facing kept (ideas15.txt) — DECIDED, one key question open
+
+- Brian: "something like Shift + arrow keys to 'teleport' a certain
+  distance in that direction, immediately... whether this keeps the
+  player facing the same direction and attitude, such that they need
+  to re-target... I'm thinking actually now of using Control for this
+  as there would be times to jump forward/back too, like as an escape
+  move or a chase down move, so Control + W/S and arrow keys."
+- **The conflict, first**: **Ctrl+W closes the browser tab** — in
+  every browser, and a page cannot prevent it. It's in `isBrowserKey`'s
+  escape hatch (`Ctrl+R/F/W/T`) precisely so the game never eats it.
+  Shift+arrows are free (nothing uses them) but Brian moved off Shift
+  for a reason. So: **Ctrl+arrows carry all four blinks** — Left/Right
+  sidestep, **Up = forward (the chase-down), Down = back (the escape)**
+  — the two cases Brian named. Vertical blinks (up/down in the world),
+  if wanted, go on **Ctrl+Shift+Up/Down**; Fable's lean is to build the
+  four first and add vertical only if the ear asks. Open in Part C.
+- **What a blink is**: an instant displacement of `blinkDist` (300)
+  along the ship's own right/forward axis (yaw only, world-horizontal
+  for the sidesteps — the ship doesn't roll), **facing and velocity
+  untouched** — Brian's own instinct, and the reason it works against
+  3.58: an enemy's facing cone (and its cannon) is still pointed where
+  you *were*, and its turn rate is the window you bought. Cost
+  `blinkRcs` 4 reaction mass, cooldown `blinkCooldownS` 3 (a `refusal_
+  wait` click with the seconds left), no charges — the tank is the
+  limit. A `blink` cue: a short cockpit thump at the origin and a
+  softer arrival, the same instant. Refused (offline buzz) while
+  docked, warping, in the turret drill (the ship doesn't move there),
+  or when over(); and a blink that would land inside `stationHullRadius`
+  of a station or planet stops at the radius instead ("Blink short.
+  Hull."), reusing `updateCollisions`' own geometry — never a free hull
+  hit. Allowed in open sector space, every encounter, and the course
+  (where it's a cheat — flagged, Brian's call; Fable's lean: refuse it
+  on the course, same as weapons).
+- **Targeting after a blink**: the selected target stays selected;
+  the lock drops if the bearing left the zone (it usually will), and
+  the tick walks the nose back — or Shift+T (3.38) reacquires,
+  spending a charge, which is exactly Brian's "allow them to then use
+  an auto-target, thus leaving them only a few." No automatic retarget
+  in v1; "jump with auto-target" (the blink itself re-aiming) is his
+  later option, not built.
+- Enemies don't react to a blink in v1 beyond what 3.58 already does
+  (their facing chases the ship's new position at the turn rate) —
+  which IS the reaction.
+- Test: Ctrl+Right moves the ship exactly 300 along its right axis with
+  yaw, pitch, and velocity unchanged; reaction mass drops by 4; a
+  second Ctrl+Right inside 3 s refuses with the wait; a blink toward a
+  station from 200 out stops at the hull radius; the lock drops and
+  Shift+T reacquires; Ctrl+W still closes the tab (i.e. is never seen
+  by the game); a cannon ship's cone angle to the pilot jumps on a
+  sidestep and closes again at `enemyFacingTurnRateDeg`.
+
+#### 3.69 The capital ship: turrets behind doors (ideas15.txt) — proposed, an encounter
+
+- Brian: "a really big capital ship that had different guns/turrets
+  such that they would all be attached... each one of them maybe have
+  shields protecting that gun/turret and that shield needs to come
+  down in order to fire and while the shield is down, that gun/turret
+  is vulnerable... metal doors opening and closing sounds but I do not
+  know if we can separate them enough to represent spatial coordinates
+  distinctly enough... alter the targeting reticule tone or something
+  to indicate when something is targeted and has shields up/down... put
+  the large ship in motion as then those areas are moving targets."
+- **Yes, and mostly out of parts that exist.** A `capital` parent —
+  not a target, no voice of its own but a low hull drone — moving on a
+  slow orbit like the Cruiser (`capitalOrbitDegPerSec` 3) with its own
+  `facing`; `capitalTurrets` (4) **ordinary hostile targets** (`kind`
+  falsy, so lock, Tab, the lasers, the missiles, 3.58's facing and
+  cannon all apply unchanged) whose `pos` is the parent's plus an
+  offset rotated by the parent's facing, set every frame in
+  `stepCombatShips` before its orbit code (a `parent` field). Offsets
+  at least `capitalTurretSpacing` 250 apart — at engagement range two
+  sources 250 apart are 30–60° of bearing, which L.8's room already
+  showed the ear separates; Brian's worry is answered by spacing, not
+  by the door sound.
+- **The door IS the telegraph.** Each turret has `doorUp` (true by
+  default = shielded, invulnerable: `damageTarget` refuses with a
+  shield-splash at the turret and "Shielded." folded into the burst's
+  own tick line, never a second say()). `capitalDoorOpenS` (4) before
+  it fires the door opens — Brian's metal-door recording, played by
+  `worldOut` AT the turret (he generates it; synthesized grind until
+  then, 3.69a) — replacing that turret's three chirps; it fires (cannon
+  or beam, by roster row); the door closes `capitalDoorCloseS` (2)
+  after. That open-to-close window is the fight. One turret attacks at
+  a time (the existing `threat` singleton), so at most one door is
+  open — the ear always knows where the fight is.
+- **The reticle**: a new `lockToneKind` **'shielded'** — the solid
+  tone with a slow tremolo while the selected turret's door is up,
+  plain solid when down. Tab reads "Turret 2, shielded." A lock on a
+  shielded turret still holds (you're waiting on it, not blocked).
+- Win: every turret dead — the parent breaks up, 3.35's `capital`
+  explosion pool used at the size it was recorded for. No parent hull
+  in v1 (Part C). Loss as usual. On the Encounters list.
+- Test: four turrets at four bearings from one moving parent, each
+  Tab-able; a burst on a closed door refuses with the splash; the door
+  opens 4 s before that turret's attack and closes 2 s after; damage
+  lands only in the window; the selected turret's lock tone changes
+  with its door; all four dead ends it with the capital explosion.
+
 #### 3.61 The minefield — proposed (Fable)
 
 - Nothing to shoot. A field of slow-drifting proximity mines, each with
@@ -7210,6 +7398,42 @@ and a debrief with more than points. Fable's six debrief measures are
 a proposal (accuracy, timing early/late, best streak, volleys caught,
 missiles used, weakest zone) — Brian: "I've no idea how to measure
 this," so these are for his ear to keep or cut. Built before 3.59b.
+
+**Review (Fable, 2026-09-08) of Brian's `ideas15.txt`** — four notes,
+written into Phase 3E as 3.66–3.69. Verdicts:
+- **Z reads the ship (3.66): yes**, Z has been idle since 3.44. One
+  push-back on "don't announce 100%": applied to health categories
+  only, never to counts (a full magazine is a number), Hull always
+  speaks, and when everything is whole Hull says so — a skipped
+  category the pilot can't tell from a missing one is the "silence is
+  a bug" rule in disguise. **Field repairs stop at 80**, minus 10 per
+  repeat knockout, floor 50, cleared by docking — Fable's defaults
+  for Brian's own open "appropriate amounts... variance."
+- **The deep space bed (3.67): yes, first, cheapest.** Everything in
+  space, the station interior crossfades over it; the turret drill
+  included.
+- **Blink (3.68): yes, but not on Ctrl+W.** Ctrl+W closes the tab —
+  every browser, unpreventable, and already in the game's own escape
+  hatch. Ctrl+arrows carry all four: Left/Right sidestep, Up forward
+  (the chase), Down back (the escape). Facing and velocity kept — the
+  point of it against 3.58's cone. No auto-retarget in v1; Shift+T
+  does that at a charge, as Brian described.
+- **The capital ship (3.69): yes**, from existing parts — turrets are
+  ordinary targets riding a moving parent; the door is the telegraph;
+  a 'shielded' lock tone is the reticle. Spacing, not the door sound,
+  is what separates them by ear.
+- **Order**: 3.67 → 3.66 → 3.68 → 3.69, then the encounters already
+  queued (3.55, 3.61–3.64, 3.59b) — Brian's notes are play feedback on
+  what's built, and 3.69 is the biggest encounter on the list.
+
+**DECIDE (open, from ideas15.txt)**: 1. Blink keys — Ctrl+arrows with
+Up/Down as forward/back (Fable), or something else? Vertical blinks on
+Ctrl+Shift+Up/Down, or not at all? 2. Blink on the flight course:
+refused like weapons (Fable), or allowed? 3. `blinkDist` 300 /
+`blinkRcs` 4 / 3 s cooldown — placeholders. 4. Field cap 80, −10 a
+repeat, floor 50 — placeholders. 5. Z's chain window (4 s) and the
+category order. 6. The capital ship: cannon turrets, beam turrets, or
+mixed; a parent hull of its own (v1: no); how many turrets (4).
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts
