@@ -3297,3 +3297,22 @@ is a no-op against the Cruiser specifically, since its `orbit` field
 overwrites `t.pos` every frame regardless (a testing wrinkle, not a
 gameplay one). Next per SPEC.md's Phase 3E order: 3.59 (turret
 defense, 3-zone then numpad 3×3), then 3.60/3.55/3.61-3.64.
+
+**Round 42 (Sonnet, 2026-09-07): built SPEC 3.59, the 3-zone turret
+defense** (see SPEC.md's own DONE paragraph for the full shape). A new
+`mode: 'turret'` skips `simTick`'s flight/thrust/collision block
+outright — the ship never moves; `turretState` (its own module-level
+var, NOT `targets`) holds three zones each with a laser cooldown, a
+shield, and at most one incoming; `turretKey()` is a single early
+intercept in `onKeyDown` claiming Left/Right/Space/F/G/I and refusing
+everything else, while F1/F2/F3/F12/Escape/X/Enter/Y fall through
+untouched to the generic switch every other mode already shares.
+Machine-tested at a local server (zone switching, every refusal, a
+shielded vs. unshielded impact differing by exactly `CFG.turretHullDmg`,
+a missile clearing a zone still on laser cooldown, a full drill run
+lost to hull erosion with no player action routing to the standard
+non-tug retry, Enter/X both confirmed), zero console errors. 3.59b (the
+numpad 3×3) is deliberately NOT built — the spec frames it as a later
+pass to compare against the 3-zone version by ear, not a prerequisite.
+Next per SPEC.md's Phase 3E order: 3.60 (the haul, Brian's own
+force-balanced tow — needs 3.57, already built), then 3.55/3.61-3.64.

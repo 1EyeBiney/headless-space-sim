@@ -176,6 +176,15 @@ station first. No station means no favor and no cooldown — they're
 replayable any time, and pay credits on a win the same as the
 station-offered versions do.
 
+## Turret defense
+
+A fourth kind of encounter, not flown at all: three fixed zones sit in
+front of you, left, centre, and right, and left/right arrows switch
+between them. Space fires that zone's laser, F a missile from a small
+shared magazine, G toggles that zone's own shield. Each zone can hold
+one incoming at a time, closing on its own clock — clear it, catch it on
+a shield, or take the hit. Survive the clock and it's over.
+
 ## Keys
 
 Right hand on the arrows, left hand on everything else.

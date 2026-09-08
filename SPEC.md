@@ -2107,11 +2107,12 @@ second pass** (queued 2026-09-06, held back from building until Part
 C's cost-shape question is answered — see 3.52's own evaluation) →
 **3.54/3.53/3.52 all DONE (Round 39)** → **Brian ear-tested Rounds
 28–39, no problems (2026-09-07)** → **Phase 3E, the encounters**
-(ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 first,
-then Shift+S 3.57, then 3.58 the facing cone and cannon → 3.59 turret
-defense → 3.60 the haul → 3.55 the distress tow → 3.61 the minefield →
-3.62 the shadow → 3.63 nebula transit → 3.64 the gate run, with lettered
-audio sub-stages injected as Brian's recordings arrive) →
+(ideas14.txt + chat, 2026-09-07 — the Encounters submenu 3.56 DONE →
+Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
+defense (3-zone) DONE, 3.59b (numpad 3×3) still proposed → 3.60 the
+haul → 3.55 the distress tow → 3.61 the minefield → 3.62 the shadow →
+3.63 nebula transit → 3.64 the gate run, with lettered audio sub-stages
+injected as Brian's recordings arrive) →
 **3.42 escort in
 formation (an experiment, still waiting on 3.38 having been flown)** →
 **quadrant 2
@@ -5629,7 +5630,7 @@ cannon's own tick count/damage) is a placeholder for Brian's ear —
 this pass was about the mechanism (turn-to-face, cone-gated damage),
 not the tuning.
 
-#### 3.59 Turret defense: three zones, then the numpad 3×3 (ideas14.txt) — proposed
+#### 3.59 Turret defense: three zones, then the numpad 3×3 (ideas14.txt) — 3-zone DONE, 3.59b proposed
 
 - Brian: "the player has 3 zones in front of them, using arrow keys
   moves between the zones... with 3 enemy ships in front, spaced and
@@ -5665,6 +5666,67 @@ not the tuning.
   laser in the selected zone hits only that zone's target; a zone's
   shield absorbs only that zone's incoming; a missed cooldown window
   costs hull; Left/Right at the ends wrap or refuse (decide by ear).
+
+**DONE — the 3-zone pass (Round 42, Sonnet).** A new `mode: 'turret'`
+(`ENCOUNTER_ITEMS`, `startMission('turret')`) that skips `simTick`'s
+entire flight/thrust/collision block outright (a new early branch right
+after the `menuOpen` freeze, calling only `updateTurret(dt)` plus the
+listener/status line every mode needs) — the ship truly never moves.
+State lives in its own `turretState` (`{zone, zones: [{laserReadyAt,
+shieldUp, incoming, spawnIn}, x3], elapsed, cleared, hits, missiles}`),
+not `targets` — incoming ships are never Tab-cycled or locked, matching
+Brian's own "the zone IS the aim" framing exactly; each owns a
+lightweight voice (`buildIncomingVoice`/`moveIncomingVoice`, a triangle
+tone pulsed by a sine LFO, both the tone's pitch and the pulse rate
+rising as it closes) positioned by `turretIncomingPos()` from its
+zone's fixed bearing (`turretZoneBearingsDeg`, −40°/0°/40°) and height
+(`turretHeightOffsetsDeg`, low/mid/high). `turretKey()` is a single
+early intercept in `onKeyDown` (right after the `warping` check, ahead
+of every other chord/HELD/switch machinery) claiming Left/Right (switch
+zone), Space (fire that zone's laser — clears the incoming, cooldown
+`turretLaserCooldownS`, refuses empty or recharging), F (a missile from
+a small shared `turretMissileMax` magazine — guaranteed clear, no
+cooldown, no per-zone limit), G (toggle that zone's own shield —
+instant, no spool, no pool, a deliberate simplification from the
+pilot's real shield, flagged for Brian's ear), and I (a turret-specific
+status line); every other flight/weapon key (arrows up/down, W/S, Tab/
+T/R, D/B/Z/E/V/Q/H/C) is refused with the offline buzz naming the two
+real keys. F1/F2/F3/F12/Escape/X/Enter/Y are deliberately NOT claimed —
+`turretKey()` returns `false` for them and they fall through to the
+exact same generic switch every other mode already uses, so help, the
+ship/resource screens, the mission-menu overlay, leaving, retrying, and
+Y-for-totals all just work with zero new code. `updateTurret(dt)` ticks
+whichever zones hold an incoming (impact on timeout — the zone's own
+`shieldUp` absorbs it silently or `hullHit(CFG.turretHullDmg, ...)`
+lands, reusing the existing hull/loss/tug-eligibility machinery
+unchanged) and spawns a fresh one after an empty zone's own randomized
+gap; surviving `CFG.turretDrillS` (60s) wins. `clearMission()` gained
+`stopAllTurretVoices(); turretState = null;` (incomings aren't
+`targets`, so the existing `targets.forEach(stopVoice)` never reaches
+them), and both `startMission('turret')` and the generic Enter-retry
+path build a fresh `turretState` after `newGame()` — the same
+relationship `courseState` already has to `newGame()`, reused rather
+than reinvented. Two test hooks: `poke({turretIncomingS, turretZone})`
+(force a zone's incoming to a specific time-to-impact, spawning one if
+none exists, for deterministic testing) and `state().turret`. Machine-
+tested at a local server: zone switching wraps both directions and
+speaks what's in the new zone; every refusal (empty zone, recharging,
+no missiles, an unclaimed key) fires with the right cue and line; a
+forced impact with the zone's shield up left hull untouched while an
+identical impact with it down cost exactly `CFG.turretHullDmg` (12); a
+missile cleared a zone that was still on laser cooldown, decrementing
+the shared magazine; fast-forwarding through a whole drill with no
+player action confirmed hull eroding to 0 and routing to the standard
+non-tug retry (a menu-launched drill, no `sectorHome`); Enter rebuilt a
+fresh `turretState` (hull, cleared, hits, missiles all reset) and
+re-spoke the intro; X returned to the mission menu and nulled
+`turretState`. Zero console errors throughout. **Deliberately NOT
+built**: 3.59b (the numpad 3×3 second pass) — the 3-zone version is a
+complete, playable encounter on its own, and Brian's own spec text
+already frames the 3×3 as a distinct later pass to compare against by
+ear, not a prerequisite. Every number (the bearings, the drill length,
+the cooldown, the hull damage, the magazine size) is a placeholder for
+Brian's ear.
 
 #### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — proposed
 
