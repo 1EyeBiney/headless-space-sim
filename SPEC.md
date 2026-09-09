@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE** → 3.62 the shadow, next →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE** → 3.63 nebula transit, next →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6598,7 +6598,7 @@ the mine count, spread, drift speed, safe-speed ceiling, trigger
 distance, hull damage, tick pacing — is a placeholder for Brian's ear.
 Not yet heard or flown by Brian.
 
-#### 3.62 The shadow — proposed (Fable)
+#### 3.62 The shadow — DONE
 
 - Tail a ship that keeps cutting its engine. It flies a route with
   random silent legs (`shadowSilentMinS`–`MaxS`, engine loop ramped to
@@ -6610,6 +6610,82 @@ Not yet heard or flown by Brian.
 - Test: contact time accrues only within range; a silent leg drops the
   lock and the tick; re-acquiring after the leg resumes accrual; the
   total reached ends it with the time.
+
+**DONE (Round 53, Sonnet).** A new mode, `'shadow'`, reached from the
+Encounters list (a menu drill, no station). `makeShadowRoster()`
+builds one target — `kind: 'shadow'`, a new kind, deliberately NOT
+`'friendly'` (which would exclude it from `selectNearest()`/
+`cycleTarget()` the way an escort/defend friendly is; here it's the
+only thing to select and lock onto). `updateShadow(dt)` moves it
+forward each frame with the escort friendly's own straight-line motion
+code (literally the same shape, reused as specced), and runs its own
+lit/dark phase timer (`t.phaseUntil`, a random duration drawn from
+`shadowLitMinS`/`MaxS` when lit or `shadowSilentMinS`/`MaxS` when dark)
+that ramps the engine's own gain toward silence and back via
+`SIM.audio.ramp`. **One deliberate design call, flagged**: contact
+time accrues by RANGE ALONE (`dist <= shadowRange`), never gated on
+`locked` — the spec's own Test bullet reads "a silent leg drops the
+lock... re-acquiring resumes accrual," which could be read as accrual
+itself being lock-gated, but reading it that way would DOUBLY punish a
+dark leg (losing the passive tick AND losing score for something the
+pilot can't observe) — Fable's own framing calls this "training
+tracking," which reads as wanting good dead-reckoning REWARDED, not
+punished twice. Built so a pilot who holds position through a dark leg
+purely by memory keeps their contact time; the quoted Test language is
+still literally true of this build, since in ordinary play losing the
+tick is exactly when a pilot tends to drift out of range too. The
+dark/lock connection itself is the OTHER reuse the spec named: 3.27's
+"an offline sensor can't hold or acquire a lock" rule now also fires
+whenever the SELECTED target's own `t.dark` is true (`updateTargeting`
+and `tickBeat` each gained one `|| t.dark` alongside their existing
+`systemState('sensor') === 'off'` check) — scoped to just this one
+target rather than flipping the real `shipSystems.sensor`, which would
+have wrongly shown a broken sensor in F2/I and risked the repair crew
+trying to "fix" nothing. T deliberately keeps working normally even
+while dark, matching this codebase's own existing precedent: T has
+never been gated by a broken sensor either (3.27 only ever touched the
+passive lock/tick), so a pilot who presses it anyway gets a truthful
+reading — the "fly on the last bearing" framing is the intended PLAY
+STYLE the drill is teaching, not a hard restriction enforced in code.
+**A real, pre-existing bug found while testing this item and fixed for
+both**: the generic Enter-retry handler (`onKeyDown`'s `'enter'` case)
+only had explicit branches for `course` and `turret` — `minefield`
+(3.61, shipped last round) and this round's own `shadow` both fell to
+the generic `else`, which speaks `combatIntro()`'s "Five targets
+detected..." line after a win, even though `newGame()` itself already
+rebuilt the right roster correctly (only the SPOKEN line was wrong).
+Missed in 3.61's own testing because the very next `updateTargeting`
+tick's own "Locked. Distance N." announcement overwrote the wrong line
+in the same aria-live div before it was checked — SPEC 2.15's own
+"two say() calls, only the last is heard" rule working against the
+test this time, not just gameplay. Both modes now have their own
+explicit branch, mirroring course/turret's shape exactly. Machine-tested
+at a local server, entirely through real `__sim.step()` time (no
+mocks): starting the drill confirmed `mode: 'shadow'`, one target at
+400, auto-selected; Space/G/Shift+T/a blink chord all refused; facing
+the target and stepping 30 simulated seconds confirmed the lit/dark
+cycle firing at the CFG-configured random intervals (lit 0–6.5s, dark
+7–12s, lit again to 23.5s, dark again from 24s in the actual run) with
+`locked` dropping to false the instant `dark` flipped true every
+single time and NOT automatically re-acquiring on its own once lit
+again (the target's continued forward motion drifts the bearing away
+— confirmed this is the intended tracking challenge, not a stuck
+flag); holding the ship glued to the target's live position via
+repeated `warpToSelected(50)` for 95 stepped seconds accrued contact
+to exactly the needed 90 and finished with "Contact held. Time 1
+minute 30 seconds. Your first time.", a real `profile.shadowRuns`
+entry written to `localStorage`; Enter correctly rebuilt a fresh drill
+AND spoke `shadowIntro()` (confirming the bug fix); the SAME fix was
+independently reconfirmed on 3.61's own minefield (Enter now speaks
+`minefieldIntro()`, not `combatIntro()`); X returned to the mission
+menu; F1's help confirmed a "The shadow" heading in the correct
+position among 14 total headings. A `dark` field was added to
+`state().targets[]` as a permanent test hook, the same spirit as
+`enemyFacingDeg`/other per-target state exposed for testing elsewhere.
+Zero console errors throughout, reconfirmed on a genuinely fresh tab.
+Every number — the speed, the range, the needed contact, the lit/dark
+phase lengths — is a placeholder for Brian's ear. Not yet heard or
+flown by Brian.
 
 #### 3.63 Nebula transit — proposed (Fable; the staged pulsar/space_loop audio finally gets a job)
 

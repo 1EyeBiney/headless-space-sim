@@ -597,6 +597,20 @@ var CFG_DEFAULTS = {
     mineTickSlowMs: 1400,       // interval at mineTickRange
     mineExitRadius: 120,        // proximity to the exit beacon that ends the run
 
+    // SPEC 3.62 (ideas14.txt/Fable): the shadow — tail a ship that keeps
+    // cutting its engine. It flies a straight route (the escort friendly's
+    // own forward-motion code, reused) alternating lit/dark legs at
+    // random; held contact within shadowRange accrues toward shadowNeedS
+    // regardless of lit/dark — the dark legs cost the pilot the lock and
+    // the tick (3.27's sensor-offline rule, scoped to this one target),
+    // not the accrual itself, so tracking well through a dark leg by dead
+    // reckoning is rewarded rather than doubly penalized.
+    shadowSpeed: 45,
+    shadowRange: 600,
+    shadowNeedS: 90,
+    shadowLitMinS: 6, shadowLitMaxS: 14,
+    shadowSilentMinS: 4, shadowSilentMaxS: 9,
+
     // SPEC 3.59 (ideas14.txt): turret defense — three fixed zones, ship
     // stationary, weapons act on whichever zone is selected. First pass is
     // the 3-zone version only; the numpad 3x3 (3.59b) is a later item.
@@ -679,7 +693,7 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 10;
+var PROFILE_VERSION = 11;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
@@ -710,7 +724,9 @@ function defaultProfile() {
              turretRuns: [],
              // SPEC 3.61: the minefield's own best-10 log, by time again —
              // a fifth board, same reasoning.
-             minefieldRuns: [] };
+             minefieldRuns: [],
+             // SPEC 3.62: the shadow's own best-10 log — a sixth board.
+             shadowRuns: [] };
 }
 
 function loadProfile() {
@@ -811,6 +827,8 @@ function loadProfile() {
     if (!Array.isArray(profile.turretRuns)) profile.turretRuns = [];
     // v9 -> v10 (SPEC 3.61): the minefield's own run log.
     if (!Array.isArray(profile.minefieldRuns)) profile.minefieldRuns = [];
+    // v10 -> v11 (SPEC 3.62): the shadow's own run log.
+    if (!Array.isArray(profile.shadowRuns)) profile.shadowRuns = [];
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -929,6 +947,17 @@ function recordMinefieldRun(seconds, detonations) {
     profile.minefieldRuns.push({ seconds: seconds, detonations: detonations, date: new Date().toISOString().slice(0, 10) });
     profile.minefieldRuns.sort(function (a, b) { return a.seconds - b.seconds; });
     profile.minefieldRuns = profile.minefieldRuns.slice(0, 10);
+    saveProfile();
+    return prevBest;
+}
+
+// SPEC 3.62: the shadow's own best-10 board, same shape again.
+function recordShadowRun(seconds) {
+    if (!profile) return undefined;
+    var prevBest = profile.shadowRuns.length ? profile.shadowRuns[0].seconds : undefined;
+    profile.shadowRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
+    profile.shadowRuns.sort(function (a, b) { return a.seconds - b.seconds; });
+    profile.shadowRuns = profile.shadowRuns.slice(0, 10);
     saveProfile();
     return prevBest;
 }
@@ -1507,6 +1536,70 @@ function updateMinefield(dt) {
     if (exit && exit.alive && len(sub(exit.pos, ship.pos)) <= CFG.mineExitRadius) finishMinefield();
 }
 
+// ---- the shadow (SPEC 3.62, ideas14.txt/Fable) -----------------------------
+// Trains tracking: tail one ship flying a straight route (the escort
+// friendly's own forward-motion code, reused verbatim) that alternates
+// lit and dark legs at random. `kind: 'shadow'` — a new kind, deliberately
+// NOT 'friendly', since that would exclude it from selectNearest/
+// cycleTarget the way an escort/defend friendly is; here it's the only
+// thing to select and lock onto while lit.
+function makeShadowRoster() {
+    var t = {
+        name: 'Silent Ship', kind: 'shadow', hp: 1, maxHp: 1, alive: true,
+        pos: v3(0, 0, -400), dark: false,
+        phaseUntil: CFG.shadowLitMinS + Math.random() * (CFG.shadowLitMaxS - CFG.shadowLitMinS),
+        voice: { type: 'sawtooth', freq: 55, trem: 3 },
+        shipAsset: { name: 'ship_cruiser_1', rate: 0.8 }
+    };
+    return [t];
+}
+function shadowIntro() {
+    return 'The shadow. Tail the ship ahead — it cuts its engine at random. ' +
+           'While it is dark, no lock, no tick: fly on its last bearing until it lights up again. ' +
+           'Hold within ' + CFG.shadowRange + ' for ' + CFG.shadowNeedS + ' seconds total, lit or dark, to finish. ' +
+           'The clock starts the moment you thrust. Weapons are cold. ';
+}
+function finishShadow() {
+    won = true;
+    var seconds = shadowState.elapsed;
+    var prevBest = recordShadowRun(seconds);
+    var rankText = prevBest === undefined ? 'Your first time.'
+                 : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
+                 : fmtTime(seconds - prevBest) + ' off your best.';
+    SIM.cues.play('win_fanfare');
+    say('Contact held. Time ' + fmtTime(seconds) + '. ' + rankText);
+}
+// Called every frame from simTick while mode === 'shadow'. Moves the ship
+// forward, flips lit/dark on its own random-length phase timer (ramping
+// the engine gain to match — updateTargeting's own t.dark check, right
+// alongside 3.27's real sensor-offline rule, is what actually drops the
+// lock/tick; this function only owns the route, the phase, and the gain),
+// and accrues contact time purely by range — see the CFG block's own note
+// on why accrual isn't ALSO gated on lock.
+function updateShadow(dt) {
+    if (!shadowState || won || lost) return;
+    if (shadowState.started) shadowState.elapsed += dt;
+    var t = targets[0];
+    if (!t || !t.alive) return;
+    t.pos = add(t.pos, scale(v3(0, 0, 1), CFG.shadowSpeed * dt));
+    if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+    t.phaseUntil -= dt;
+    if (t.phaseUntil <= 0) {
+        t.dark = !t.dark;
+        if (t.dark) {
+            t.phaseUntil = CFG.shadowSilentMinS + Math.random() * (CFG.shadowSilentMaxS - CFG.shadowSilentMinS);
+            if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, 0.0001, 1.5);
+        } else {
+            t.phaseUntil = CFG.shadowLitMinS + Math.random() * (CFG.shadowLitMaxS - CFG.shadowLitMinS);
+            if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, CFG.targetGain, 1.5);
+        }
+    }
+    if (shadowState.started && len(sub(t.pos, ship.pos)) <= CFG.shadowRange) {
+        shadowState.contact += dt;
+        if (shadowState.contact >= CFG.shadowNeedS) finishShadow();
+    }
+}
+
 // ---- escort/defend missions (SPEC 2.17) ------------------------------------
 // Only the friendly is in the roster at mission start — raiders arrive in
 // scripted waves via spawnMissionWave(), not all at once. Same voice/asset
@@ -2059,6 +2152,7 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
                           // defend mission is live (mode stays 'combat' throughout)
 var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mode === 'course'
 var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while mode === 'minefield'
+var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
 // SPEC 3.59 (ideas14.txt): the turret defense drill — the ship doesn't fly;
 // three fixed zones (left/centre/right), each with its own laser cooldown
 // and shield, at most one incoming at a time. { zone, zones: [{laserReadyAt,
@@ -2171,7 +2265,7 @@ function setMuted(m) {
 function over() { return won || lost; }
 // SPEC 3.41: the flight course is weapons-cold, same message and same
 // mode-check shape the sector already used for Space/F/D.
-function weaponsCold() { return mode === 'sector' || mode === 'course' || mode === 'minefield'; }
+function weaponsCold() { return mode === 'sector' || mode === 'course' || mode === 'minefield' || mode === 'shadow'; }
 
 function zoneRad() {
     var z = ZONES[zoneIdx], k = Math.PI / 180;
@@ -2379,6 +2473,12 @@ var HELP_SECTIONS = [
         function () { return 'A mine only ever detonates if you are moving faster than ' + CFG.mineSafeSpeed + ' when you pass within ' + CFG.mineTriggerDist + ' of it. Slow down and thread through and every mine is silent past you, safely.'; },
         'Weapons, shields, and auto-target are all off here, same as the flight course — nothing to shoot, nothing to aim.',
         'Reach the exit beacon and the run ends with the time, how many mines went off, and how that compares to your best. The Run log keeps its own separate board.'
+    ] },
+    { heading: 'The shadow', items: [
+        'One ship flies ahead of you on a straight route, cutting its own engine at random. Tab finds it, T reports it, and the lock tone and tick work on it exactly like any other target — while it is lit.',
+        'The instant it goes dark, the lock drops and the tick goes silent — no bearing updates at all until it lights back up. Fly on the last bearing you had; R still reports range with closing or opening either way.',
+        function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
+        function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
     ] },
     { heading: 'Capital ship', items: [
         'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them, T reports which one is selected and whether its own shield door is open.',
@@ -3103,7 +3203,10 @@ function tickBeat() {
     var t = targets[selected];
     if (!t || !t.alive) { tick.timer = setTimeout(tickBeat, 250); return; }
     // SPEC 3.27: no tick at all while the sensor is fully dark.
-    if (systemState('sensor') === 'off') { tick.timer = setTimeout(tickBeat, 400); return; }
+    // SPEC 3.62: the shadow's own silent legs reuse this exact rule,
+    // scoped to just t.dark rather than the real shipSystems.sensor —
+    // flipping the real sensor would wrongly show it broken in F2/I.
+    if (systemState('sensor') === 'off' || t.dark) { tick.timer = setTimeout(tickBeat, 400); return; }
     var sensorSlow = systemState('sensor') === 'half' ? 2 : 1;   // "tick slower"
     var a = aim(t.pos);
     var interval;
@@ -3274,7 +3377,9 @@ function autoTargetKey() {
     // SPEC 3.41: the flight course is flown by hand — that's the point.
     // SPEC 3.61: the minefield has nothing to aim at anyway (mines aren't
     // selectable — see selectNearest), same refusal.
-    if (mode === 'course' || mode === 'minefield') { SIM.cues.play('refusal_offline'); say('Fly the course yourself — auto-target is off here.'); return; }
+    // SPEC 3.62: the shadow is manual tracking practice — auto-target
+    // would just do the one thing it exists to train.
+    if (mode === 'course' || mode === 'minefield' || mode === 'shadow') { SIM.cues.play('refusal_offline'); say('Fly the course yourself — auto-target is off here.'); return; }
     var t = targets[selected];
     if (!t || !t.alive) { say('No target selected.'); return; }
     if (!autoTargetFitted()) { SIM.cues.play('refusal_offline'); say('Auto-target not fitted.'); return; }
@@ -3355,7 +3460,9 @@ function updateTargeting(dt) {
     // SPEC 3.27: an offline sensor can't hold (or acquire) a lock at all —
     // Tab/T still work (they don't touch `locked`), only the lock tone
     // and tick go dark.
-    if (systemState('sensor') === 'off') {
+    // SPEC 3.62: the shadow's own silent legs reuse this exact rule (see
+    // tickBeat's matching note) rather than touching the real sensor.
+    if (systemState('sensor') === 'off' || t.dark) {
         if (locked) { locked = false; stopLockTone(); SIM.cues.play('lock_lost'); }
         return;
     }
@@ -6305,7 +6412,7 @@ function statusReport() {
         len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
         line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
     }
-    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && autoTargetFitted()) {
+    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && autoTargetFitted()) {
         line += autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge. ' : ' auto-target charges. ');
     }
     if (mode === 'course') {
@@ -6316,13 +6423,18 @@ function statusReport() {
         line += 'Your hull ' + hull + ' percent. ' + minesLeft + (minesLeft === 1 ? ' mine' : ' mines') +
                 ' remain. Speed ' + Math.round(len(ship.vel)) + ', safe under ' + CFG.mineSafeSpeed +
                 '. Clock ' + fmtTime(minefieldState.elapsed) + '. ';
+    } else if (mode === 'shadow') {
+        var shadowTarget = targets[0];
+        line += (shadowTarget && shadowTarget.dark ? 'Ship dark. ' : 'Ship lit. ') +
+                'Contact ' + Math.round(shadowState.contact) + ' of ' + CFG.shadowNeedS + ' seconds. ' +
+                'Clock ' + fmtTime(shadowState.elapsed) + '. ';
     } else {
         line += mode === 'mining' ? (distress ? '' : aliveRocks().length + ' rocks remain. ')
               : mode === 'sector' ? aliveTargets().length + ' points of interest. '
               : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
               : aliveTargets().length + ' targets remain. ';
     }
-    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield') {
+    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
                 chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
@@ -6480,19 +6592,21 @@ function runLogItems() {
                (typeof r.bestStreak === 'number' ? ', best streak ' + r.bestStreak : '') +
                ', ' + r.date + '.';
     }));
-    // SPEC 3.61: the minefield's own board — ranked by time again, a sixth
-    // list, self-labeled like the others.
-    return items.concat(profile.minefieldRuns.map(function (r, i) {
+    items = items.concat(profile.minefieldRuns.map(function (r, i) {
         return 'Minefield number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
                (typeof r.detonations === 'number' ? ', ' + r.detonations + (r.detonations === 1 ? ' mine' : ' mines') + ' detonated' : '') +
                ', ' + r.date + '.';
+    }));
+    // SPEC 3.62: the shadow's own board — a seventh list, self-labeled.
+    return items.concat(profile.shadowRuns.map(function (r, i) {
+        return 'The shadow number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
     }));
 }
 
 function openRunLog() {
     if (!profile.runs.length && !profile.contractRuns.length && !profile.courseRuns.length &&
-        !profile.turretRuns.length && !profile.minefieldRuns.length) {
-        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, the turret drill, or the minefield to set one.');
+        !profile.turretRuns.length && !profile.minefieldRuns.length && !profile.shadowRuns.length) {
+        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, the turret drill, the minefield, or the shadow to set one.');
         return;
     }
     runlog.open = true;
@@ -6505,6 +6619,7 @@ function openRunLog() {
         ', ' + profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's') +
         ', ' + profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's') +
         ', ' + profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's') +
+        ', ' + profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's') +
         '. Up and down arrows browse, Escape closes.');
 }
 
@@ -8455,10 +8570,10 @@ function blinkKey(dir) {
     // own earlier gates already returned or turret's own zone-switch
     // claimed the chord first), so the course is the one case that needs
     // an explicit check here.
-    // SPEC 3.61: the minefield refuses it too — blinking past a mine
-    // cluster would skip the whole throttle-control lesson it exists to
-    // teach.
-    if (mode === 'course' || mode === 'minefield') {
+    // SPEC 3.61/3.62: the minefield and the shadow both refuse it too —
+    // blinking past a mine cluster, or straight onto a tail, would skip
+    // the lesson each one exists to teach.
+    if (mode === 'course' || mode === 'minefield' || mode === 'shadow') {
         SIM.cues.play('refusal_offline');
         say('Weapons are cold in open space. C calls a point of interest.');   // reuses weaponsCold()'s own line
         return;
@@ -8977,7 +9092,7 @@ function onKeyDown(e) {
             // SPEC 3.41: shields are cold on the flight course too — but
             // this leaves the sector's own G untouched (it has never
             // refused there, and this isn't the place to change that).
-            if (mode === 'course' || mode === 'minefield') { SIM.cues.play('refusal_offline'); say('Weapons are cold in open space. C calls a point of interest.'); }
+            if (mode === 'course' || mode === 'minefield' || mode === 'shadow') { SIM.cues.play('refusal_offline'); say('Weapons are cold in open space. C calls a point of interest.'); }
             else if (!over()) shieldKey();
             break;
         case 'd':
@@ -9073,6 +9188,22 @@ function onKeyDown(e) {
                     } else if (mode === 'turret') {
                         turretState = makeTurretState();
                         say(turretIntro());
+                    } else if (mode === 'minefield') {
+                        // SPEC 3.61: a real bug found while testing 3.62 —
+                        // this branch never existed, so an Enter-retry after
+                        // winning the minefield fell to the generic `else`
+                        // below and spoke combatIntro()'s "Five targets
+                        // detected..." instead. newGame() itself already
+                        // rebuilt the minefield correctly (its own mode
+                        // dispatch doesn't need this fix); only the SPOKEN
+                        // line was wrong.
+                        minefieldState = { elapsed: 0, started: false, detonations: 0 };
+                        say(minefieldIntro());
+                    } else if (mode === 'shadow') {
+                        // SPEC 3.62: same fix, same reasoning, built alongside
+                        // rather than after finding it a second time.
+                        shadowState = { elapsed: 0, started: false, contact: 0 };
+                        say(shadowIntro());
                     } else {
                         say(mode === 'mining' ? miningIntro() : combatIntro());
                     }
@@ -9210,6 +9341,8 @@ function simTick(dt) {
         if (mode === 'course' && courseState && !courseState.started) courseState.started = true;
         // SPEC 3.61: same rule for the minefield.
         if (mode === 'minefield' && minefieldState && !minefieldState.started) minefieldState.started = true;
+        // SPEC 3.62: same rule for the shadow.
+        if (mode === 'shadow' && shadowState && !shadowState.started) shadowState.started = true;
     }
     thrusterSync(k);
     if (k.s && thrustSt !== 'off') {
@@ -9255,6 +9388,7 @@ function simTick(dt) {
     updateTargeting(dt);
     if (mode === 'course') updateCourse(dt);
     if (mode === 'minefield') updateMinefield(dt);
+    if (mode === 'shadow') updateShadow(dt);
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
@@ -9463,7 +9597,8 @@ window.__sim = {
                          resource: !!t.resource,
                          dist: Math.round(len(sub(t.pos, ship.pos))),
                          speed: t.vel ? Math.round(len(t.vel)) : 0,
-                         hostile: !!t.hostile, kind: t.kind, missileOnly: !!t.missileOnly };
+                         hostile: !!t.hostile, kind: t.kind, missileOnly: !!t.missileOnly,
+                         dark: t.dark };   // SPEC 3.62 test hook: the shadow's own lit/dark state
             })
         };
     },
@@ -9664,7 +9799,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null;
+    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null;
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     turretDebrief.open = false;   // SPEC 3.65
     stopHaulCreak(); haul = null;   // SPEC 3.60
@@ -9709,6 +9844,9 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
         targets = makeCourseRoster(COURSES[0]);
     } else if (mode === 'minefield') {
         targets = makeMinefieldRoster();
+    } else if (mode === 'shadow') {
+        targets = makeShadowRoster();
+        targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
     } else if (mode === 'turret') {
         // SPEC 3.59: no targets at all — the three zones and their incomings
         // are their own state (turretState), built by startMission() right
@@ -9809,6 +9947,7 @@ var MENU_ITEMS = [
           if (profile.courseRuns.length) parts.push(profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's'));
           if (profile.turretRuns.length) parts.push(profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's'));
           if (profile.minefieldRuns.length) parts.push(profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's'));
+          if (profile.shadowRuns.length) parts.push(profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's'));
           return parts.length ? 'Your best times: ' + parts.join(', ') + '.' : 'No runs recorded yet.';
       },
       run: function () { openRunLog(); } },
@@ -9850,6 +9989,11 @@ var ENCOUNTER_ITEMS = [
     { label: 'Minefield',
       desc: function () { return CFG.mineCount + ' drifting mines between here and an exit beacon. Each one ticks faster as you close; cross slow and centered and you are safe. Weapons cold.'; },
       run: function () { startMission('minefield'); } },
+    // SPEC 3.62 (ideas14.txt/Fable): trains tracking. See makeShadowRoster/
+    // updateShadow.
+    { label: 'The shadow',
+      desc: function () { return 'Tail a ship that cuts its engine at random. Hold within ' + CFG.shadowRange + ' for ' + CFG.shadowNeedS + ' seconds total — lit or dark — to finish. Weapons cold.'; },
+      run: function () { startMission('shadow'); } },
     // SPEC 3.54: the same missions offered from a station's hail menu,
     // playable directly so a pilot can hear them without flying to a
     // station first. No sectorHome, no favor, no cooldown, credits kept,
@@ -9970,6 +10114,10 @@ function startMission(m) {
         // newGame()'s own clearMission() call nulls it out.
         minefieldState = { elapsed: 0, started: false, detonations: 0 };
         say(minefieldIntro());
+    } else if (m === 'shadow') {
+        // SPEC 3.62: same reasoning again.
+        shadowState = { elapsed: 0, started: false, contact: 0 };
+        say(shadowIntro());
     } else if (m === 'turret') {
         // SPEC 3.59: built AFTER newGame() for the same reason courseState
         // is — newGame()'s own clearMission() call nulls it out first.

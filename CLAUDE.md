@@ -3653,3 +3653,41 @@ Zero console errors throughout, reconfirmed on a fresh tab. Every
 number is a placeholder for Brian's ear. Not yet heard or flown by
 Brian. This closes SPEC 3.61 — next per the build order is 3.62 (the
 shadow), unless Brian wants to fly/hear what's shipped first.
+
+**Round 53 (Sonnet, 2026-09-09): built SPEC 3.62, the shadow.** Trains
+tracking — tail one ship (`kind: 'shadow'`, a new kind, deliberately
+selectable unlike an escort/defend friendly) that flies the escort
+friendly's own straight-line motion code and alternates lit/dark legs
+at random, ramping its own engine gain to match. 3.27's "an offline
+sensor can't hold a lock" rule now also fires whenever the SELECTED
+target's own `t.dark` is true (`updateTargeting`/`tickBeat` each
+gained one `|| t.dark`, scoped to that target rather than the real
+`shipSystems.sensor`, which would wrongly show broken in F2/I). One
+flagged design call: contact time accrues by RANGE ALONE, never gated
+on lock — reading the spec's own Test bullet as gating accrual on lock
+too would doubly punish a dark leg (losing the tick AND the score for
+something unobservable), which cuts against "training tracking"
+rewarding good dead reckoning. **A real, pre-existing bug found while
+testing this item, affecting 3.61 too**: the generic Enter-retry
+handler only had explicit branches for `course`/`turret` — `minefield`
+(shipped last round) and this round's `shadow` both fell through to
+the generic `else`, speaking `combatIntro()`'s "Five targets
+detected..." after a win instead of their own intro, even though
+`newGame()` itself already rebuilt the right roster. Missed in 3.61's
+own testing because the very next lock announcement overwrote the
+wrong line in the same aria-live div before it was checked — SPEC
+2.15's own rule working against the TEST this time. Both modes now
+have their own explicit branch; the fix was verified against BOTH.
+Machine-tested at a local server entirely through real `__sim.step()`
+time: the lit/dark cycle firing at configured random intervals with
+`locked` dropping the instant dark and never auto-reacquiring once lit
+(the target's own continued motion drifts the bearing — the intended
+challenge, confirmed not a stuck flag); holding position via repeated
+`warpToSelected` for 95 seconds accrued exactly the needed 90 and
+finished correctly with a real `profile.shadowRuns` entry; Enter
+rebuilt fresh and spoke the right intro (both modes); X returned to
+the menu; F1 confirmed "The shadow" heading in order among 14 headings.
+Zero console errors, reconfirmed on a fresh tab. Every number is a
+placeholder for Brian's ear. Not yet heard or flown by Brian. This
+closes SPEC 3.62 — next per the build order is 3.63 (nebula transit),
+unless Brian wants to fly/hear what's shipped first.
