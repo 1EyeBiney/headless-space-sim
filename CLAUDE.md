@@ -3898,3 +3898,35 @@ eventual completion — all three keep the ship flying afterward rather
 than freezing on `over()`, which is the one thing this whole mechanism
 assumes. Not yet heard by Brian. Next per the build order: 3.72
 (turret third pass).
+
+**Round 57, continued (Sonnet, 2026-09-09): built SPEC 3.72, the
+turret's third pass.** `CFG.turretVolleyChance` 0.3 → 0 (the mechanism —
+`turretVolleyPoints`/`volleyCaught`/`volleyLanded`, `turretImpact`'s own
+shield-only branch — stays wired, just unreachable, "one number away");
+`turretIntro()` and F1's own Turret defense section both dropped their
+mention of the retired second incoming kind, since the old wording
+would now describe something that can no longer happen. The per-clear
+line lost its "plus N" (`turretKey`'s "Right cleared." / "Right cleared
+by missile. 2 left.", matching the spec's own examples exactly);
+`turretImpact`'s shield-catches-a-volley line lost its "plus N" too.
+Score arithmetic itself is completely untouched — only what gets spoken
+mid-drill changed; the clear/explosion cues and the streak line stay.
+`turretDebriefLines()` dropped its own "Volleys: N caught, M landed."
+line (would read zero on every run now). `buildIncomingVoice`'s
+hardcoded `0.22` became `CFG.turretIncomingVol` (0.45); `startSpaceAmbient()`
+— the one call site SPEC 3.67 already put at the tail of every
+`newGame()` — now scales the deep-space bed by `CFG.turretAmbientDuck`
+(0.5) whenever `mode` is already `'turret'` by the time it runs, so the
+bed starts ducked rather than dropping a beat later; leaving turret for
+anything else calls the same function again at the plain volume, which
+is the restore — no separate un-duck step anywhere. `README.md`'s own
+Turret defense section got the same two fixes. Machine-tested at a
+local server via real menu navigation and key dispatch: the music
+node's own gain measured exactly at the expected duck the instant the
+drill started; a real cleared incoming spoke exactly "Right cleared."
+with the running score confirmed climbing behind it, unspoken, and read
+back correctly on `I`; a 300-sample sweep across two spawn cycles never
+produced a `'volley'` kind; the resulting loss debrief (through 3.70's
+shared shell) confirmed the Volleys line gone, everything else intact.
+Zero console errors. Not yet heard by Brian. Next per the build order:
+3.73 (the shadow thrusts).

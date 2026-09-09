@@ -7138,6 +7138,50 @@ here is heard by Brian yet.
   tone's ramp target reads `CFG.turretIncomingVol` and the bed's gain
   the duck; no volley spawns across a full drill at chance 0.
 
+**DONE (Round 57, Sonnet).** `CFG.turretVolleyChance` 0.3 → 0 (the
+comment flags the mechanism as one number away, not deleted —
+`turretVolleyPoints`/`volleyCaught`/`volleyLanded` and `turretImpact`'s
+own shield-only branch all stay wired, just unreachable); the spoken
+intro (`turretIntro()`) and F1's own Turret defense section both dropped
+their mention of the second incoming kind, since telling a pilot to
+expect something that can no longer happen would be actively wrong, not
+just stale. The per-clear line in `turretKey` lost its "plus N" — "Right
+cleared." / "Right cleared by missile. 2 left." — matching the spec's
+own examples exactly; `turretImpact`'s shield-catches-a-volley line lost
+its "plus N" too, for consistency, though it's dead code at chance 0.
+`points`/`CFG.turretVolleyPoints` still accrue into `turretState.score`
+exactly as before — nothing about the arithmetic changed, only what gets
+spoken mid-drill; the explosion/splash cues and the streak line
+("Streak! Shields up...") are untouched, since those mark events, not
+running totals. `turretDebriefLines()` dropped its own "Volleys: N
+caught, M landed." line — a line that would read zero on every single
+run now is noise, not information. `buildIncomingVoice`'s hardcoded
+`0.22` ramp target became `CFG.turretIncomingVol` (0.45, roughly
+doubled); `startSpaceAmbient()` — the one call site every mode already
+reaches at `newGame()`'s tail (SPEC 3.67) — now scales
+`CFG.spaceAmbientVol` by `CFG.turretAmbientDuck` (0.5) whenever `mode`
+is already `'turret'` by the time it runs (confirmed true by inspection
+of `newGame()`'s own ordering — `mode` is set at the top, this call is
+the very last line), so the bed starts ducked from the moment the drill
+does rather than starting full and dropping a beat later; leaving turret
+for any other context calls this same function again at the plain
+volume, which is the "restore" the spec asked for — no separate
+un-duck step was needed in `clearMission()`. `README.md`'s own Turret
+defense section lost the same stale volley sentence and gained the
+"nothing announced in play" line. Machine-tested at a local server via
+real menu navigation, key dispatch, and `__sim.step()` (never mocked):
+`SIM.audio.musicNode.g.gain.value` measured exactly
+`CFG.spaceAmbientVol * CFG.turretAmbientDuck` (0.125) the instant the
+drill started; a real cleared incoming spoke exactly "Right cleared."
+with zero score mentioned while `turretState.score` had genuinely
+climbed to 78 behind it; `I` immediately after read "Score 78." on
+request; a 300-sample sweep across two full spawn cycles of `__sim.step`
+found only `'shot'` incomings, never `'volley'`; the resulting loss
+debrief (through SPEC 3.70's own shared shell) confirmed the "Volleys"
+line gone while every other line survived unchanged. Zero console
+errors. Not yet heard by Brian. Next per the build order: 3.73 (the
+shadow thrusts).
+
 #### 3.73 The shadow, second pass: louder, and it thrusts (ideas16.txt) — DECIDED, recordings in hand (Brian, 2026-09-09)
 
 - Brian: "I think we need to increase the sound of the ship we are

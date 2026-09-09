@@ -656,8 +656,15 @@ var CFG_DEFAULTS = {
     turretSweetFrac: 0.45, turretSweetWidth: 0.45,
     turretMaxPoints: 100, turretMinPoints: 10,
     turretRampFloor: 0.6,             // time-to-impact shrinks to this fraction by drill's end
-    turretVolleyChance: 0.3,          // fraction of spawns that are shield-only
+    // SPEC 3.72 (ideas16.txt, Brian: "remove the incoming... not the
+    // player missiles"): the volley goes. Chance to 0 rather than deleting
+    // the mechanism — turretVolleyPoints/volleyCaught/volleyLanded and the
+    // shield-only branch in turretImpact all stay wired, just unreachable,
+    // one number away from coming back.
+    turretVolleyChance: 0,            // was 0.3 — fraction of spawns that are shield-only
     turretVolleyPoints: 40,           // flat — catching one is a timing act, not a score race
+    turretIncomingVol: 0.45,          // SPEC 3.72: was a hardcoded 0.22 in buildIncomingVoice
+    turretAmbientDuck: 0.5,           // SPEC 3.72: the deep-space bed (3.67) at this fraction while the drill runs
     turretStreakFor: 5, turretStreakShieldS: 6,
 
     radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0   // +6 dB
@@ -2692,10 +2699,10 @@ var HELP_SECTIONS = [
     { heading: 'Turret defense', items: [
         'The ship does not fly here at all — three fixed zones sit in front of you, left, centre, and right, and left and right arrows switch which one you are working.',
         'Space fires that zone\'s laser (it recharges after), F fires a missile from a small shared magazine (a guaranteed clear, any time), and G toggles that zone\'s own shield, instant, no spool.',
-        'Each zone holds at most one incoming at a time, closing in on its own clock — the tone rises in pitch and pace the nearer it gets. A second kind sounds as a noise sweep instead of a tone: it cannot be shot at all, only a raised shield catches it.',
-        'Clearing one scores by timing, not just success: a sweet spot partway through the approach pays the most, and firing too early or too late pays less either way. The approach gets a little faster as the drill goes on.',
+        'Each zone holds at most one incoming at a time, closing in on its own clock — the tone rises in pitch and pace the nearer it gets.',
+        'Clearing one scores by timing, not just success: a sweet spot partway through the approach pays the most, and firing too early or too late pays less either way. The approach gets a little faster as the drill goes on. Nothing is announced when you clear one — the cue and any streak line are the only feedback in play; I and the end-of-run debrief read the actual score.',
         'String clears and shield catches together without a hit and every zone\'s shield snaps up on its own for a few seconds — a reward, not something to chase directly.',
-        function () { return 'Survive ' + CFG.turretDrillS + ' seconds and a debrief opens: score, accuracy, whether you fire early or late on average, your best streak, volleys caught, missiles used, and which zone took the most hits. Up and down arrows browse it, Escape closes, Enter tries again. I any time reads your hull, the selected zone, score, streak, and the clock.'; }
+        function () { return 'Survive ' + CFG.turretDrillS + ' seconds and a debrief opens: score, accuracy, whether you fire early or late on average, your best streak, missiles used, and which zone took the most hits. Up and down arrows browse it, Escape closes, Enter tries again. I any time reads your hull, the selected zone, score, streak, and the clock.'; }
     ] },
     { heading: 'The haul', items: [
         'A rock waits ahead and a home beacon sits out there somewhere — Tab cycles between them, T reports whichever is selected.',
@@ -6294,9 +6301,12 @@ function makeTurretState() {
 function rand(min, max) { return min + Math.random() * (max - min); }
 
 function turretIntro() {
+    // SPEC 3.72: the volley (a second incoming kind, shield-only) is
+    // retired — turretVolleyChance is 0, so it never spawns any more.
+    // Dropped from the spoken intro too; saying it here would tell every
+    // pilot to expect something they'll never hear.
     return 'Turret defense. Three zones: left, centre, and right — left and right arrows switch ' +
            'between them. Space fires the laser in the selected zone, F a missile, G its shield. ' +
-           'A second kind of incoming cannot be shot — only a raised shield catches it. ' +
            'Survive ' + CFG.turretDrillS + ' seconds. F1 for help.';
 }
 
@@ -6336,7 +6346,7 @@ function buildIncomingVoice(inc) {
     }
     pulseGain.connect(g); g.connect(p); p.connect(A.worldBus);
     pulse.start();
-    A.ramp(g.gain, 0.22, 0.15);
+    A.ramp(g.gain, CFG.turretIncomingVol, 0.15);   // SPEC 3.72: was a hardcoded 0.22
     return { g: g, p: p, oscs: [tone, pulse], pulse: pulse, tone: tone, filt: filt };
 }
 function moveIncomingVoice(inc, frac) {
@@ -6424,9 +6434,9 @@ function turretImpact(zoneIdx) {
         SIM.cues.play('shield_splash');
         if (inc.kind === 'volley') {
             turretState.volleyCaught++;
-            turretState.score += CFG.turretVolleyPoints;
+            turretState.score += CFG.turretVolleyPoints;   // SPEC 3.72: still scored, just never spoken
             var streakLine = turretRegisterSuccess();
-            if (!streakLine) say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone, plus ' + CFG.turretVolleyPoints + '.');
+            if (!streakLine) say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone.');
         } else {
             say('Shields catch it in the ' + TURRET_ZONE_NAMES[zoneIdx] + ' zone.');
         }
@@ -6494,12 +6504,15 @@ function turretWeakestZoneText() {
 }
 function turretDebriefLines() {
     var t = turretState;
+    // SPEC 3.72: the volley's own gone (turretVolleyChance 0) — "Volleys: 0
+    // caught, 0 landed." on every single run is noise, so the line goes
+    // with it; volleyCaught/volleyLanded still exist on turretState (the
+    // mechanism is one number away from coming back, not deleted).
     return [
         'Score ' + Math.round(t.score) + '.',
         'Accuracy ' + turretAccuracyPct() + ' percent — ' + t.cleared + ' cleared of ' + (t.cleared + t.hits) + '.',
         turretTimingText(),
         'Best streak ' + t.bestStreak + '.',
-        'Volleys: ' + t.volleyCaught + ' caught, ' + t.volleyLanded + ' landed.',
         'Missiles used: ' + (CFG.turretMissileMax - t.missiles) + ' of ' + CFG.turretMissileMax + '.',
         turretWeakestZoneText()
     ];
@@ -6613,9 +6626,14 @@ function turretKey(lname) {
         if (isMissile) turretState.missiles--;
         else z.laserReadyAt = Date.now() + CFG.turretLaserCooldownS * 1000;
         var streakLine = turretRegisterSuccess();
+        // SPEC 3.72 (Brian: "do not announce scored in the game play"): no
+        // "plus N" here — `points` still accrues into turretState.score,
+        // read on demand by I and by the debrief at the end, just never
+        // spoken mid-drill. The clear/explosion cue and the streak line
+        // stay; those are events, not bookkeeping.
         if (!streakLine) {
-            say(name.charAt(0).toUpperCase() + name.slice(1) + ' cleared' + (isMissile ? ' by missile' : '') +
-                ', plus ' + points + '.' + (isMissile ? ' ' + turretState.missiles + ' left.' : ''));
+            say(name.charAt(0).toUpperCase() + name.slice(1) + ' cleared' + (isMissile ? ' by missile.' : '.') +
+                (isMissile ? ' ' + turretState.missiles + ' left.' : ''));
         }
         return true;
     }
@@ -10760,7 +10778,15 @@ function startMenuMusic() {
 // purpose: playMusic's own prev-node fade is what makes docking and the
 // menu both replace it cleanly with no special-case code here.
 function startSpaceAmbient() {
-    if (SIM.audio.ctx) SIM.audio.playMusic('space_ambient', { vol: CFG.spaceAmbientVol, fadeS: 1.5 });
+    // SPEC 3.72: the turret's own rising tones get to rise over something
+    // quieter, not just louder over the same bed — `mode` is already set
+    // to its new value by the time newGame() reaches this call, so this is
+    // the one place that needs to know turret exists at all. Every other
+    // mode transition (leaving turret for anything else) calls this again
+    // at the plain CFG.spaceAmbientVol, which is the "restore" — no
+    // separate un-duck step needed in clearMission().
+    var vol = CFG.spaceAmbientVol * (mode === 'turret' ? CFG.turretAmbientDuck : 1);
+    if (SIM.audio.ctx) SIM.audio.playMusic('space_ambient', { vol: vol, fadeS: 1.5 });
 }
 
 function exitToMenu() {
