@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), NEXT** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -5634,7 +5634,7 @@ exposure, not just for text** — `read_page` before the gesture, not
   at the top level says "No item starts with c"; the delivery run and
   the sector are untouched.
 
-#### 3.57 Shift+S: auto-thrust in reverse (Brian, chat, 2026-09-07) — DECIDED
+#### 3.57 Shift+S: auto-thrust in reverse (Brian, chat, 2026-09-07) — DONE, then SUPERSEDED by 3.81 (Shift+S becomes the flip; auto-reverse retired)
 
 - Brian: "we are going to need to use Shift S to auto-thrust backwards,
   like we use Shift W for auto-forwards."
@@ -5989,7 +5989,7 @@ split across calls. Zero console errors in every confirmed run. Every
 number is still a placeholder for Brian's ear — this pass was about
 the mechanics his playtest asked for, not the tuning.
 
-#### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — DONE
+#### 3.60 The haul (Brian's tow, force-balanced; needs 3.57) — DONE; tow model replaced by 3.81's tether
 
 - Brian's own picture, quoted above under "One correction". The tractor
   latches a huge rock (or a derelict) and **stays latched while you fly
@@ -8184,6 +8184,117 @@ Zero console errors. Every level and the crossfade/track-volume number
 is a placeholder for Brian's ear; the default-on-at-medium call and
 the shuffle order are not. Not yet heard by Brian.
 
+#### 3.81 The haul, second pass: the flip, point-to-latch, and a real tether (ideas18.txt) — DECIDED (Fable concurs, 2026-09-09; five defaults flagged in Part C)
+
+- Brian: "I am considering using Shift S as a 'flip' maneuver rather
+  than flying backwards with auto-thrust. As I did the haul mission, it
+  would have been easier to tractor the asteroid but face the drop
+  point... you can only start a tractor when pointed at it, using
+  target like we do now for combat, and then once under tractor, the
+  pilot can flip over and point towards the drop off point... if the
+  tether is broken, the pilot needs to flip over, wait till the
+  asteroid catches up or actively fly back to get it within tractor
+  range... How much momentum does the asteroid pick up once it is
+  being towed? can the skilled pilot get enough momentum to apply
+  forward thrusters faster/longer but never at auto-thruster until
+  the very very end?"
+- **Why his experience happened (3.60 as built)**: the tow point is an
+  ideal spot a fixed `haulTowDist` BEHIND THE NOSE, and the load is
+  spring-driven toward it every frame. Latching from the natural
+  approach (facing the rock) leaves the rock in FRONT of the nose, so
+  the only way to keep it there and still move home was to back away
+  — Shift+S auto-reverse — which 3.60 deliberately punishes
+  (`haulReverseStrainPerS`, his own earlier rule). Turning the nose
+  toward home instead flings the ideal point to the far side of the
+  ship and the load with it. Both routes fight the pilot; the model,
+  not the flying, is the problem. His fix is right on all three
+  counts, and the third one answers his own question.
+- **(a) Shift+S is the flip.** An instant 180° — `yaw += π`, `pitch =
+  −pitch`, so the nose points exactly back along its old line of sight
+  — with velocity UNTOUCHED, blink's own rule (3.68): the ship keeps
+  sailing the way it was, now tail-first, so W from there is a brake-
+  and-return and S a push onward. One cue (`flip`, a short whoosh) and
+  one say(): "Flipped." plus the selected target's new bearing in the
+  same line, so the ear re-anchors at once. Live everywhere the arrows
+  turn the ship (open flight and every encounter; turret has no ship
+  to turn). **Auto-reverse (3.57) is retired outright** — `autoThrust`
+  goes back to a plain on/off forward cruise, Shift+W unchanged, S
+  still brakes while held; `toggleAutoThrust('rev')`, the `'rev'`
+  branches in `simTick`/`statusReport`/the dock and undock lines, and
+  3.57's own README/F1/KEY_DESCRIPTIONS text all go. Flip is the
+  better tool for every job auto-reverse had: a flip plus W IS a
+  reverse burn, with the nose — and every forward-only thing on it
+  (the lasers, the extractor, the tractor's own latch) — pointed the
+  way you're now going.
+- **(b) Point to latch.** B requires the selected rock inside the
+  lock-on zone (`aim(t.pos).err <= zoneRad().lockOn`, the same moment
+  the lock tone comes on) as well as inside the tier's range;
+  otherwise "Point at it first. Tab selects, the tick guides." with
+  the wait click. One rule for EVERY tractor use — the mining pull,
+  the derelict (3.55), the haul — not a haul-only exception: Brian's
+  "using target like we do now for combat" is a statement about the
+  tractor, and one rule is easier to hear. Once latched, facing never
+  matters again; that's the whole point of (a).
+- **(c) A real tether replaces the trailing point.** The load is a
+  free body with its own momentum, and the line is a LINE: slack under
+  `haulTetherLen` (220, the old `haulTowDist`) — no force, no strain,
+  the load coasts on whatever it has; taut past it — a spring pulls the
+  load toward the SHIP (not toward a point behind the nose):
+  `accel = haulTetherK × (dist − len)` along the line, plus
+  `haulTetherDamping` on the closing speed so it doesn't ring. Stretch
+  is the strain, directly: `strain = (dist − len) / haulTetherStretch`
+  (180 → parts at 400 units), no separate speed, turn, or reverse
+  gains at all — every one of 3.60's three rules is now a CONSEQUENCE:
+  hard acceleration stretches the line (the ship leaves before the
+  load can follow), a sharp turn at speed swings the ship off the
+  load's line and the load follows on the end of it, and braking into
+  the load slackens the line until the load overtakes and the line
+  snaps taut the other way. A flip changes nothing — the line runs to
+  the ship, not the nose. The creak rides stretch (`haulCreakWarnFrac`
+  as today); a slack line is silent; going slack→taut gets a soft
+  `tether_taut` twang (Fable's, flagged). Reaction mass is the spring's
+  work on the load, as 3.60 already charges it. `haulTetherStretch` is
+  Brian's "allow further stretching... more force" knob — the line's
+  give is what lets the stronger forward thrusters (70 vs 35) be used
+  at all.
+- **The momentum answer.** At a steady tow the load moves at the
+  SHIP's speed — all of it, not a share — so its momentum is
+  `rockMass × ship speed`, and after a part it keeps that speed
+  (rock physics, `rockFriction` bleeding it slowly), which is exactly
+  why "flip and wait for it to catch up" works: the load is still
+  coming. The skill is in the stretch RATE: from rest, a full W (70)
+  outruns a tier-1 spring on a medium rock in about two seconds and
+  parts the line (Fable's estimate; Sonnet measures it); short bursts
+  with a beat between — 60 units a second over eight or ten seconds —
+  hold, and once the load is matched, climbing higher is safe as long
+  as the climb stays gentle: momentum bought is momentum kept, the line
+  only cares about the DIFFERENCE. Shift+W's sustained full push is
+  the same thing said twice — fatal from rest, fine once matched,
+  which is Brian's "never at auto-thruster until the very end" read
+  literally. A part is recoverable exactly as he pictured: flip (the
+  load is now dead ahead, still moving toward you or past you), let it
+  close or W to close it, point (b), B.
+- Home, the finish, the debrief, and the `haul` board are unchanged;
+  `haulPar` is re-measured by Sonnet from a clean tethered haul, since
+  the cost curve changes.
+- Retired with 3.60's model: `haulTowDist`, `haulSpringK`,
+  `haulDamping`, `haulMaxAccel`, `haulSafeSpeed`, `haulSpeedStrainPerS`,
+  `haulTurnStrainPerS`, `haulReverseStrainPerS`, `haulStrainDecayPerS`,
+  and `haul.lastYaw/lastPitch`. New: `haulTetherLen` 220,
+  `haulTetherStretch` 180, `haulTetherK` 3, `haulTetherDamping` 1.5 —
+  all placeholders for Brian's ear.
+- Test: Shift+S measured turning the nose exactly 180° with `vel`
+  unchanged and the selected target's bearing swapping front for back
+  in the same line; no `'rev'` anywhere in `index.html`; B refuses a
+  selected in-range rock that is off the nose and latches once it's
+  inside the lock zone, in the haul and in ordinary mining alike; a
+  latched load's speed matches the ship's at cruise; a full-W start
+  from rest parts the line while three short bursts to the same speed
+  don't; a flip mid-tow with no thrust leaves strain and the load's
+  motion unchanged; after a part the load's `vel` persists and a flip
+  plus W re-closes it, B re-latching only once pointed; the creak rises
+  with stretch and is silent slack; the finish and board unchanged.
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -9520,3 +9631,25 @@ speech. (7), the rename, is **withdrawn** — Brian renamed them
 himself and said "do not rename the MP3s"; keys are the stems as they
 are, titles from `MUSIC_TITLES`. Brian also moved music to the **front**
 of the order and confirmed every new track announces its title.
+
+**Review (Fable, 2026-09-09) of Brian's `ideas18.txt`** — one note from
+flying the haul (3.60), written as **3.81**. Verdict: concur, no
+questions. The haul as built tows from a point behind the NOSE, so
+latching facing the rock and then turning or backing toward home both
+fight the pilot — the model was wrong, not the flying. His three moves
+fix it together: Shift+S as an instant flip (velocity kept, blink's
+rule), the tractor latching only when pointed at its target, and the
+tow rebuilt as a real tether whose stretch IS the strain, which also
+answers his momentum question — a towed load moves at the ship's full
+speed and keeps it after a part, and the line only cares about the
+DIFFERENCE, so gentle bursts hold what a full push from rest snaps.
+
+**DECIDE (open, from ideas18.txt — Fable's defaults, written into 3.81,
+Brian to overrule)**: (1) the flip is instant, not a slew (a slew would
+give the tick two seconds of swinging bearing), and keeps velocity;
+(2) it works everywhere the ship can turn, and auto-reverse (3.57) is
+retired outright rather than moved to another key; (3) point-to-latch
+applies to EVERY tractor use, the ordinary mining pull included, not
+the haul alone; (4) the tether numbers — 220 length, 180 stretch to
+part, spring 3, damping 1.5 — and a re-measured `haulPar`; (5) a soft
+`tether_taut` twang when the slack line goes taut.

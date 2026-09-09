@@ -4439,3 +4439,31 @@ the standing rule, nothing past what Brian has explicitly asked for
 should be started without further word from him — quadrant 2 is a
 large new track, not a small follow-on item, and waits for his own
 go-ahead.
+
+**Round 65 (Fable, docs only, 2026-09-09)**: Brian's `ideas18.txt`
+(untracked, like every ideas file) — one note from flying the haul —
+reviewed and written into SPEC.md as **3.81**, next to build before
+quadrant 2. Verdict: concur, no questions; five defaults flagged in
+Part C. **The diagnosis**: 3.60 tows from an ideal point a fixed
+distance behind the NOSE, so a pilot who latches the natural way
+(facing the rock) has it in front and can only move home by backing
+away — which 3.60 itself punishes with `haulReverseStrainPerS`, his
+own earlier rule — or by turning, which flings the tow point to the far
+side of the ship. The model fought the flying. **The fix, his three
+moves**: Shift+S becomes an instant 180° **flip** (velocity kept,
+blink's own rule; one cue, one say() with the target's new bearing),
+and **3.57's auto-reverse is retired outright** — a flip plus W is a
+reverse burn with the nose pointed the way you're going; the tractor
+**latches only when pointed at its target** (lock-zone aim, one rule
+for every tractor use, not the haul alone); and the tow becomes a
+**real tether** — slack under `haulTetherLen`, a spring toward the
+SHIP (not a point behind the nose) when taut, with stretch itself the
+strain and every one of 3.60's three explicit gains (speed, turn,
+reverse) now a consequence rather than a rule. That last part also
+answers his momentum question, written into the item: a towed load
+moves at the ship's full speed and keeps it after a part (rock
+physics), the line only cares about the DIFFERENCE, so short bursts
+build speed a full push from rest would snap — and "flip, wait for it
+to catch up" is literally true. Sonnet: `updateHaulTow` is a rewrite,
+`autoThrust` goes back to on/off, `haulPar` gets re-measured. Nothing
+built.
