@@ -230,14 +230,19 @@ reaction mass it cost against a par.
 
 ## Minefield
 
-Nothing to shoot here — a field of slow-drifting mines sits between you
-and an exit beacon, and Tab finds the beacon (the mines themselves are
-never a target). Each mine has its own tick, positioned right where it
-is, quickening the closer you get. A mine only detonates if you're
-moving too fast when you pass close by it; slow down and thread through
-and it stays silent. Weapons, shields, and auto-target are all off, same
-as the flight course. Reach the beacon and the run reports the time, how
-many mines went off, and how that compares to your best.
+Nothing to shoot here — a field of slow-drifting mines, and a handful
+of beacons scattered inside it (3 to 5 by difficulty), spaced apart
+enough that no straight line reaches them all. Tab cycles the beacons
+(the mines themselves are never a target); reach one and it's counted
+and silenced, in any order. Each mine sings continuously, positioned
+right where it is, rising in pitch, volume, and pulse the closer you
+get, and fully silent beyond earshot. A mine only detonates if you're
+moving too fast when you pass close by it; slow down and thread
+through and it stays silent. The exit beacon exists from the start but
+stays mute and uncounted until every other beacon is taken. Weapons,
+shields, and auto-target are all off, same as the flight course. Reach
+the exit after that and the run reports the time, the beacon count,
+how many mines went off, and how that compares to your best.
 
 ## The shadow
 

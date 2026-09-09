@@ -4325,3 +4325,56 @@ the two exclusion axes and the first-thrust rule are his own asks, not
 placeholders. Not yet heard or flown by Brian. Next per the ideas17.txt
 build order: 3.75 (the minefield second pass), then 3.77 (reaction
 mass as the economy).
+
+**Round 63 (Sonnet, 2026-09-09): built SPEC 3.75, the minefield's
+second pass — mines that sing, and beacons to actually navigate to.**
+Brian: "need to try a different mine sound to see if we can do better
+with HRTF... make the player fly to some beacons within the minefield
+such that they may not be able to fly directly to [them]." **The
+voice**: `buildMineVoice(t)` replaces the old fixed 70ms `sfxTone`
+blip (about the hardest thing there is to localize by ear) with a
+continuous voice — the turret's own `buildIncomingVoice` shape (a
+triangle tone through a pulsing gain LFO), built fresh through the
+mine's own panner rather than reused wholesale, since a mine has no
+`zone`/`height` to place it by the way an incoming projectile does.
+`moveMineVoice(t, closeness)` drives gain, pitch, and pulse rate all
+from one 0..1 fraction every frame (`setTargetAtTime`); `closeness
+=== null` (past `mineTickRange`) ramps to true silence rather than
+floor-and-hold, matching "silent beyond mineTickRange" literally. This
+also let mines drop `buildRockVoice`/`ROCK_TYPES`/`ROCK_SIZES`
+entirely — a mine was never actually a rock, that was just 3.61's own
+convenient reuse, and the new voice has no use for a rock type.
+**The beacons**: `mineBeaconCount` (`[3, 4, 5]` by TIERS index) real
+`poiType: 'mineBeacon'` targets — Tab-able, unlike a mine — placed by
+`placeMineBeacon()`, rejection sampling against `mineBeaconSpacing`
+from the start AND from every beacon already placed (the same shape
+`findSpawnPos` already uses elsewhere), each voiced by the flight
+course's own detuned-tone branch in `buildPoiVoice` (`t.beaconIndex`
+standing in for `t.gateIndex`). Reaching one kills it, stops its
+voice, and speaks "Beacon N of M." (`course_pass`'s existing chime
+reused for the pickup — a positive-pickup sound already in the
+palette). The real exit beacon is unchanged in the roster, but
+`updateTargeting`'s mute-scheduling line grew one more branch — mute
+regardless of beacon mode until every beacon is taken — and
+`updateMinefield`'s finish check carries the identical gate, so
+reaching the exit early is now a genuine no-op, not just quiet about
+it. The debrief and the `minefield` board both gained the beacon
+count alongside detonations. Machine-tested at a local server in real
+gameplay: a Rookie run built 7 mines, 3 beacons, and the exit with
+zero errors; Tab-cycling to each beacon by name and `warpToSelected`
+closing the gap produced "Beacon 1 of 3." through "3 of 3." in the
+right order with each one confirmed dead afterward; reaching the exit
+BEFORE any beacon was taken measured a real distance of 30 with `won`
+staying false, proving the gate rather than just not crashing; all
+three collected then finished the run with "3 beacons, 0 mines
+detonated." and a matching board entry; the existing `poke
+({selectByName})` test hook (from 3.69) let a specific mine be
+targeted despite mines staying correctly excluded from Tab, confirming
+a fast pass (speed 40, over `mineSafeSpeed` 25) cost exactly
+`mineHullDmg` (20) hull while an identical slow pass (speed 10) left
+both hull and the mine untouched; Ace tier confirmed exactly 5
+beacons. Zero console errors throughout. Every number is a placeholder
+for Brian's ear; the beacon-any-order rule and the continuous voice
+are his own asks, not placeholders. Not yet heard or flown by Brian.
+This closes every item in ideas17.txt except one — next: 3.77
+(reaction mass as the economy), the last item before quadrant 2.

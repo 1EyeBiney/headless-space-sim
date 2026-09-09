@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7620,7 +7620,7 @@ after them is smaller once they're gone, the shadow next because its
 fix is one number Brian is waiting on, music last because it's the
 biggest and touches the audio engine.
 
-#### 3.75 The minefield, second pass: beacons to reach, mines that sing (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+#### 3.75 The minefield, second pass: beacons to reach, mines that sing (ideas17.txt) — DONE
 
 - Brian: "need to try a different mine sound to see if we can do better
   with HRTF. I think we need to likely make the player fly to some
@@ -7665,6 +7665,58 @@ biggest and touches the audio engine.
   mine's voice gain/pitch/pulse measured at two distances rises
   monotonically toward it and reads 0 gain past `mineTickRange`; the
   board entry carries the beacon count.
+
+**DONE (Round 63, Sonnet).** Two changes, both in `makeMinefieldRoster()`/
+`updateMinefield()`: mines sing continuously now, and beacons make the
+field a real navigation problem. **The voice**: `buildMineVoice(t)` —
+the turret's own `buildIncomingVoice` shape (a triangle tone through a
+pulsing gain LFO) built fresh for a mine's own panner, since a mine
+isn't an incoming projectile and has no `zone`/`height` to place it
+by — replaces the old 70ms `sfxTone` blip outright; `moveMineVoice(t,
+closeness)` drives gain/pitch/pulse from one 0..1 fraction every
+frame via `setTargetAtTime`, with `closeness === null` (past
+`mineTickRange`) ramping to true silence rather than floor-and-hold.
+Mines dropped `buildRockVoice`/`ROCK_TYPES`/`ROCK_SIZES` entirely — a
+mine never was a rock, that was just convenient reuse from 3.61's own
+build, and the new voice has no use for a rock type. `mineTickFastMs`/
+`mineTickSlowMs` and `t.tickIn` are gone with the tick they paced.
+**The beacons**: `mineBeaconCount` (`[3, 4, 5]` by tier) real
+`poiType: 'mineBeacon'` targets (Tab-able, unlike a mine), placed by
+`placeMineBeacon()` — rejection sampling against `mineBeaconSpacing`
+from both the start and every beacon already placed, the same shape
+`findSpawnPos` already uses elsewhere in this file. Each gets the
+course gate's own detuned-tone voice (`buildPoiVoice`'s new
+`mineBeacon` branch, `t.beaconIndex` in place of `t.gateIndex`).
+Reaching one (within the existing `mineExitRadius`) sets it dead,
+stops its voice, and speaks "Beacon N of M." (`course_pass` reused for
+the pickup chime — a positive-pickup cue already in the palette,
+no new one needed). The real exit stays exactly where it always was
+in the roster, unchanged, but `updateTargeting`'s own mute-scheduling
+line grew one more branch: silent regardless of beacon mode until
+`minefieldState.beaconsTaken >= beaconsNeeded`, and
+`updateMinefield`'s own finish check carries the same gate — reaching
+it early is now provably a no-op, not just quiet. `finishMinefield`'s
+debrief and the `minefield` board both gained the beacon count
+alongside detonations. Machine-tested at a local server in real
+gameplay (no mocks): a Rookie run's 7 mines + 3 beacons + the exit all
+built with zero errors; Tab-cycling to each beacon by name and
+`warpToSelected` closing the distance produced "Beacon 1 of 3." /
+"2 of 3." / "3 of 3." in order, each beacon confirmed dead afterward;
+reaching the exit EARLY (before beacon 1) measured distance 30 with
+`won` staying false — proof positive, not just "didn't crash"; after
+all three, the same approach ended the run with "Minefield clear...
+3 beacons, 0 mines detonated." and a matching `boards.minefield`
+entry; `poke({selectByName})` (an existing 3.69 test hook) let a mine
+specifically be targeted despite mines staying correctly un-Tab-able,
+confirming a fast pass (speed 40, over `mineSafeSpeed` 25) detonated
+for exactly `mineHullDmg` (20) hull and a slow pass (speed 10) through
+the identical position left hull and the mine both untouched; Ace
+tier confirmed exactly 5 beacons via `mineBeaconCount[2]`. Zero console
+errors throughout. Every number is a placeholder for Brian's ear; the
+beacon-any-order rule and the continuous voice are his own asks, not
+placeholders. Not yet heard or flown by Brian. Next per the
+ideas17.txt build order: 3.77 (reaction mass as the economy) — the
+last item before quadrant 2.
 
 #### 3.76 The shadow, third pass: louder, slower than you, and gone from the start (ideas17.txt) — DONE
 

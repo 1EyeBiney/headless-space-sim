@@ -598,10 +598,24 @@ var CFG_DEFAULTS = {
     mineSafeSpeed: 25,          // at or under this, passing close is safe
     mineTriggerDist: 90,        // inside this range, over mineSafeSpeed detonates
     mineHullDmg: 20,
-    mineTickRange: 700,         // beyond this a mine is silent — too far to matter yet
-    mineTickFastMs: 150,        // interval right at mineTriggerDist
-    mineTickSlowMs: 1400,       // interval at mineTickRange
-    mineExitRadius: 120,        // proximity to the exit beacon that ends the run
+    mineTickRange: 700,         // beyond this a mine is fully silent
+    mineExitRadius: 120,        // proximity to a beacon (or the unlocked exit) that counts it
+    // SPEC 3.75 (ideas17.txt), second pass: "make the player fly to some
+    // beacons... they may not be able to fly directly to." mineBeaconCount
+    // by TIERS index (Rookie/Veteran/Ace); each placed at least
+    // mineBeaconSpacing from every other beacon AND from the start, so no
+    // single straight line reaches them all. Any order — not a path.
+    mineBeaconCount: [3, 4, 5],
+    mineBeaconSpacing: 600,
+    // "Mines sing" — buildMineVoice replaces the old 70ms blip (about the
+    // hardest thing there is to localize) with a continuous voice, the
+    // turret's own buildIncomingVoice shape (a triangle tone + pulsing
+    // gain LFO) reused through the mine's own panner: fully silent past
+    // mineTickRange, then gain/pitch/pulse all rise together as the ship
+    // closes from there to mineTriggerDist.
+    mineVoiceGainFar: 0.05, mineVoiceGainNear: 0.45,
+    mineVoiceHzFar: 220, mineVoiceHzNear: 900,
+    mineVoicePulseFar: 1.5, mineVoicePulseNear: 9,
 
     // SPEC 3.62 (ideas14.txt/Fable): the shadow — tail a ship that keeps
     // cutting its engine. It flies a straight route (the escort friendly's
@@ -1054,6 +1068,7 @@ var BOARDS = {
                                        (typeof e.made === 'number' ? ', ' + e.made + ' of ' + (e.made + e.missed) + ' gates clean' : ''); } },
     minefield: { label: 'Minefield', rank: 'seconds', dir: 'asc',
                  line: function (e) { return fmtTime(e.seconds) +
+                                       (typeof e.beacons === 'number' ? ', ' + e.beacons + (e.beacons === 1 ? ' beacon' : ' beacons') : '') +
                                        (typeof e.detonations === 'number' ? ', ' + e.detonations + (e.detonations === 1 ? ' mine' : ' mines') + ' detonated' : ''); } },
     shadow:    { label: 'The shadow', rank: 'seconds', dir: 'asc',
                  line: function (e) {
@@ -1590,17 +1605,66 @@ function courseIntro() {
            'The clock starts the moment you thrust. Weapons are cold. ';
 }
 
-// ---- the minefield (SPEC 3.61, ideas14.txt/Fable) --------------------------
+// ---- the minefield (SPEC 3.61, second pass SPEC 3.75, ideas14/17.txt) ------
 // Nothing to shoot — pure listening and throttle control. Mines scatter
-// between the start and one exit beacon; each mine's own tick (the lock
-// tick's pacing shape, CFG.mineTickFastMs/SlowMs, but keyed to DISTANCE
-// rather than aim error) quickens as the ship closes, and a mine within
-// mineTriggerDist detonates only if the ship is over mineSafeSpeed at that
-// moment — crossing slow and centered is always safe, same lesson
-// updateCollisions already teaches at a station. Mines are `kind: 'mine'`,
-// deliberately excluded from Tab/lock (see selectNearest/cycleTarget) —
-// their own passive tick carries the bearing, no selection needed; the
-// exit beacon is the one real (kind 'poi') target here.
+// between the start and one exit beacon; a mine within mineTriggerDist
+// detonates only if the ship is over mineSafeSpeed at that moment —
+// crossing slow and centered is always safe, same lesson updateCollisions
+// already teaches at a station. Mines are `kind: 'mine'`, deliberately
+// excluded from Tab/lock (see selectNearest/cycleTarget) — a mine's own
+// continuous voice (buildMineVoice, below) carries the bearing, no
+// selection needed. SPEC 3.75: real navigation is now required — a real
+// `poiType: 'mineBeacon'` set (Tab-able, unlike a mine) must all be
+// reached, off any single line from the start, before the exit (mute
+// and uncounted until then) does anything at all.
+//
+// A continuous voice — the turret's own buildIncomingVoice shape (a
+// triangle tone through a pulsing gain LFO), reused through the mine's
+// own panner rather than the old 70ms blip, which was about the hardest
+// thing there is to localize by ear. Fully silent past mineTickRange;
+// moveMineVoice(t, closeness) drives gain/pitch/pulse all at once from a
+// single 0..1 fraction, closeness null meaning "out of range, silent."
+function buildMineVoice(t) {
+    if (!SIM.audio.ctx) return;
+    var A = SIM.audio;
+    var gain = A.ctx.createGain(); gain.gain.value = 0.0001;
+    var panner = A.makePanner(t.pos);
+    var pulseGain = A.ctx.createGain(); pulseGain.gain.value = 1;
+    var pulse = A.ctx.createOscillator(); pulse.type = 'sine'; pulse.frequency.value = CFG.mineVoicePulseFar;
+    var pulseDepth = A.ctx.createGain(); pulseDepth.gain.value = 0.5;
+    pulse.connect(pulseDepth); pulseDepth.connect(pulseGain.gain);
+    var tone = A.ctx.createOscillator(); tone.type = 'triangle'; tone.frequency.value = CFG.mineVoiceHzFar;
+    tone.connect(pulseGain);
+    pulseGain.connect(gain); gain.connect(panner); panner.connect(A.worldBus);
+    tone.start(); pulse.start();
+    t.nodes = { gain: gain, panner: panner, pulse: pulse, tone: tone, oscs: [tone, pulse] };
+}
+function moveMineVoice(t, closeness) {
+    if (!t.nodes || !SIM.audio.ctx) return;
+    var A = SIM.audio, time = A.ctx.currentTime;
+    A.movePanner(t.nodes.panner, t.pos);
+    if (closeness === null) { A.ramp(t.nodes.gain.gain, 0.0001, 0.3); return; }
+    t.nodes.gain.gain.setTargetAtTime(CFG.mineVoiceGainFar + (CFG.mineVoiceGainNear - CFG.mineVoiceGainFar) * closeness, time, 0.15);
+    t.nodes.tone.frequency.setTargetAtTime(CFG.mineVoiceHzFar + (CFG.mineVoiceHzNear - CFG.mineVoiceHzFar) * closeness, time, 0.15);
+    t.nodes.pulse.frequency.setTargetAtTime(CFG.mineVoicePulseFar + (CFG.mineVoicePulseNear - CFG.mineVoicePulseFar) * closeness, time, 0.15);
+}
+// SPEC 3.75: a beacon at least mineBeaconSpacing from the start AND from
+// every beacon already placed — plain rejection sampling, same shape as
+// findSpawnPos elsewhere in this file. 200 tries is generous for a field
+// this size; the loop's own last attempt is the (harmless) fallback if
+// they all somehow fail.
+function placeMineBeacon(existing) {
+    var pos;
+    for (var attempt = 0; attempt < 200; attempt++) {
+        var depth = -(CFG.mineFieldDepth * (0.15 + 0.7 * Math.random()));
+        var ang = Math.random() * Math.PI * 2, r = Math.random() * CFG.mineSpread;
+        pos = v3(Math.cos(ang) * r, (Math.random() - 0.5) * CFG.mineSpread * 0.4, depth);
+        if (len(pos) < CFG.mineBeaconSpacing) continue;
+        var tooClose = existing.some(function (p) { return len(sub(pos, p)) < CFG.mineBeaconSpacing; });
+        if (!tooClose) return pos;
+    }
+    return pos;
+}
 function makeMinefieldRoster() {
     var mines = [];
     for (var i = 0; i < CFG.mineCount; i++) {
@@ -1610,11 +1674,23 @@ function makeMinefieldRoster() {
         var dir = Math.random() * Math.PI * 2;
         var vel = v3(Math.cos(dir) * CFG.mineDriftSpeed, (Math.random() - 0.5) * CFG.mineDriftSpeed * 0.3,
                      Math.sin(dir) * CFG.mineDriftSpeed);
-        var t = { name: 'Mine ' + (i + 1), kind: 'mine', pos: pos, vel: vel, alive: true, tickIn: 0,
-                  type: ROCK_TYPES[i % ROCK_TYPES.length], size: ROCK_SIZES.length - 2 };
-        buildRockVoice(t);
+        var t = { name: 'Mine ' + (i + 1), kind: 'mine', pos: pos, vel: vel, alive: true };
+        buildMineVoice(t);
         mines.push(t);
     }
+    var beaconCount = CFG.mineBeaconCount[tierIdx];
+    var beaconPositions = [];
+    for (var b = 0; b < beaconCount; b++) {
+        var bpos = placeMineBeacon(beaconPositions);
+        beaconPositions.push(bpos);
+        var beacon = { name: 'Beacon ' + (b + 1), poiType: 'mineBeacon', kind: 'poi', desc: 'a minefield beacon',
+                       pos: bpos, alive: true, resource: false, beaconIndex: b };
+        buildPoiVoice(beacon);
+        mines.push(beacon);
+    }
+    // Exists from the start, mute (updateTargeting's own mute-scheduling
+    // gates it on minefieldState.beaconsTaken) — the map and the count
+    // stay honest: nothing to reach until every beacon is.
     var exit = { name: 'Exit Beacon', poiType: 'minefieldExit', kind: 'poi', desc: 'clear of the field',
                  pos: v3(0, 0, -CFG.mineFieldDepth), alive: true, resource: false };
     buildPoiVoice(exit);
@@ -1622,50 +1698,56 @@ function makeMinefieldRoster() {
     return mines;
 }
 function minefieldIntro() {
-    return 'The minefield. ' + CFG.mineCount + ' mines drift between here and the exit beacon — Tab finds it. ' +
-           'Each mine ticks faster as you close; cross it slow and you are safe, cross it fast and it detonates. ' +
+    return 'The minefield. ' + CFG.mineCount + ' mines drift through the field. ' +
+           CFG.mineBeaconCount[tierIdx] + ' beacons are scattered inside it, in no particular order — Tab cycles them. ' +
+           'Reach them all and the exit beacon sounds. Each mine sings, closer and higher the nearer you pass it; ' +
+           'cross one slow and it stays silent, cross it fast and it detonates. ' +
            'The clock starts the moment you thrust. Weapons are cold. ';
 }
 function finishMinefield() {
     won = true;
     var seconds = minefieldState.elapsed;
-    var prevBest = recordRun('minefield', { seconds: seconds, detonations: minefieldState.detonations });
+    var prevBest = recordRun('minefield', { seconds: seconds, detonations: minefieldState.detonations,
+                                             beacons: minefieldState.beaconsNeeded });
     var rankText = prevBest === undefined ? 'Your first time.'
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
     openDebrief('Minefield clear',
         [ 'Time ' + fmtTime(seconds) + '.',
+          minefieldState.beaconsNeeded + (minefieldState.beaconsNeeded === 1 ? ' beacon' : ' beacons') + ', ' +
           minefieldState.detonations + (minefieldState.detonations === 1 ? ' mine detonated.' : ' mines detonated.'),
           'Your hull ' + Math.round(hull) + '.',
           rankText ],
         'Enter tries again, X for the mission menu.');
 }
-// Called every frame from simTick while mode === 'minefield'. Drift, the
-// per-mine proximity tick, the speed-gated detonation check, and the exit
-// beacon's own proximity finish — all in one pass since none of it needs
-// a selection.
+// Called every frame from simTick while mode === 'minefield'. Drift, each
+// mine's own continuous voice, the speed-gated detonation check, beacon
+// pickup, and the exit's own gated proximity finish — all in one pass
+// since none of it needs a selection.
 function updateMinefield(dt) {
     if (!minefieldState || won || lost) return;
     if (minefieldState.started) minefieldState.elapsed += dt;
     var spd = len(ship.vel);
     var exit = null;
     targets.forEach(function (t) {
-        if (t.kind === 'poi') { exit = t; return; }
-        if (!t.alive) return;
-        t.pos = add(t.pos, scale(t.vel, dt));
-        if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
-        var dist = len(sub(t.pos, ship.pos));
-        if (dist > CFG.mineTickRange) { t.tickIn = 0; }
-        else {
-            t.tickIn -= dt;
-            if (t.tickIn <= 0) {
-                var frac = clamp(1 - (dist - CFG.mineTriggerDist) / (CFG.mineTickRange - CFG.mineTriggerDist), 0, 1);
-                t.tickIn = (CFG.mineTickSlowMs - (CFG.mineTickSlowMs - CFG.mineTickFastMs) * frac) / 1000;
-                var out = SIM.audio.worldOut(t.pos, 120);
-                SIM.audio.sfxTone({ type: 'sine', f1: 520, dur: 0.07, vol: 0.16, out: out });
+        if (t.poiType === 'minefieldExit') { exit = t; return; }
+        if (t.poiType === 'mineBeacon') {
+            if (!t.alive) return;
+            if (len(sub(t.pos, ship.pos)) <= CFG.mineExitRadius) {
+                t.alive = false;
+                stopVoice(t);
+                minefieldState.beaconsTaken++;
+                SIM.cues.play('course_pass');
+                say('Beacon ' + minefieldState.beaconsTaken + ' of ' + minefieldState.beaconsNeeded + '.');
             }
+            return;
         }
+        if (t.kind !== 'mine' || !t.alive) return;
+        t.pos = add(t.pos, scale(t.vel, dt));
+        var dist = len(sub(t.pos, ship.pos));
+        moveMineVoice(t, dist > CFG.mineTickRange ? null :
+            clamp(1 - (dist - CFG.mineTriggerDist) / (CFG.mineTickRange - CFG.mineTriggerDist), 0, 1));
         if (dist <= CFG.mineTriggerDist && spd > CFG.mineSafeSpeed) {
             t.alive = false;
             stopVoice(t);
@@ -1674,7 +1756,8 @@ function updateMinefield(dt) {
             hullHit(CFG.mineHullDmg, t.name, false, t.name + ' detonates.');
         }
     });
-    if (exit && exit.alive && len(sub(exit.pos, ship.pos)) <= CFG.mineExitRadius) finishMinefield();
+    if (minefieldState.beaconsTaken >= minefieldState.beaconsNeeded &&
+        exit && exit.alive && len(sub(exit.pos, ship.pos)) <= CFG.mineExitRadius) finishMinefield();
 }
 
 // ---- the shadow (SPEC 3.62, ideas14.txt/Fable) -----------------------------
@@ -2458,7 +2541,7 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
                           // raiderSeq, nextStrikeIn, ended, success } while an escort/
                           // defend mission is live (mode stays 'combat' throughout)
 var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mode === 'course'
-var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while mode === 'minefield'
+var minefieldState = null; // SPEC 3.61/3.75: { elapsed, started, detonations, beaconsTaken, beaconsNeeded } while mode === 'minefield'
 var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
 // SPEC 3.71: the standalone Mining drill's own clock/started pair — null
 // for a quadrant field visit, the demo/contract's own leg, the haul, or
@@ -2807,11 +2890,12 @@ var HELP_SECTIONS = [
         'Weapons are cold, same as any point of interest in open space. X returns to the sector any time — there is no clock and nothing to finish, just hydrogen to gather and a pull to respect.'
     ] },
     { heading: 'Minefield', items: [
-        function () { return CFG.mineCount + ' mines drift slowly between the start and an exit beacon — Tab finds the beacon; the mines themselves are never a target, only something to listen for.'; },
-        'Each mine has its own tick, quickening the closer you get — a slow tock far off, a fast pulse right up against it, positioned exactly where the mine is.',
-        function () { return 'A mine only ever detonates if you are moving faster than ' + CFG.mineSafeSpeed + ' when you pass within ' + CFG.mineTriggerDist + ' of it. Slow down and thread through and every mine is silent past you, safely.'; },
+        function () { return CFG.mineCount + ' mines drift through the field — never a target, only something to listen for. ' + CFG.mineBeaconCount[tierIdx] + ' beacons are scattered inside it too, at least ' + CFG.mineBeaconSpacing + ' apart from each other and from the start, in no particular order — Tab cycles them, and reaching one counts it and silences it.'; },
+        'Each mine sings continuously, not a tick — a tone that rises in pitch, volume, and pulse the closer you get, positioned exactly where the mine is, and fully silent beyond earshot.',
+        function () { return 'A mine only ever detonates if you are moving faster than ' + CFG.mineSafeSpeed + ' when you pass within ' + CFG.mineTriggerDist + ' of it. Slow down and thread through and every mine stays silent past you, safely.'; },
+        'The exit beacon exists from the start but stays mute and does not count until every beacon is taken — reach it early and nothing happens.',
         'Weapons, shields, and auto-target are all off here, same as the flight course — nothing to shoot, nothing to aim.',
-        'Reach the exit beacon and the run ends with the time, how many mines went off, and how that compares to your best. The Run log keeps its own separate board.'
+        'Reach the exit beacon after every other beacon is taken and the run ends with the time, the beacon count, how many mines went off, and how that compares to your best. The Run log keeps its own separate board.'
     ] },
     { heading: 'The shadow', items: [
         'One ship flies ahead of you, thrusting in bursts. Tab finds it, T reports it, and the lock tone and tick work on it exactly like any other target — while it is thrusting.',
@@ -3268,6 +3352,12 @@ function buildPoiVoice(t) {
         // own index ("slight variations between the tones") so a run of
         // gates is tell-apart-able by ear, not just by number.
         osc('sine', 500 + t.gateIndex * 35).connect(gain);
+        tremolo(2.2, G * 0.5, 'triangle');
+    } else if (t.poiType === 'mineBeacon') {
+        // SPEC 3.75: the course's own gate voice, reused verbatim — a
+        // clean tone per beacon, detuned by index, so the minefield's own
+        // set of beacons is tell-apart-able the same way the course's are.
+        osc('sine', 500 + t.beaconIndex * 35).connect(gain);
         tremolo(2.2, G * 0.5, 'triangle');
     } else if (t.poiType === 'star') {
         // The compass point: a very low, steady drone with a slow flicker —
@@ -3793,7 +3883,14 @@ function updateTargeting(dt) {
             // ignore it entirely — their own volume ladder (courseGainFor)
             // is the only thing driving this mute.
             if (t.nodes.mute && SIM.audio.ctx) {
-                var muteTarget = t.poiType === 'course' ? courseGainFor(t) : (beaconAudible(t) ? 1 : 0);
+                // SPEC 3.75: the minefield's exit exists from the start but
+                // stays mute — and uncounted, see updateMinefield's own
+                // finish check — until every beacon is taken, so the map
+                // and the beacon count both stay honest.
+                var exitUnlocked = !minefieldState || minefieldState.beaconsTaken >= minefieldState.beaconsNeeded;
+                var muteTarget = t.poiType === 'course' ? courseGainFor(t)
+                                : t.poiType === 'minefieldExit' ? (exitUnlocked && beaconAudible(t) ? 1 : 0)
+                                : (beaconAudible(t) ? 1 : 0);
                 t.nodes.mute.gain.setTargetAtTime(muteTarget, SIM.audio.ctx.currentTime, 0.15);
             }
         }
@@ -7077,6 +7174,7 @@ function statusReport() {
         var minesLeft = targets.filter(function (x) { return x.kind === 'mine' && x.alive; }).length;
         line += 'Your hull ' + hull + ' percent. ' + minesLeft + (minesLeft === 1 ? ' mine' : ' mines') +
                 ' remain. Speed ' + Math.round(len(ship.vel)) + ', safe under ' + CFG.mineSafeSpeed +
+                '. Beacon ' + minefieldState.beaconsTaken + ' of ' + minefieldState.beaconsNeeded +
                 '. Clock ' + fmtTime(minefieldState.elapsed) + '. ';
     } else if (mode === 'shadow') {
         var shadowTarget = targets[0];
@@ -9951,7 +10049,7 @@ function onKeyDown(e) {
                         // rebuilt the minefield correctly (its own mode
                         // dispatch doesn't need this fix); only the SPOKEN
                         // line was wrong.
-                        minefieldState = { elapsed: 0, started: false, detonations: 0 };
+                        minefieldState = { elapsed: 0, started: false, detonations: 0, beaconsTaken: 0, beaconsNeeded: CFG.mineBeaconCount[tierIdx] };
                         say(minefieldIntro());
                     } else if (mode === 'shadow') {
                         // SPEC 3.62: same fix, same reasoning, built alongside
@@ -10804,10 +10902,12 @@ var ENCOUNTER_ITEMS = [
     { label: 'Flight course',
       desc: 'Eight beacons to fly through in order, against the clock. Weapons cold, teaches the controls.',
       run: function () { startMission('course'); } },
-    // SPEC 3.61 (ideas14.txt/Fable): nothing to shoot — pure listening and
-    // throttle control. See makeMinefieldRoster/updateMinefield.
+    // SPEC 3.61 (ideas14.txt/Fable), second pass SPEC 3.75 (ideas17.txt):
+    // nothing to shoot — pure listening and throttle control, and real
+    // navigation among the mines to reach every beacon. See
+    // makeMinefieldRoster/updateMinefield.
     { label: 'Minefield',
-      desc: function () { return CFG.mineCount + ' drifting mines between here and an exit beacon. Each one ticks faster as you close; cross slow and centered and you are safe. Weapons cold.'; },
+      desc: function () { return CFG.mineCount + ' drifting, singing mines between scattered beacons — Tab cycles them, reach them all in any order to open the exit. Each mine rises in pitch and volume as you close; cross slow and centered and you are safe. Weapons cold.'; },
       run: function () { startMission('minefield'); } },
     // SPEC 3.62 (ideas14.txt/Fable): trains tracking. See makeShadowRoster/
     // updateShadow.
@@ -10932,7 +11032,7 @@ function startMission(m) {
     } else if (m === 'minefield') {
         // SPEC 3.61: same reasoning as courseState above — set AFTER
         // newGame()'s own clearMission() call nulls it out.
-        minefieldState = { elapsed: 0, started: false, detonations: 0 };
+        minefieldState = { elapsed: 0, started: false, detonations: 0, beaconsTaken: 0, beaconsNeeded: CFG.mineBeaconCount[tierIdx] };
         say(minefieldIntro());
     } else if (m === 'shadow') {
         // SPEC 3.62: same reasoning again.
