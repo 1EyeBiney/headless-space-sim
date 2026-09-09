@@ -403,3 +403,192 @@ SIM.audio = {
         A.sfxNoise({ dur: ms / 1000, vol: gainVal, filter: 'lowpass', freq: cutoff, out: out });
     }
 };
+
+// ---- SIM.music (SPEC 3.80) -------------------------------------------------
+// The background music player — KC's own kc_bgm.js shape (KC.bgm in that
+// codebase's idiom), reviewed in full and copied deliberately: a
+// MUSIC_STYLES table of named playlists (audio_assets.js), a grab-bag
+// shuffle so every track plays once before any repeat, and a crossfade
+// between two audio sources on every track change. One real departure from
+// KC: KC streams through two plain <audio> elements and moves their own
+// .volume property directly; fifteen ~5 MB tracks fully decoded (the way
+// SIM.audio.playMusic's own bed/interior tracks are) would be hundreds of
+// megabytes of RAM, so this player keeps KC's streaming shape but routes
+// each <audio> element through a MediaElementAudioSourceNode into its own
+// GainNode and from there into SIM.audio.musicBus — the same bus the bed
+// and the docked interior already share — so the Sound menu's Music level,
+// the mute switch, and the turret's own duck all apply to this for free,
+// which a bare .volume property never could.
+//
+// History + cursor, not a pure one-way bag: `order` is the sequence of
+// tracks actually played this session, `cursor` points at the current one.
+// Advancing past the end of `order` draws a genuinely new track from the
+// shuffled `bag`; advancing within `order` (after a `previous()`) just
+// replays what was already drawn — this is what gives `previous()` real
+// memory instead of a shuffle with no way back.
+SIM.music = {
+    a: null, b: null,           // the two streaming <audio> elements
+    srcA: null, srcB: null,     // their MediaElementAudioSourceNodes
+    gA: null, gB: null,         // per-track GainNode, into SIM.audio.musicBus
+    active: null,               // 'a' | 'b' | null — which element is audible now
+    style: 'celestial',
+    bag: [],                    // shuffled, not-yet-played-this-cycle track keys
+    order: [],                  // every track actually played, in play order
+    cursor: -1,                 // index into order — the current track
+    on: false,
+    onTrackStart: null,         // set by index.html: function(name) {...}
+
+    // Lazy, idempotent — needs SIM.audio.ctx to already exist (called after
+    // audioStart(), inside the same user gesture or later).
+    init: function () {
+        var M = SIM.music, A = SIM.audio;
+        if (M.a || !A.ctx) return;
+        M.a = new Audio(); M.b = new Audio();
+        M.a.preload = 'auto'; M.b.preload = 'auto';
+        M.srcA = A.ctx.createMediaElementSource(M.a);
+        M.srcB = A.ctx.createMediaElementSource(M.b);
+        M.gA = A.ctx.createGain(); M.gA.gain.value = 0.0001;
+        M.gB = A.ctx.createGain(); M.gB.gain.value = 0.0001;
+        M.srcA.connect(M.gA); M.gA.connect(A.musicBus);
+        M.srcB.connect(M.gB); M.gB.connect(A.musicBus);
+        // Next-on-ended: KC's own shape. Guarded on M.on so a stop() that
+        // hasn't finished pausing yet can't restart playback.
+        M.a.addEventListener('ended', function () { if (M.on) M.next(); });
+        M.b.addEventListener('ended', function () { if (M.on) M.next(); });
+    },
+
+    _shuffle: function (arr) {
+        arr = arr.slice();
+        for (var i = arr.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+        }
+        return arr;
+    },
+
+    _refillBag: function () {
+        var M = SIM.music;
+        var list = (window.MUSIC_STYLES && window.MUSIC_STYLES[M.style]) || [];
+        M.bag = M._shuffle(list);
+    },
+
+    // Pop one never-yet-played (this cycle) track; refills and reshuffles
+    // once the bag runs dry, so every track plays once before any repeat.
+    _nextNewTrack: function () {
+        var M = SIM.music;
+        if (!M.bag.length) M._refillBag();
+        return M.bag.pop();
+    },
+
+    // Crossfade from whichever element is active onto `name` on the OTHER
+    // element, over CFG.musicCrossfadeS (2 s, SPEC 3.80). Fires onTrackStart
+    // once the new element has actually been told to play.
+    _crossTo: function (name) {
+        var M = SIM.music, A = SIM.audio;
+        var path = window.AUDIO_MANIFEST && window.AUDIO_MANIFEST[name];
+        if (!A.ctx || !path) return;
+        var fadeS = (window.CFG && CFG.musicCrossfadeS !== undefined) ? CFG.musicCrossfadeS : 2;
+        var vol = (window.CFG && CFG.musicTrackVol !== undefined) ? CFG.musicTrackVol : 0.35;
+        var goingTo = M.active === 'a' ? 'b' : 'a';
+        var el = goingTo === 'a' ? M.a : M.b;
+        var g = goingTo === 'a' ? M.gA : M.gB;
+        var fromEl = M.active === 'a' ? M.a : (M.active === 'b' ? M.b : null);
+        var fromG = M.active === 'a' ? M.gA : (M.active === 'b' ? M.gB : null);
+        el.src = encodeURI(path);
+        el.currentTime = 0;
+        var playP = el.play();
+        if (playP && playP.catch) playP.catch(function () {});
+        A.ramp(g.gain, vol, fadeS);
+        if (fromG) A.ramp(fromG.gain, 0.0001, fadeS);
+        if (fromEl) setTimeout(function () { try { fromEl.pause(); } catch (e) {} }, fadeS * 1000 + 200);
+        M.active = goingTo;
+        if (M.onTrackStart) M.onTrackStart(name);
+    },
+
+    // Starts playback. `trackOverride` (only meaningful on the very first
+    // call, before anything has been drawn) resumes a specific track — the
+    // saved profile.music.idx — instead of drawing a fresh random one, so a
+    // reload picks back up near where it left off rather than reshuffling.
+    start: function (styleOverride, trackOverride) {
+        var M = SIM.music;
+        M.init();
+        if (!SIM.audio.ctx) return null;
+        if (styleOverride) M.style = styleOverride;
+        M.on = true;
+        var name;
+        if (M.cursor >= 0 && M.order[M.cursor]) {
+            name = M.order[M.cursor];
+        } else if (trackOverride && (window.MUSIC_STYLES[M.style] || []).indexOf(trackOverride) >= 0) {
+            name = trackOverride;
+            M.order.push(name);
+            M.cursor = M.order.length - 1;
+        } else {
+            name = M._nextNewTrack();
+            M.order.push(name);
+            M.cursor = M.order.length - 1;
+        }
+        M._crossTo(name);
+        return name;
+    },
+
+    stop: function () {
+        var M = SIM.music, A = SIM.audio;
+        M.on = false;
+        var fadeS = (window.CFG && CFG.musicCrossfadeS !== undefined) ? CFG.musicCrossfadeS : 2;
+        var g = M.active === 'a' ? M.gA : (M.active === 'b' ? M.gB : null);
+        var el = M.active === 'a' ? M.a : (M.active === 'b' ? M.b : null);
+        if (g) A.ramp(g.gain, 0.0001, fadeS);
+        if (el) setTimeout(function () { try { el.pause(); } catch (e) {} }, fadeS * 1000 + 200);
+    },
+
+    // Advances forward. If `previous()` had rewound the cursor, this just
+    // replays the already-drawn next track instead of drawing a new one —
+    // the "real memory" half of the history+cursor design.
+    next: function () {
+        var M = SIM.music;
+        if (!M.on) return null;
+        var name;
+        if (M.cursor + 1 < M.order.length) {
+            M.cursor++;
+            name = M.order[M.cursor];
+        } else {
+            name = M._nextNewTrack();
+            M.order.push(name);
+            M.cursor = M.order.length - 1;
+        }
+        M._crossTo(name);
+        return name;
+    },
+
+    previous: function () {
+        var M = SIM.music;
+        if (!M.on || M.cursor <= 0) return null;
+        M.cursor--;
+        var name = M.order[M.cursor];
+        M._crossTo(name);
+        return name;
+    },
+
+    // Switches playlists. Resets the bag/history — a different style has no
+    // relationship to the old one's shuffle order — and, if already
+    // playing, starts a fresh track from the new style at once.
+    setStyle: function (style) {
+        var M = SIM.music;
+        if (!window.MUSIC_STYLES || !window.MUSIC_STYLES[style]) return;
+        M.style = style;
+        M.bag = [];
+        M.order = [];
+        M.cursor = -1;
+        if (M.on) M.start();
+    },
+
+    currentTrack: function () {
+        var M = SIM.music;
+        return M.cursor >= 0 ? M.order[M.cursor] : null;
+    },
+
+    currentTitle: function () {
+        var name = SIM.music.currentTrack();
+        return name ? ((window.MUSIC_TITLES && window.MUSIC_TITLES[name]) || name) : null;
+    }
+};

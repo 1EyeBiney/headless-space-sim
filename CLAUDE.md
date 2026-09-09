@@ -215,6 +215,9 @@ mechanics still in flux. That's the actual split point:
   asset-bank state, `audioStart`/`assetsReady`, plus (SPEC 2.19)
   `load`/`preload`/`ready`/`playMusic`/`stopMusic` over `fetch` — the old
   `decodeAssets`, which read base64 out of `audio_assets.js`, is gone,
+  plus (SPEC 3.80) `SIM.music`, a sibling namespace in the same file for
+  the background music player — see the "The background music player"
+  bullet under Sector for its own shape,
   `ramp`,
   `makePanner`/`movePanner`/`worldOut`, and the primitives `sfxTone`/
   `sfxNoise`/`sfxChord`/`sfxArpeggio`/`blip`/`playAsset`/`noiseBurst` — plus
@@ -1742,7 +1745,11 @@ tractor beam (mining, SPEC 3.30; tiered and moved here from Z, SPEC 3.44
 top · Z unbound ("Z does nothing here") · Shift+Z zone size · Q map ·
 H warp · C call · I
 status (adds hull, missiles, laser slot, shields, laser heat, demo clock +
-objective) · X leave · F1 help · F12 explore · Escape opens the mission
+objective) · `[` music on/off · `]` next track, Shift+`]` previous (SPEC
+3.80 — read via `e.code` BracketLeft/BracketRight, never `e.key`, since a
+real Shift+`]` sends `}`; live everywhere onKeyDown reaches, checked right
+after the describeMode branch and before every overlay's own capture) ·
+X leave · F1 help · F12 explore · Escape opens the mission
 menu (SPEC 1.18 — see below; no separate pause any more). Shift+S auto-reverse (SPEC 3.57 — `autoThrust` is now `false |
 'fwd' | 'rev'`, 'rev' reads as a held S in `simTick`; either chord flips
 the other's direction in one press). Menu: arrows +
@@ -4078,3 +4085,88 @@ announces its title**, key press or auto-advance alike — all written
 into 3.80. ideas16.txt/ideas17.txt/todo.txt are no longer in the
 working tree. Next: Sonnet builds 3.80, then 3.78 → 3.79 → 3.76 → 3.75
 → 3.77.
+
+**Round 59 (Sonnet, 2026-09-09): built SPEC 3.80, the background music
+player — completed first, per Brian's own request.** `SIM.music`, a
+new namespace in `audio_engine.js` beside `SIM.audio`, is KC's own
+`kc_bgm.js` shape (reviewed in full) copied deliberately: a
+`MUSIC_STYLES` table of named playlists and a `MUSIC_TITLES` table of
+spoken names (`audio_assets.js`, one style today — Celestial, fifteen
+tracks, keyed by the files' own stems exactly as Brian placed and
+named them, never renamed), a grab-bag shuffle so every track plays
+once before any repeat, and a 2-second crossfade on every track
+change. The one deliberate departure from KC: KC moves two `<audio>`
+elements' own `.volume` property directly; this player routes each
+element through a `MediaElementAudioSourceNode` into its own
+`GainNode` and from there into the EXISTING `SIM.audio.musicBus` (the
+same bus the deep-space bed and the docked interior already share),
+so the Sound menu's Music level, the mute switch, and the turret's own
+duck all apply for free — streamed, not decoded, since fifteen ~5 MB
+tracks fully decoded would be hundreds of megabytes of RAM. **History
++ cursor, not a pure one-way bag**: `order` is every track actually
+played this session, `cursor` points at the current one — advancing
+past the end of `order` draws a new track from the shuffled `bag`;
+advancing back into `order` (after a `previous()`) just replays what
+was already drawn. This is what gives Shift+`]` real memory rather
+than a shuffle with no way back — Sonnet's own design addition, since
+the spec's own text asked for "next song, previous song" without
+specifying how "previous" should behave against a shuffle. Keys `[`
+(play/stop), `]` (next), Shift+`]` (previous) are read from `e.code`
+(`BracketLeft`/`BracketRight` + `shiftKey`), never `e.key` — the same
+trap SPEC 3.24 fixed for Shift+digits, since a real Shift+`]` sends
+`}`. All three are checked in `onKeyDown` right after the `describeMode`
+branch and before every overlay's own capture (help, map, run log, F2,
+F3, the Sound menu, docked, hailing, the mission menu, warping,
+debrief, turret) — the same reach Y has (SPEC 3.51) — so F12 explore
+mode still describes them safely instead of acting on them.
+`profile.music = { on, style, idx }` (`PROFILE_VERSION` → 15, a plain
+backfill for a save with no such field at all — nothing before this
+round ever exposed a way to set it); `idx` is which track in the
+style's own list was last playing, so a reload resumes that exact
+track rather than reshuffling. `profile.sound.music`'s own generic
+backfill (SPEC 3.45's per-category default) is special-cased to
+`medium` (index 3) instead of `full` for a field that's missing
+entirely — "the field was never set" and "this pilot never touched it"
+are the same thing here, since no UI ever exposed a way to change it
+before now. Round 44's menu-only `startMenuMusic()` (and both its call
+sites, `exitToMenu()` and the begin-gesture handler) is retired
+outright — the player is just another place the pilot plays, wherever
+they left it, menu included, over the bed and the docked interior, not
+instead of them. The Sound menu's Music line no longer cycles a level
+directly with left/right; Enter or Right opens a new **Music submenu**
+(`musicMenu`, `openMusicMenu`/`musicMenuKey`) — Play/Stop, Next,
+Previous, Style (one entry today, ready for more), and Volume, the
+last using the same five `SOUND_LEVELS` steps — matching Brian's own
+"volume controls via menu... could be in sounds." Volume lives only
+there, never on a key. `onTrackStart` (set once by index.html) is the
+single point that speaks a track's title and persists `profile.music`
+— it fires on every real track change, key press or the last track
+ending alike, exactly per spec; the one place that needed care was
+`musicToggleKey`'s own "Music on. [title]." line, which needs the
+SAME title folded into ONE `say()` rather than let `onTrackStart` speak
+it a second time in the same tick (the SPEC 2.15 rule) — solved with a
+one-shot `SIM.music._silent` flag the toggle sets just before calling
+`start()`. Machine-tested at a local server end to end, entirely
+through real gameplay (no mocks): a fresh profile booted with music on
+at medium, resuming isn't random (`idx` defaults to 0, so a brand new
+pilot always opens on the same first track — harmless, not spec'd
+either way); `]`/Shift+`]` advancing and retreating with the bag
+confirmed NOT drawing on a replayed `previous()` (14 remaining both
+times) but drawing fresh on a genuinely new `next()`; the toggle's
+combined "Music on. [title]." with no double-announce; a reload
+resuming the exact saved track; the Sound menu's Music row and the new
+submenu's all five rows browsing and the volume row scaling
+`musicBus.gain` correctly (measured 0.65 at medium, 1.0 at full);
+F12 explore mode describing `[`/`]`/Shift+`]` (arriving as `}`) without
+touching playback; music surviving a live Combat training mission
+start, a bracket press mid-combat, and leaving the mission via X; a
+seeded pre-3.80 (v14) profile migrating cleanly — its `sound.world`/
+`cockpit`/`effects` preserved exactly, `sound.music` correctly
+backfilled to medium, `profile.music` created and started playing with
+no crash. Zero console errors throughout. Every level and the
+crossfade/track-volume numbers are placeholders for Brian's ear; the
+default-on-at-medium call and the fifteen tracks' shuffle order are
+not. Not yet heard by Brian. Next per the ideas17.txt build order:
+3.78 (yank the nebula encounter) → 3.79 (lock the gates) → 3.76 (the
+shadow third pass) → 3.75 (the minefield second pass) → 3.77 (reaction
+mass as the economy), then quadrant 2.

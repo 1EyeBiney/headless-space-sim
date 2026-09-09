@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets FIRST (Brian) → 3.78 yank the nebula → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7822,7 +7822,7 @@ biggest and touches the audio engine.
   hydrogen are poked to the rule, with `gate_unlock` and the line once
   and `unlocked` persisted across a reload.
 
-#### 3.80 Music: Keyboard Commander's player, on brackets (ideas17.txt) — DECIDED (Brian, 2026-09-09), four defaults flagged in Part C
+#### 3.80 Music: Keyboard Commander's player, on brackets (ideas17.txt) — DONE
 
 - Brian: "review the way we did music in keyboard commander... I want
   to be able to play music as a background if the player desires it...
@@ -7893,6 +7893,46 @@ biggest and touches the audio engine.
   underneath; a docked/undock cycle and a mission start never stop it;
   fifteen keys resolve to the files as named on disk and none is in
   `AUDIO_PRELOAD`; a track ending speaks the next one's title.
+
+**DONE (Round 59, Sonnet).** `SIM.music` (`audio_engine.js`) is KC's
+own `kc_bgm.js` shape, copied deliberately: a `MUSIC_STYLES`/
+`MUSIC_TITLES` pair (`audio_assets.js`, one style — Celestial, fifteen
+tracks keyed by the files' own stems, never renamed), a grab-bag
+shuffle, a 2 s crossfade. The one real departure from KC: two
+`<audio>` elements each routed through a `MediaElementAudioSourceNode`
+into their own `GainNode` and from there into the EXISTING
+`SIM.audio.musicBus` (the same bus the deep-space bed and the docked
+interior already share), rather than KC's own direct `.volume`
+manipulation — streamed, not decoded, since fifteen ~5 MB tracks fully
+decoded would be hundreds of megabytes of RAM. **History + cursor, not
+a pure one-way bag** (Sonnet's own design addition, beyond what the
+spec's text specified): `order` is every track actually played this
+session, `cursor` points at the current one — advancing past the end
+of `order` draws a new track from the shuffled `bag`; advancing back
+into `order` (after a `previous()`) replays what was already drawn
+instead of drawing again, which is what gives Shift+`]` real memory
+against the shuffle rather than a dead end. Keys are read from
+`e.code` (`BracketLeft`/`BracketRight` + `shiftKey`), never `e.key` —
+the 3.24 trap — and checked in `onKeyDown` right after `describeMode`
+and before every overlay's own capture, the same reach Y has (3.51),
+so F12 explore mode still describes them safely. `profile.music =
+{ on, style, idx }` (`PROFILE_VERSION` → 15); `profile.sound.music`'s
+own missing-field default is special-cased to medium instead of full,
+since nothing before this round ever let a pilot choose it. Round 44's
+`startMenuMusic()` and both its call sites are retired outright — the
+player is just another place the pilot plays, over the bed and the
+interior, not instead of them. The Sound menu's Music line opens a new
+submenu (Play/Stop, Next, Previous, Style, Volume) instead of cycling
+a level directly; volume lives only there, per Brian. The "every track
+start speaks its title" rule and the toggle's own combined "Music on.
+[title]." needed one `_silent` one-shot flag so the two don't collide
+in the same tick (the 2.15 rule) — see CLAUDE.md's Round 59 entry for
+the full mechanism and the complete machine-test list (a live Combat
+mission start and leave, a v14→v15 migration against a seeded old
+save, the submenu's five rows, the volume row's measured bus gain).
+Zero console errors. Every level and the crossfade/track-volume number
+is a placeholder for Brian's ear; the default-on-at-medium call and
+the shuffle order are not. Not yet heard by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 

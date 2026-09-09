@@ -268,7 +268,10 @@ var CFG_DEFAULTS = {
     // before jumping.
     undockDist: 1000,
     stationAmbientVol: 0.35, // the docked interior loop (music bus)
-    menuMusicVol: 0.3,       // Round 44: the mission menu's own loop (music bus)
+    musicTrackVol: 0.35,     // SPEC 3.80: SIM.music's own fixed per-track fade-target level
+                             // (music bus) — replaces Round 44's now-retired menuMusicVol,
+                             // since the player is the menu's music now too.
+    musicCrossfadeS: 2,      // SPEC 3.80: the player's own track-to-track crossfade
     spaceAmbientVol: 0.25,   // SPEC 3.67: the deep space bed under every mode (music bus)
     // Lock tones by target kind (ideas6): a ship gets the solid tone; a
     // rock or dust field the soft pulse; a point of interest the solid
@@ -768,7 +771,7 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 14;
+var PROFILE_VERSION = 15;
 
 function defaultProfile() {
     // SPEC 3.71: `boards[kind]` (best-10 each) replaces what used to be
@@ -782,7 +785,12 @@ function defaultProfile() {
     BOARD_ORDER.forEach(function (k) { boards[k] = []; });
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0,
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
-             sound: { world: SOUND_LEVELS.length - 1, cockpit: SOUND_LEVELS.length - 1, effects: SOUND_LEVELS.length - 1 }, beacons: 'on',
+             sound: { world: SOUND_LEVELS.length - 1, cockpit: SOUND_LEVELS.length - 1, effects: SOUND_LEVELS.length - 1, music: 3 }, beacons: 'on',
+             // SPEC 3.80: the background music player. on defaults true for
+             // a new pilot (KC's own default); idx is which track in the
+             // style's own list was last playing, so a reload resumes
+             // roughly where it left off instead of redrawing at random.
+             music: { on: true, style: 'celestial', idx: 0 },
              resources: { salvage: 0, alloy: 0, hydrogen: 0 },   // SPEC 3.74: the field this item creates
              // SPEC 3.26: levels are earned at the station, not cycled for
              // free — one owned level and one health per family.
@@ -835,12 +843,19 @@ function loadProfile() {
             if (oldToNewSound[saved.sound[id]] !== undefined) profile.sound[id] = oldToNewSound[saved.sound[id]];
         });
     }
-    // Sound options: one level index per category, unknown values become full.
+    // Sound options: one level index per category, unknown values become
+    // full — EXCEPT music (SPEC 3.80), which defaults to medium instead
+    // (KC's own default). Nothing before 3.80 ever exposed a way to set
+    // the music level on purpose, so "the field is missing" and "this
+    // pilot has never touched it" are the same thing here — no version
+    // gate needed, unlike the SPEC 3.45 remap this pattern otherwise
+    // mirrors.
     var snd = (profile.sound && typeof profile.sound === 'object') ? profile.sound : {};
     profile.sound = {};
     SOUND_CATS.forEach(function (c) {
         var i = snd[c.id] | 0;
-        profile.sound[c.id] = (i >= 0 && i < SOUND_LEVELS.length && snd[c.id] !== undefined) ? i : SOUND_LEVELS.length - 1;
+        var fallback = c.id === 'music' ? 3 : SOUND_LEVELS.length - 1;
+        profile.sound[c.id] = (i >= 0 && i < SOUND_LEVELS.length && snd[c.id] !== undefined) ? i : fallback;
     });
     beaconMode = BEACON_MODES.some(function (m) { return m.id === profile.beacons; }) ? profile.beacons : 'on';
     if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0, hydrogen: 0 };
@@ -933,6 +948,15 @@ function loadProfile() {
         delete profile[oldKey];
     });
     BOARD_ORDER.forEach(function (k) { if (!Array.isArray(profile.boards[k])) profile.boards[k] = []; });
+    // v14 -> v15 (SPEC 3.80): the background music player. A save from
+    // before this round simply never had profile.music at all — a plain
+    // backfill, same shape as contractRuns'/courseRuns' own guards above.
+    if (!profile.music || typeof profile.music !== 'object') profile.music = { on: true, style: 'celestial', idx: 0 };
+    if (typeof profile.music.on !== 'boolean') profile.music.on = true;
+    if (typeof profile.music.style !== 'string' || !(window.MUSIC_STYLES && window.MUSIC_STYLES[profile.music.style])) {
+        profile.music.style = 'celestial';
+    }
+    if (typeof profile.music.idx !== 'number' || profile.music.idx < 0) profile.music.idx = 0;
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -1231,7 +1255,7 @@ var SOUND_CATS = [
     { id: 'effects', label: 'Sound effects',
       desc: 'Menu clicks, chimes, warnings, and the fanfare.' },
     { id: 'music',   label: 'Music',
-      desc: 'Ambient tracks. Nothing plays yet.' }
+      desc: 'The background music player, plus the deep space bed and the docked interior loop.' }
 ];
 // The four POI beacons: on, off, or only the selected nav target — the
 // Sound menu's own Beacons line (SPEC 3.45; B itself moved on to the
@@ -2664,6 +2688,7 @@ var debrief = { open: false, idx: 0, title: '', lines: [], options: '' };
 var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
 var resourceScreen = { open: false, idx: -1, lines: [] };   // F3 (SPEC 2.15)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
+var musicMenu = { open: false, idx: 0 };  // the Sound menu's own Music submenu (SPEC 3.80)
 var beaconMode = 'on';   // 'on' | 'off' | 'target' — live; profile.beacons is the saved copy
 // SPEC 3.43 (ideas11.txt): a session-only kill switch for every Web Audio
 // bus, set from ?mute=1 or poke({mute}) — never saved (the Sound menu's
@@ -2948,6 +2973,7 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'System', items: [
         'The Sound item on the mission menu sets a level — off, low, quiet, medium, or full — for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line: on, off, or only the selected nav target. With beacons off, Tab, T, the map, and the lock tick still find every point — steer the nose onto the tick the way you would onto a ship. Speech is never affected. Settings are saved.',
+        function () { return 'Left bracket turns the background music on or off; right bracket skips to the next track and shift right bracket to the previous one, shuffled so every track plays once before any repeat. It says the title every time a track starts. It works everywhere — the menu, flying, any encounter — and keeps playing through docking and mission changes. The Sound menu\'s own Music line opens a submenu for play, stop, next, previous, style, and its volume; volume lives only there, never on a key. On by default at medium for a new pilot.'; },
         'Escape opens the mission menu over the live game: Resume goes back to the ship, or pick anything else to leave. Escape again also resumes.',
         'F12 turns on explore mode, where every key describes itself safely.',
         'F1 opens this help screen. Escape closes it.',
@@ -3053,6 +3079,9 @@ var KEY_DESCRIPTIONS = {
     f1: 'Opens the help screen. Arrows read it line by line, Escape closes it.',
     f12: 'Turns key exploring off again.',
     escape: 'Opens the mission menu over the live game. Resume goes back to the ship; anything else leaves. Escape again also resumes.',
+    '[': function () { return profile.music.on ? 'Music off. Currently: ' + (SIM.music.currentTitle() || 'starting') + '.' : 'Music on, resuming where you left off.'; },
+    ']': 'Next music track, wrapping through the shuffled playlist. Shift ] is previous.',
+    '}': 'Previous music track (Shift ]).',
     f5: 'Belongs to the browser. Outside explore mode it reloads the page.',
     f6: 'Belongs to the browser. Outside explore mode it moves browser focus.',
     f11: 'Belongs to the browser. Outside explore mode it toggles full screen.'
@@ -9729,6 +9758,18 @@ function onKeyDown(e) {
         return;
     }
 
+    // Music (SPEC 3.80): '[' play/stop, ']' next, Shift+']' previous — read
+    // from e.code (BracketLeft/BracketRight + shiftKey), never e.key, since
+    // a real Shift+']' sends '}' via e.key — the same trap 3.24 fixed for
+    // Shift+digits. Checked here, before every overlay's own capture below,
+    // so it works everywhere the sim takes keys — the same reach Y has
+    // (3.51): the menu, flight, every encounter, every overlay.
+    if (!e.repeat && e.code === 'BracketLeft') { musicToggleKey(); return; }
+    if (!e.repeat && e.code === 'BracketRight') { musicStepKey(!!e.shiftKey); return; }
+
+    // The Sound menu's own Music submenu, same shell as every other overlay.
+    if (musicMenu.open) { musicMenuKey(lname); return; }
+
     // The help pop-up captures everything while open (arrows read, H jumps
     // headings, Escape closes) so game keys can't fire underneath it.
     if (help.open) { helpKey(lname, !!e.shiftKey); return; }
@@ -11190,6 +11231,13 @@ function soundLineText(i) {
         return beaconModeText() + ' Cycles the sector\'s four POI beacons: on, off, or only your selected nav target.';
     }
     var c = SOUND_CATS[i];
+    // SPEC 3.80: Music opens its own submenu (Play/Stop, Next, Previous,
+    // Style, Volume) rather than cycling a level directly with left/right
+    // like every other category — say so instead of the level here.
+    if (c.id === 'music') {
+        return c.label + ': ' + (profile.music.on ? 'on, ' + (SIM.music.currentTitle() || 'starting') : 'off') +
+               '. Enter or right arrow opens the music submenu.';
+    }
     return c.label + ': ' + SOUND_LEVELS[profile.sound[c.id]].name + '. ' + c.desc;
 }
 
@@ -11221,6 +11269,7 @@ function soundKey(lname) {
     }
     if (lname === 'arrowdown') { menuClick(); soundMenu.idx = (soundMenu.idx + 1) % n; say(soundLineText(soundMenu.idx)); }
     else if (lname === 'arrowup') { menuClick(); soundMenu.idx = (soundMenu.idx - 1 + n) % n; say(soundLineText(soundMenu.idx)); }
+    else if (lname === 'arrowright' && c && c.id === 'music') { openMusicMenu(); }
     else if (lname === 'arrowright' || lname === 'arrowleft') {
         var d = lname === 'arrowright' ? 1 : -1;
         if (onBeacons) {
@@ -11230,6 +11279,10 @@ function soundKey(lname) {
             saveProfile();
             SIM.audio.blip(beaconMode === 'on' ? 700 : beaconMode === 'target' ? 550 : 400, 90, 0.14, 0, 'triangle');
             say(beaconModeText());
+        } else if (c && c.id === 'music') {
+            // SPEC 3.80: no direct level cycling here — the submenu owns it.
+            SIM.audio.blip(220, 80, 0.1);
+            say('Enter or right arrow opens the music submenu.');
         } else {
             profile.sound[c.id] = (profile.sound[c.id] + d + SOUND_LEVELS.length) % SOUND_LEVELS.length;
             applySoundLevels();
@@ -11238,7 +11291,10 @@ function soundKey(lname) {
             setTimeout(function () { soundDemo(c.id); }, 250);
         }
     }
-    else if (lname === 'enter' || lname === 'tab') { say(soundLineText(soundMenu.idx)); }
+    else if (lname === 'enter' || lname === 'tab') {
+        if (c && c.id === 'music') openMusicMenu();
+        else say(soundLineText(soundMenu.idx));
+    }
     else if (lname === 'y') { speakTotals(); }
     else {
         SIM.audio.blip(220, 80, 0.1);
@@ -11246,13 +11302,147 @@ function soundKey(lname) {
     }
 }
 
-// Round 44: Brian's own track loops under the mission menu — started here
-// and at the begin gesture, stopped by clearMission() (which every mission
-// start runs through) and crossfaded out by the docked interior loop. The
-// Escape overlay over a live mission does NOT start it: the ship's own
-// sound stays. Level: the Sound menu's Music line, on the music bus.
-function startMenuMusic() {
-    if (SIM.audio.ctx) SIM.audio.playMusic('menu_celestial', { vol: CFG.menuMusicVol, fadeS: 1.5 });
+// ---- the background music player (SPEC 3.80) -------------------------------
+// SIM.music (audio_engine.js) is the mechanism; everything here is index.html
+// deciding what to SAY about it and keeping profile.music in sync. Retires
+// Round 44's menu-only startMenuMusic() outright — the player is just
+// another place the pilot plays, on wherever they left it, menu included.
+//
+// onTrackStart fires from SIM.music on every real track change (a key
+// press, a menu action, or a track ending and auto-advancing alike) —
+// SPEC 3.80's own "every track start speaks its title... a key press or
+// the last track ending alike, one say()". musicToggleKey's "Music on."
+// case needs to fold the SAME title into its own single say() (SPEC 2.15:
+// never two say() calls in one tick) rather than let this one speak a
+// second time on top of it — `_silent` is the one-shot suppression for
+// exactly that call.
+SIM.music.onTrackStart = function (name) {
+    if (!name) return;
+    profile.music.style = SIM.music.style;
+    var list = (window.MUSIC_STYLES && MUSIC_STYLES[SIM.music.style]) || [];
+    profile.music.idx = list.indexOf(name);
+    saveProfile();
+    if (SIM.music._silent) { SIM.music._silent = false; return; }
+    say((window.MUSIC_TITLES && MUSIC_TITLES[name]) || name);
+};
+
+var MUSIC_STYLE_LABELS = { celestial: 'Celestial' };
+function musicStyleLabel(id) { return MUSIC_STYLE_LABELS[id] || id; }
+function musicTitleOf(name) { return (window.MUSIC_TITLES && MUSIC_TITLES[name]) || name; }
+
+// '[' — SPEC 3.80. Toggling on resumes the saved track (profile.music.idx)
+// rather than drawing a fresh random one, so a reload picks back up near
+// where it left off.
+function musicToggleKey() {
+    if (!SIM.audio.ctx) return;
+    if (profile.music.on) {
+        SIM.music.stop();
+        profile.music.on = false;
+        saveProfile();
+        say('Music off.');
+    } else {
+        profile.music.on = true;
+        var savedList = (window.MUSIC_STYLES && MUSIC_STYLES[profile.music.style]) || [];
+        var savedName = savedList[profile.music.idx] || null;
+        SIM.music._silent = true;
+        var name = SIM.music.start(profile.music.style, savedName);
+        saveProfile();
+        say('Music on. ' + musicTitleOf(name) + '.');
+    }
+}
+// ']' / Shift+']' — next/previous. Refuses (offline buzz) rather than
+// silently doing nothing when the player is off, matching "silence is a
+// bug" — every key answers.
+function musicStepKey(shiftKey) {
+    if (!SIM.audio.ctx) return;
+    if (!profile.music.on) { SIM.cues.play('refusal_offline'); say('Music is off. Left bracket turns it on.'); return; }
+    if (shiftKey) musicPreviousAction(); else musicNextAction();
+}
+function musicNextAction() {
+    if (!profile.music.on) { SIM.cues.play('refusal_offline'); say('Music is off. Left bracket turns it on.'); return; }
+    SIM.music.next();
+}
+function musicPreviousAction() {
+    if (!profile.music.on) { SIM.cues.play('refusal_offline'); say('Music is off. Left bracket turns it on.'); return; }
+    SIM.music.previous();
+}
+function musicCycleStyle(d) {
+    var styles = Object.keys(window.MUSIC_STYLES || {});
+    if (styles.length <= 1) { SIM.audio.blip(220, 80, 0.1); say('Only one style exists so far.'); return; }
+    var i = styles.indexOf(profile.music.style);
+    if (i < 0) i = 0;
+    i = (i + d + styles.length) % styles.length;
+    profile.music.style = styles[i];
+    profile.music.idx = 0;
+    saveProfile();
+    if (profile.music.on) SIM.music.setStyle(styles[i]);
+    say('Style: ' + musicStyleLabel(styles[i]) + '.');
+}
+
+// The Sound menu's Music sub-line opens this submenu (SPEC 3.80): Play/
+// Stop, Next, Previous, Style, Volume — the KC shape Brian asked for,
+// "volume controls via menu... could be in sounds." Volume lives only
+// here, never on a key.
+var MUSIC_MENU_ROWS = ['toggle', 'next', 'previous', 'style', 'volume'];
+function musicMenuLineText(i) {
+    var row = MUSIC_MENU_ROWS[i];
+    if (row === 'toggle') {
+        return profile.music.on ? 'Play/Stop: on, ' + (SIM.music.currentTitle() || 'starting') + '.'
+                                 : 'Play/Stop: off.';
+    }
+    if (row === 'next') return 'Next track.';
+    if (row === 'previous') return 'Previous track.';
+    if (row === 'style') {
+        var n = Object.keys(window.MUSIC_STYLES || {}).length;
+        return 'Style: ' + musicStyleLabel(profile.music.style) + '.' +
+               (n > 1 ? ' Left and right cycle styles.' : ' Only one style exists so far.');
+    }
+    return 'Volume: ' + SOUND_LEVELS[profile.sound.music].name + '.';
+}
+function openMusicMenu() {
+    musicMenu.open = true;
+    musicMenu.idx = 0;
+    say('Music. Up and down arrows browse, Enter activates, left and right adjust. Escape returns to Sound. ' +
+        musicMenuLineText(0));
+}
+function musicMenuKey(lname) {
+    var n = MUSIC_MENU_ROWS.length;
+    var row = MUSIC_MENU_ROWS[musicMenu.idx];
+    if (lname === 'escape' || lname === 'x') {
+        musicMenu.open = false;
+        say('Music closed. ' + soundLineText(soundMenu.idx));
+        return;
+    }
+    if (lname === 'arrowdown') { menuClick(); musicMenu.idx = (musicMenu.idx + 1) % n; say(musicMenuLineText(musicMenu.idx)); return; }
+    if (lname === 'arrowup') { menuClick(); musicMenu.idx = (musicMenu.idx - 1 + n) % n; say(musicMenuLineText(musicMenu.idx)); return; }
+    if (lname === 'enter' || lname === 'tab') {
+        if (row === 'toggle') musicToggleKey();
+        else if (row === 'next') musicNextAction();
+        else if (row === 'previous') musicPreviousAction();
+        else say(musicMenuLineText(musicMenu.idx));
+        return;
+    }
+    if (lname === 'arrowleft' || lname === 'arrowright') {
+        var d = lname === 'arrowright' ? 1 : -1;
+        if (row === 'volume') {
+            profile.sound.music = (profile.sound.music + d + SOUND_LEVELS.length) % SOUND_LEVELS.length;
+            applySoundLevels();
+            saveProfile();
+            say('Volume: ' + SOUND_LEVELS[profile.sound.music].name + '.');
+        } else if (row === 'style') {
+            musicCycleStyle(d);
+        } else if (row === 'toggle') {
+            musicToggleKey();
+        } else if (row === 'next') {
+            musicNextAction();
+        } else {
+            musicPreviousAction();
+        }
+        return;
+    }
+    if (lname === 'y') { speakTotals(); return; }
+    SIM.audio.blip(220, 80, 0.1);
+    say('Up and down arrows browse the music settings, Enter activates. ' + musicMenuLineText(musicMenu.idx));
 }
 
 // SPEC 3.67 (ideas15.txt): the deep space bed — Brian: "set that as
@@ -11283,7 +11473,9 @@ function exitToMenu() {
     menuResumable = false;
     menuOpen = true;
     if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
-    startMenuMusic();
+    // SPEC 3.80: no menu-only track any more — the background music player
+    // (if the pilot has it on) has been playing right through this, same as
+    // it plays through everything else; nothing to (re)start here.
     menuAnnounce();
 }
 
@@ -11352,6 +11544,15 @@ function init() {
         // before the ramp would have reached zero.
         if (muted && SIM.audio.masterGain) SIM.audio.masterGain.gain.value = 0;
         applySoundLevels();
+        // SPEC 3.80: the background music player starts here, unconditionally
+        // — not just on the menu branch below, since it should be playing on
+        // the ?run=delivery autoRun path too. Resumes the saved track
+        // (profile.music.idx) rather than drawing a fresh random one.
+        SIM.music.init();
+        if (profile.music.on) {
+            var savedList = (window.MUSIC_STYLES && MUSIC_STYLES[profile.music.style]) || [];
+            SIM.music.start(profile.music.style, savedList[profile.music.idx] || null);
+        }
         initBtn.style.display = 'none';
         container.hidden = false;
         container.focus();
@@ -11366,7 +11567,6 @@ function init() {
             }, 800);
         } else {
             menuOpen = true;
-            startMenuMusic();
             setTimeout(function () {
                 menuAnnounce(SIM.audio.ctx ? '' : 'Audio is unavailable in this browser, speech only. ');
             }, 800);

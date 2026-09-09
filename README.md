@@ -57,6 +57,14 @@ selected nav target, for stretches of open flying when you'd rather
 not hear them — Tab, T, the map, and the lock tick still find every
 point. Speech is never affected. All of it is saved with your profile.
 
+Music is a real background player, on by default: `[` turns it on or
+off, `]` skips to the next track, and shift `]` goes back — shuffled so
+every track plays once before any repeat, and it says the title every
+time one starts. It works everywhere (the menu, flying, any encounter)
+and keeps playing through docking and mission changes. The Sound
+menu's own Music line opens a submenu for play/stop, next, previous,
+style, and its volume level — volume lives only there, never on a key.
+
 ## The timed delivery run (first item on the menu)
 
 The shareable challenge. The clock starts at once.
@@ -295,6 +303,8 @@ Right hand on the arrows, left hand on everything else.
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |
 | Y | Resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, decoys. Works everywhere, including inside the station and its submenus |
+| [ | Background music on/off. Says the title every time a track starts. Works everywhere; volume and style live in the Sound menu's own Music submenu |
+| ] / Shift+] | Next / previous music track, shuffled so every track plays once before any repeat |
 | X | Leave the mission |
 | F1 | Help, read line by line with the arrows |
 | F12 | Explore mode: every key describes itself without doing anything |

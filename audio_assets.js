@@ -228,12 +228,32 @@ window.AUDIO_MANIFEST = {
   way_the_light: 'audio/demo/be_the_light.mp3',
   way_outro: 'audio/demo/outro_C_15s_full_song_ending.mp3',
 
-  // Menu music (Round 44): Brian's own track, looped on the music bus
-  // while the mission menu is up (from the begin gesture, and again on
-  // every return to the menu); every mission start stops it through
-  // clearMission(). Stereo 48k, ~3.6 min, served as placed — fetched at
-  // the begin gesture, not preloaded, since it's 5 MB.
-  menu_celestial: 'audio/music/celestial/fingerprints_of_God.mp3',
+  // SPEC 3.80: the background music player's own Celestial style —
+  // fifteen tracks, Brian's own (fingerprints_of_God was Round 44's
+  // menu-only track; menu_celestial is retired, this is the same file
+  // under its own name, now one of fifteen). Keys are the files' own
+  // stems, exactly as Brian placed and named them on disk — never
+  // renamed. Streamed through SIM.music (HTMLAudioElement, not
+  // fetch+decode — fifteen ~5 MB tracks decoded would be hundreds of
+  // MB of RAM), so these paths are read straight from this manifest
+  // rather than through SIM.audio.load()/assetBufs; excluded from
+  // AUDIO_PRELOAD below by their own folder, not a key prefix (their
+  // names don't share one — see MUSIC_STYLES/MUSIC_TITLES just below).
+  aurora_memories: 'audio/music/celestial/aurora_memories.mp3',
+  chronos_halos: 'audio/music/celestial/chronos_halos.mp3',
+  cosmic_drift: 'audio/music/celestial/cosmic_drift.mp3',
+  cryoVault_elegy: 'audio/music/celestial/cryoVault_elegy.mp3',
+  dust_of_the_nebula: 'audio/music/celestial/dust_of_the_nebula.mp3',
+  echos_in_the_comets_wake: 'audio/music/celestial/echos_in_the_comets_wake.mp3',
+  echos_of_andromeda: 'audio/music/celestial/echos_of_andromeda.mp3',
+  final_transmission_from_vega: 'audio/music/celestial/final_transmission_from_vega.mp3',
+  fingerprints_of_God: 'audio/music/celestial/fingerprints_of_God.mp3',
+  harmonic_singularity: 'audio/music/celestial/harmonic_singularity.mp3',
+  hushed_by_gravity: 'audio/music/celestial/hushed_by_gravity.mp3',
+  midnight_on_europa: 'audio/music/celestial/midnight_on_europa.mp3',
+  tears_of_the_ion_sea: 'audio/music/celestial/tears_of_the_ion_sea.mp3',
+  the_slow_collapse_of_light: 'audio/music/celestial/the_slow_collapse_of_light.mp3',
+  vegers_vision: 'audio/music/celestial/vegers_vision.mp3',
 
   // SPEC 3.67 (ideas15.txt): the deep space ambient bed — loops on the
   // music bus under every mode (sector, combat, mining, course, turret,
@@ -265,6 +285,46 @@ window.AUDIO_MANIFEST = {
   shadow_thruster_4: 'audio/ships/thrusters/ship_thruster_3_4s.mp3'
 };
 
+// SPEC 3.80: SIM.music's playlists (style -> ordered list of manifest
+// keys) and their spoken titles. Keys are the files' own stems, never
+// renamed. One style today; more styles are just more entries here.
+window.MUSIC_STYLES = {
+  celestial: [
+    'aurora_memories',
+    'chronos_halos',
+    'cosmic_drift',
+    'cryoVault_elegy',
+    'dust_of_the_nebula',
+    'echos_in_the_comets_wake',
+    'echos_of_andromeda',
+    'final_transmission_from_vega',
+    'fingerprints_of_God',
+    'harmonic_singularity',
+    'hushed_by_gravity',
+    'midnight_on_europa',
+    'tears_of_the_ion_sea',
+    'the_slow_collapse_of_light',
+    'vegers_vision'
+  ]
+};
+window.MUSIC_TITLES = {
+  aurora_memories: 'Aurora Memories',
+  chronos_halos: 'Chronos Halos',
+  cosmic_drift: 'Cosmic Drift',
+  cryoVault_elegy: 'CryoVault Elegy',
+  dust_of_the_nebula: 'Dust of the Nebula',
+  echos_in_the_comets_wake: "Echoes in the Comet's Wake",
+  echos_of_andromeda: 'Echoes of Andromeda',
+  final_transmission_from_vega: 'Final Transmission from Vega',
+  fingerprints_of_God: 'Fingerprints of God',
+  harmonic_singularity: 'Harmonic Singularity',
+  hushed_by_gravity: 'Hushed by Gravity',
+  midnight_on_europa: 'Midnight on Europa',
+  tears_of_the_ion_sea: 'Tears of the Ion Sea',
+  the_slow_collapse_of_light: 'The Slow Collapse of Light',
+  vegers_vision: "V'Ger's Vision"
+};
+
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
 // the demo can reach without a special unlock, so the common path never
 // waits on a first-use fetch. Curated, not "all of AUDIO_MANIFEST": the
@@ -272,7 +332,10 @@ window.AUDIO_MANIFEST = {
 // interior (1.8 MB) is fetched when a sector run starts instead, since
 // only docking plays it. The space_station beacons DO preload — they're
 // real station voices in the live game as of SPEC 3.31, same as the ship
-// engine loops.
+// engine loops. SPEC 3.80: the fifteen music tracks are excluded by their
+// own folder (audio/music/) rather than a key prefix, since their names
+// don't share one — they stream through SIM.music on demand instead.
 window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
+  if (/^audio\/music\//.test(window.AUDIO_MANIFEST[k])) return false;
   return !/^(vortex\d|propeller_plane\d|station_interior|way_|menu_)/.test(k);
 });
