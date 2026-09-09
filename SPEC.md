@@ -6094,24 +6094,36 @@ it, for 3.67.
   to re-target... I'm thinking actually now of using Control for this
   as there would be times to jump forward/back too, like as an escape
   move or a chase down move, so Control + W/S and arrow keys."
-- **The conflict, first**: **Ctrl+W closes the browser tab** — in
-  every browser, and a page cannot prevent it. It's in `isBrowserKey`'s
-  escape hatch (`Ctrl+R/F/W/T`) precisely so the game never eats it.
-  Shift+arrows are free (nothing uses them) but Brian moved off Shift
-  for a reason. So: **Ctrl+arrows carry all four blinks** — Left/Right
-  sidestep, **Up = forward (the chase-down), Down = back (the escape)**
-  — the two cases Brian named. Vertical blinks (up/down in the world),
-  if wanted, go on **Ctrl+Shift+Up/Down**; Fable's lean is to build the
-  four first and add vertical only if the ear asks. Open in Part C.
-- **What a blink is**: an instant displacement of `blinkDist` (300)
-  along the ship's own right/forward axis (yaw only, world-horizontal
-  for the sidesteps — the ship doesn't roll), **facing and velocity
-  untouched** — Brian's own instinct, and the reason it works against
+- **Decided (Brian, 2026-09-08): Ctrl+Shift + the normal movement
+  keys.** Six blinks, one per movement key, the chord meaning "the
+  same direction, instantly": **Ctrl+Shift+Left/Right** sidestep,
+  **Ctrl+Shift+Up/Down** blink up/down in the world, **Ctrl+Shift+S**
+  back. **Forward is the one exception**: Ctrl+Shift+W closes the
+  browser WINDOW (Chrome, Edge, Firefox all reserve it, exactly as
+  Ctrl+W closes the tab — unpreventable, and `isBrowserKey`'s
+  `ctrlKey && 'w'` already lets it through so the game never eats
+  it), so forward is **Ctrl+Shift+A** — the one unbound letter under
+  the same hand, beside W and S. Flagged in Part C for Brian to swap if
+  he'd rather another key; the mechanic doesn't care which. (Firefox
+  uses Ctrl+Shift+S for a screenshot, but it isn't reserved — the page
+  keeps it.) Every chord is checked in `onKeyDown` BEFORE the existing
+  Shift chords, since Ctrl+Shift+S would otherwise read as Shift+S
+  (auto-reverse) and Ctrl+Shift+arrows as held arrows.
+- **What a blink is**: an instant displacement of `blinkDist` along
+  the ship's own axis — right/left and forward/back in the ship's yaw
+  frame, up/down world-vertical (the ship doesn't roll) — **facing and
+  velocity untouched** — Brian's own instinct, and the reason it works
+  against
   3.58: an enemy's facing cone (and its cannon) is still pointed where
-  you *were*, and its turn rate is the window you bought. Cost
-  `blinkRcs` 4 reaction mass, cooldown `blinkCooldownS` 3 (a `refusal_
-  wait` click with the seconds left), no charges — the tank is the
-  limit. A `blink` cue: a short cockpit thump at the origin and a
+  you *were*, and its turn rate is the window you bought. **The
+  distance is not known yet** — Brian: "I do not have a distance to
+  blink known yet." `blinkDist` ships at 300 as a pure placeholder
+  (roughly a sidestep out of a 70° cannon cone at 250), and
+  `poke({blinkDist})` lets it be changed live so he can try numbers
+  without a rebuild; the spoken blink line reads the distance so he
+  always knows what he just tried. Cost `blinkRcs` 4 reaction mass,
+  cooldown `blinkCooldownS` 3 (a `refusal_wait` click with the seconds
+  left), no charges — the tank is the limit. A `blink` cue: a short cockpit thump at the origin and a
   softer arrival, the same instant. Refused (offline buzz) while
   docked, warping, in the turret drill (the ship doesn't move there),
   or when over(); and a blink that would land inside `stationHullRadius`
@@ -6130,13 +6142,16 @@ it, for 3.67.
 - Enemies don't react to a blink in v1 beyond what 3.58 already does
   (their facing chases the ship's new position at the turn rate) —
   which IS the reaction.
-- Test: Ctrl+Right moves the ship exactly 300 along its right axis with
-  yaw, pitch, and velocity unchanged; reaction mass drops by 4; a
-  second Ctrl+Right inside 3 s refuses with the wait; a blink toward a
-  station from 200 out stops at the hull radius; the lock drops and
-  Shift+T reacquires; Ctrl+W still closes the tab (i.e. is never seen
-  by the game); a cannon ship's cone angle to the pilot jumps on a
-  sidestep and closes again at `enemyFacingTurnRateDeg`.
+- Test: Ctrl+Shift+Right moves the ship exactly `blinkDist` along its
+  right axis with yaw, pitch, and velocity unchanged; Ctrl+Shift+A
+  forward, Ctrl+Shift+S back, Ctrl+Shift+Up/Down world-vertical;
+  reaction mass drops by 4; a second blink inside 3 s refuses with the
+  wait; a blink toward a station from 200 out stops at the hull radius;
+  the lock drops and Shift+T reacquires; plain Shift+S still toggles
+  auto-reverse and plain arrows still turn (the chord check doesn't
+  steal them); Ctrl+Shift+W is never seen by the game; `poke({blinkDist:
+  600})` changes the next blink; a cannon ship's cone angle to the
+  pilot jumps on a sidestep and closes again at `enemyFacingTurnRateDeg`.
 
 #### 3.69 The capital ship: turrets behind doors (ideas15.txt) — proposed, an encounter
 
@@ -7426,11 +7441,16 @@ written into Phase 3E as 3.66–3.69. Verdicts:
   queued (3.55, 3.61–3.64, 3.59b) — Brian's notes are play feedback on
   what's built, and 3.69 is the biggest encounter on the list.
 
-**DECIDE (open, from ideas15.txt)**: 1. Blink keys — Ctrl+arrows with
-Up/Down as forward/back (Fable), or something else? Vertical blinks on
-Ctrl+Shift+Up/Down, or not at all? 2. Blink on the flight course:
-refused like weapons (Fable), or allowed? 3. `blinkDist` 300 /
-`blinkRcs` 4 / 3 s cooldown — placeholders. 4. Field cap 80, −10 a
+**Decided (Brian, 2026-09-08)**: blink is **Ctrl+Shift + the normal
+movement keys** — all six directions; no distance known yet, so
+`blinkDist` is a live-pokeable placeholder and the blink line speaks
+it.
+
+**DECIDE (open, from ideas15.txt)**: 1. Forward can't be Ctrl+Shift+W
+(closes the browser window) — Fable put it on **Ctrl+Shift+A**; swap it
+if you'd rather. 2. Blink on the flight course: refused like weapons
+(Fable), or allowed? 3. `blinkDist` (300 placeholder, poke it live) /
+`blinkRcs` 4 / 3 s cooldown. 4. Field cap 80, −10 a
 repeat, floor 50 — placeholders. 5. Z's chain window (4 s) and the
 category order. 6. The capital ship: cannon turrets, beam turrets, or
 mixed; a parent hull of its own (v1: no); how many turrets (4).

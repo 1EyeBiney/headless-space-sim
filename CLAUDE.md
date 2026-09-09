@@ -3458,3 +3458,14 @@ that opens 4 s before it fires and closes 2 s after — the door IS the
 telegraph — a new `lockToneKind` 'shielded' (solid + slow tremolo) as
 the reticle, 3.35's `capital` explosion pool on the kill. Six questions
 in Part C. Nothing built. Next: Sonnet builds 3.67.
+**Round 47, continued**: Brian decided blink is **Ctrl+Shift + the
+normal movement keys** (arrows ×4, W, S) with no distance known yet.
+Written into 3.68: Ctrl+Shift+Left/Right sidestep, Ctrl+Shift+Up/Down
+world-vertical, Ctrl+Shift+S back, and **forward on Ctrl+Shift+A**
+because Ctrl+Shift+W closes the browser window (reserved everywhere,
+unpreventable, already passed through by `isBrowserKey`) — flagged in
+Part C for him to swap. `blinkDist` is a 300 placeholder, live via
+`poke({blinkDist})`, and the blink line speaks it so he can try
+numbers. Sonnet: the Ctrl+Shift chord check goes in `onKeyDown` BEFORE
+the existing Shift-chord block, or Ctrl+Shift+S reads as auto-reverse.
+Next: Sonnet builds 3.67 → 3.66 → 3.68 → 3.69.
