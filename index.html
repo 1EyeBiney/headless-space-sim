@@ -682,7 +682,15 @@ var CFG_DEFAULTS = {
     turretAmbientDuck: 0.5,           // SPEC 3.72: the deep-space bed (3.67) at this fraction while the drill runs
     turretStreakFor: 5, turretStreakShieldS: 6,
 
-    radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0   // +6 dB
+    radarBurstMs: 350, radarGapMs: 450, radarBoost: 2.0,   // +6 dB
+
+    // SPEC 3.71 (ideas16.txt, Brian's own scoring table, 2026-09-09): the
+    // standalone Mining drill's own clock (a real quadrant field visit or
+    // the demo/contract's own mining leg has none, and stays none — only
+    // the Encounters-menu drill runs to a clock). Ore in the hold when the
+    // clock or the cloud runs out first is the board's headline.
+    miningDrillS: 420,               // 7 minutes
+    miningClockMarks: [60, 10]        // seconds-left spoken marks
 };
 
 // The live config: a fresh copy of the numeric baseline with the active
@@ -740,10 +748,19 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 13;
+var PROFILE_VERSION = 14;
 
 function defaultProfile() {
-    return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
+    // SPEC 3.71: `boards[kind]` (best-10 each) replaces what used to be
+    // eight separate top-level array fields (runs/contractRuns/courseRuns/
+    // turretRuns/minefieldRuns/shadowRuns/nebulaRuns/gateRunRuns) — see
+    // loadProfile()'s own v13->v14 migration for how an old save's data
+    // moves in unchanged. `upgrades: []` here is still the actual list of
+    // owned module ids (unrelated to boards; BOARDS.runs.line() reads its
+    // LENGTH off a stored run's own `upgrades` count, not this live list).
+    var boards = {};
+    BOARD_ORDER.forEach(function (k) { boards[k] = []; });
+    return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0,
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: SOUND_LEVELS.length - 1, cockpit: SOUND_LEVELS.length - 1, effects: SOUND_LEVELS.length - 1 }, beacons: 'on',
              resources: { salvage: 0, alloy: 0 },
@@ -758,27 +775,7 @@ function defaultProfile() {
              // Frontier exists.
              clock: 0, missionCooldownUntil: { escort: 0, defend: 0, contract: 0, distress: 0 },
              quadrants: {}, quadrantId: 'home',
-             // SPEC 3.28: the quadrant's own timed delivery contract keeps a
-             // separate best-10 log from the fixed Delivery run's `runs` —
-             // the two never merge, since the contract's legs vary with
-             // whatever the sky looks like that trip.
-             contractRuns: [],
-             // SPEC 3.41: the flight course's own best-10 log — a third
-             // board, same reasoning as contractRuns above.
-             courseRuns: [],
-             // SPEC 3.65: the turret defense drill's own best-10 log, by
-             // score rather than time — a fourth board, same reasoning.
-             turretRuns: [],
-             // SPEC 3.61: the minefield's own best-10 log, by time again —
-             // a fifth board, same reasoning.
-             minefieldRuns: [],
-             // SPEC 3.62: the shadow's own best-10 log — a sixth board.
-             shadowRuns: [],
-             // SPEC 3.63: the nebula transit's own best-10 log — a seventh
-             // board.
-             nebulaRuns: [],
-             // SPEC 3.64: the gate run's own best-10 log — a ninth board.
-             gateRunRuns: [] };
+             boards: boards };
 }
 
 function loadProfile() {
@@ -885,6 +882,34 @@ function loadProfile() {
     if (!Array.isArray(profile.nebulaRuns)) profile.nebulaRuns = [];
     // v12 -> v13 (SPEC 3.64): the gate run's own run log.
     if (!Array.isArray(profile.gateRunRuns)) profile.gateRunRuns = [];
+    // v13 -> v14 (SPEC 3.71): one `profile.boards[kind]` object replaces
+    // the eight separate top-level arrays just backfilled above —
+    // unchanged, entries intact (an old save's own `courseRuns` becomes
+    // `boards.course`); the six brand-new boards (combat/mining/haul/
+    // capital/escort/defend) simply start empty, nothing to migrate for
+    // those. Real bug found in testing: `defaultProfile()` now seeds
+    // `profile.boards` with all fourteen keys already present as EMPTY
+    // arrays (needed so a genuinely fresh profile has every board from
+    // the start) — an `!Array.isArray(profile.boards[newKey])` guard here
+    // (meant to avoid clobbering an already-migrated board) is therefore
+    // ALWAYS false, since an empty array still passes Array.isArray, so
+    // the copy never ran and every old save's real data was silently
+    // dropped. Fixed by keying the copy on the OLD array actually having
+    // entries instead — `delete profile[oldKey]` below is what actually
+    // makes this idempotent (a save already migrated once has no old
+    // field left to re-read), not a check on the board's own contents.
+    if (!profile.boards || typeof profile.boards !== 'object') profile.boards = {};
+    var OLD_BOARD_FIELDS = { runs: 'runs', contractRuns: 'contract', courseRuns: 'course',
+                              turretRuns: 'turret', minefieldRuns: 'minefield', shadowRuns: 'shadow',
+                              nebulaRuns: 'nebula', gateRunRuns: 'gaterun' };
+    Object.keys(OLD_BOARD_FIELDS).forEach(function (oldKey) {
+        var newKey = OLD_BOARD_FIELDS[oldKey];
+        if (Array.isArray(profile[oldKey]) && profile[oldKey].length) {
+            profile.boards[newKey] = profile[oldKey];
+        }
+        delete profile[oldKey];
+    });
+    BOARD_ORDER.forEach(function (k) { if (!Array.isArray(profile.boards[k])) profile.boards[k] = []; });
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -952,104 +977,91 @@ function saveProfile() {
     } catch (e) { /* can't persist; the session still plays fine */ }
 }
 
-// Records a completed delivery run, keeps the best 10 by time, and returns
-// whether it beat the previous best (undefined if this is the first run).
-function recordRun(seconds) {
+// SPEC 3.71 (ideas16.txt, Brian's own scoring table, 2026-09-09): one
+// shape for every encounter's own best-10 log, replacing what had grown
+// into eight near-identical push/sort/slice/save functions (recordRun,
+// recordContractRun, recordCourseRun, recordMinefieldRun, recordShadowRun,
+// recordNebulaRun, recordGateRunRun, recordTurretRun — see git history for
+// their own original shapes). `rank` names which field of a stored entry
+// is the ranked headline (SPEC 3.70's own debrief line 1); `dir` says
+// which way wins; `line(entry)` is what the Run log speaks for one entry
+// (runLogItems(), below). The Contested Zone and the distress call get NO
+// board here (Brian's own call, debrief only) — not listed.
+//
+// The table names FOURTEEN boards, not the twelve the spec's own prose
+// counted — "four new kinds (combat, mining, haul, capital) plus escort/
+// defend drills" is 6 new alongside the 8 that already existed, not 4;
+// flagged here as an apparent undercount in the spec text rather than
+// silently reconciled, since fourteen is what the table's own sixteen
+// rows minus its two "no board" rows actually adds up to.
+var BOARD_ORDER = ['runs', 'contract', 'course', 'minefield', 'shadow', 'nebula', 'gaterun',
+                    'combat', 'mining', 'escort', 'defend', 'turret', 'haul', 'capital'];
+var BOARDS = {
+    runs:      { label: 'Delivery run', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) + ' (' + (TIERS[e.tier] ? TIERS[e.tier].name : '?') +
+                                       (e.upgrades ? ', ' + e.upgrades + ' modules' : '') + ')'; } },
+    contract:  { label: 'Timed contract', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) + ' (' + (TIERS[e.tier] ? TIERS[e.tier].name : '?') + ')'; } },
+    course:    { label: 'Flight course', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) +
+                                       (typeof e.avgOffset === 'number' ? ', average ' + Math.round(e.avgOffset) + ' off centre' : '') +
+                                       (typeof e.made === 'number' ? ', ' + e.made + ' of ' + (e.made + e.missed) + ' gates clean' : ''); } },
+    minefield: { label: 'Minefield', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) +
+                                       (typeof e.detonations === 'number' ? ', ' + e.detonations + (e.detonations === 1 ? ' mine' : ' mines') + ' detonated' : ''); } },
+    shadow:    { label: 'The shadow', rank: 'seconds', dir: 'asc',
+                 line: function (e) {
+                     var t = fmtTime(e.seconds);
+                     if (typeof e.efficiency !== 'number') return t;   // a pre-3.71 entry has no metrics — read the time alone
+                     return t + ', ' + Math.round(e.efficiency) + ' percent contact, ' + e.timesLost +
+                            (e.timesLost === 1 ? ' time lost, longest hold ' : ' times lost, longest hold ') + fmtTime(e.longestHold);
+                 } },
+    nebula:    { label: 'Nebula transit', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) + (typeof e.hull === 'number' ? ', hull ' + e.hull + ' percent' : ''); } },
+    gaterun:   { label: 'The gate run', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) +
+                                       (typeof e.wasted === 'number' ? ', ' + e.wasted + (e.wasted === 1 ? ' pass wasted' : ' passes wasted') : ''); } },
+    combat:    { label: 'Combat training', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) + ', hull ' + e.hull + ' percent, ' +
+                                       e.missilesUsed + ' missiles used, ' + e.accuracy + ' percent accuracy'; } },
+    mining:    { label: 'Mining', rank: 'ore', dir: 'desc',
+                 line: function (e) { return e.ore + ' ore' + (e.cleared ? ', cleared in ' + fmtTime(e.seconds) : ' (clock ran out)') +
+                                       ', ' + e.cores + (e.cores === 1 ? ' core' : ' cores') + ' extracted'; } },
+    escort:    { label: 'Escort drill', rank: 'hullPct', dir: 'desc',
+                 line: function (e) { return e.hullPct + ' percent freighter hull, ' + e.cleared + ' drones cleared, ' +
+                                       e.credits + ' credits, own hull ' + e.ownHullPct + ' percent'; } },
+    defend:    { label: 'Defend drill', rank: 'hullPct', dir: 'desc',
+                 line: function (e) { return e.hullPct + ' percent miner hull, ' + e.cleared + ' raiders cleared, ' +
+                                       'last wave at ' + fmtTime(e.seconds); } },
+    turret:    { label: 'Turret defense', rank: 'score', dir: 'desc',
+                 line: function (e) { return 'score ' + e.score +
+                                       (typeof e.accuracy === 'number' ? ', ' + e.accuracy + ' percent accuracy' : '') +
+                                       (typeof e.bestStreak === 'number' ? ', best streak ' + e.bestStreak : ''); } },
+    haul:      { label: 'The haul', rank: 'rcsSpent', dir: 'asc',
+                 line: function (e) { return Math.round(e.rcsSpent) + ' reaction mass, ' + fmtTime(e.seconds) + ', ' +
+                                       e.parted + (e.parted === 1 ? ' time parted' : ' times parted'); } },
+    capital:   { label: 'Capital ship', rank: 'seconds', dir: 'asc',
+                 line: function (e) { return fmtTime(e.seconds) + ', hull ' + e.hull + ' percent, ' +
+                                       e.refused + (e.refused === 1 ? ' shot refused' : ' shots refused') + ' by a closed door'; } }
+};
+// Records a completed run against its own board: best-10, sorted by that
+// board's own rank field and direction, most-recent entry stamped with
+// today's date. Returns the PREVIOUS best value of the ranked field
+// (undefined on a first-ever run) — not a boolean — so a finish line can
+// speak the real delta ("New personal best by N seconds") the way every
+// board since SPEC 3.49 already has; callers ranked by time (fmtTime) or
+// a plain count both read `prevBest` the same way, just with different
+// formatting at the call site.
+function recordRun(kind, entry) {
     if (!profile) return undefined;
-    var prevBest = profile.runs.length ? profile.runs[0].seconds : undefined;
-    profile.runs.push({ seconds: seconds, tier: tierIdx, upgrades: profile.upgrades.length,
-                         date: new Date().toISOString().slice(0, 10) });
-    profile.runs.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.runs = profile.runs.slice(0, 10);
-    saveProfile();
-    return prevBest === undefined || seconds < prevBest;
-}
-
-// SPEC 3.28: the quadrant's own timed contract, same bookkeeping as
-// recordRun but its own array — the two boards never merge, since the
-// contract's legs vary with whatever the sky looks like that trip.
-function recordContractRun(seconds) {
-    if (!profile) return undefined;
-    var prevBest = profile.contractRuns.length ? profile.contractRuns[0].seconds : undefined;
-    profile.contractRuns.push({ seconds: seconds, tier: tierIdx, date: new Date().toISOString().slice(0, 10) });
-    profile.contractRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.contractRuns = profile.contractRuns.slice(0, 10);
-    saveProfile();
-    return prevBest === undefined || seconds < prevBest;
-}
-
-// SPEC 3.41: the flight course's own best-10 board — a third, separate from
-// runs/contractRuns, since its own legs are fixed (today's one course) but
-// don't compare meaningfully to either the delivery run or the contract.
-// SPEC 3.49: returns the PREVIOUS best in seconds (undefined on a first-
-// ever run) rather than a plain boolean, so finishCourse() can speak the
-// actual delta ("N seconds off your best") and not just whether it won.
-function recordCourseRun(seconds, avgOffset) {
-    if (!profile) return undefined;
-    var prevBest = profile.courseRuns.length ? profile.courseRuns[0].seconds : undefined;
-    profile.courseRuns.push({ seconds: seconds, avgOffset: avgOffset, date: new Date().toISOString().slice(0, 10) });
-    profile.courseRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.courseRuns = profile.courseRuns.slice(0, 10);
-    saveProfile();
-    return prevBest;
-}
-
-// SPEC 3.61: the minefield's own best-10 board, same shape as the flight
-// course's — a clock, ranked by time, returning the previous best so the
-// final line can speak the real delta.
-function recordMinefieldRun(seconds, detonations) {
-    if (!profile) return undefined;
-    var prevBest = profile.minefieldRuns.length ? profile.minefieldRuns[0].seconds : undefined;
-    profile.minefieldRuns.push({ seconds: seconds, detonations: detonations, date: new Date().toISOString().slice(0, 10) });
-    profile.minefieldRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.minefieldRuns = profile.minefieldRuns.slice(0, 10);
-    saveProfile();
-    return prevBest;
-}
-
-// SPEC 3.62: the shadow's own best-10 board, same shape again.
-function recordShadowRun(seconds) {
-    if (!profile) return undefined;
-    var prevBest = profile.shadowRuns.length ? profile.shadowRuns[0].seconds : undefined;
-    profile.shadowRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
-    profile.shadowRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.shadowRuns = profile.shadowRuns.slice(0, 10);
-    saveProfile();
-    return prevBest;
-}
-
-// SPEC 3.63: the nebula transit's own best-10 board, same shape again.
-function recordNebulaRun(seconds) {
-    if (!profile) return undefined;
-    var prevBest = profile.nebulaRuns.length ? profile.nebulaRuns[0].seconds : undefined;
-    profile.nebulaRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
-    profile.nebulaRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.nebulaRuns = profile.nebulaRuns.slice(0, 10);
-    saveProfile();
-    return prevBest;
-}
-
-// SPEC 3.64: the gate run's own best-10 board, same shape again.
-function recordGateRunRun(seconds, wasted) {
-    if (!profile) return undefined;
-    var prevBest = profile.gateRunRuns.length ? profile.gateRunRuns[0].seconds : undefined;
-    profile.gateRunRuns.push({ seconds: seconds, wasted: wasted, date: new Date().toISOString().slice(0, 10) });
-    profile.gateRunRuns.sort(function (a, b) { return a.seconds - b.seconds; });
-    profile.gateRunRuns = profile.gateRunRuns.slice(0, 10);
-    saveProfile();
-    return prevBest;
-}
-
-// SPEC 3.65: the turret drill's own board, ranked by SCORE (not time — a
-// drill of fixed length, so higher is simply better), keeping accuracy and
-// best streak alongside for the Run log's own one-line summary.
-function recordTurretRun(score, accuracyPct, bestStreak) {
-    if (!profile) return undefined;
-    var prevBest = profile.turretRuns.length ? profile.turretRuns[0].score : undefined;
-    profile.turretRuns.push({ score: score, accuracy: accuracyPct, bestStreak: bestStreak,
-                               date: new Date().toISOString().slice(0, 10) });
-    profile.turretRuns.sort(function (a, b) { return b.score - a.score; });
-    profile.turretRuns = profile.turretRuns.slice(0, 10);
+    var b = BOARDS[kind];
+    if (!b) return undefined;
+    var list = profile.boards[kind] || (profile.boards[kind] = []);
+    var prevBest = list.length ? list[0][b.rank] : undefined;
+    entry.date = new Date().toISOString().slice(0, 10);
+    list.push(entry);
+    list.sort(function (x, y) { return b.dir === 'asc' ? x[b.rank] - y[b.rank] : y[b.rank] - x[b.rank]; });
+    profile.boards[kind] = list.slice(0, 10);
     saveProfile();
     return prevBest;
 }
@@ -1492,9 +1504,9 @@ function clearCourseGate(clean, lateral) {
     else activateCourseGate(i + 1, missText);
 }
 // SPEC 3.49: the final line folds in the made/missed tally and how this
-// run ranks against the best time on file — recordCourseRun returns the
-// PREVIOUS best (undefined on a first-ever run) rather than a plain
-// boolean, so the delta itself can be spoken either way.
+// run ranks against the best time on file — recordRun('course', ...)
+// returns the PREVIOUS best (undefined on a first-ever run) rather than a
+// plain boolean, so the delta itself can be spoken either way.
 function finishCourse(prefix) {
     won = true;
     stopLockTone();
@@ -1503,7 +1515,8 @@ function finishCourse(prefix) {
     // misses both counted at their real distance — read out, never a second
     // ranked board (time alone still decides personal best).
     var avgOffset = courseState.offsets.reduce(function (a, b) { return a + b; }, 0) / courseState.offsets.length;
-    var prevBest = recordCourseRun(seconds, avgOffset);
+    var prevBest = recordRun('course', { seconds: seconds, avgOffset: avgOffset,
+                                          made: courseState.made, missed: courseState.missed });
     var rankText;
     if (prevBest === undefined) rankText = 'Your first time.';
     else if (seconds < prevBest) rankText = 'New personal best by ' + fmtTime(prevBest - seconds) + '.';
@@ -1575,7 +1588,7 @@ function minefieldIntro() {
 function finishMinefield() {
     won = true;
     var seconds = minefieldState.elapsed;
-    var prevBest = recordMinefieldRun(seconds, minefieldState.detonations);
+    var prevBest = recordRun('minefield', { seconds: seconds, detonations: minefieldState.detonations });
     var rankText = prevBest === undefined ? 'Your first time.'
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
@@ -1654,18 +1667,22 @@ function shadowIntro() {
 function finishShadow() {
     won = true;
     var seconds = shadowState.elapsed;
-    var prevBest = recordShadowRun(seconds);
+    // SPEC 3.71: contact efficiency (contact/elapsed), times lost, and the
+    // longest unbroken hold — Brian's own ask, "time alone hides the
+    // skill." All three are already tracked live by updateShadow's own
+    // range-crossing logic; this just reads them at the finish.
+    var efficiency = seconds > 0 ? clamp(shadowState.contact / seconds * 100, 0, 100) : 100;
+    var prevBest = recordRun('shadow', { seconds: seconds, efficiency: efficiency,
+                                          timesLost: shadowState.timesLost, longestHold: shadowState.longestHold });
     var rankText = prevBest === undefined ? 'Your first time.'
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
-    // SPEC 3.70: contact efficiency/times-lost/longest-hold are 3.71's own
-    // job — this just reads what's already tracked (elapsed, contact
-    // seconds), same "no new measures here" rule every encounter's line-up
-    // follows this round.
     openDebrief('Contact held',
         [ 'Time ' + fmtTime(seconds) + '.',
-          'Contact ' + Math.round(shadowState.contact) + ' seconds.',
+          Math.round(efficiency) + ' percent contact.',
+          shadowState.timesLost + (shadowState.timesLost === 1 ? ' time lost.' : ' times lost.'),
+          'Longest hold ' + fmtTime(shadowState.longestHold) + '.',
           rankText ],
         'Enter tries again, X for the mission menu.');
 }
@@ -1762,8 +1779,24 @@ function updateShadow(dt) {
     t.pos = add(t.pos, scale(t.vel, dt));
     if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
 
-    if (shadowState.started && len(sub(t.pos, ship.pos)) <= CFG.shadowRange) {
-        shadowState.contact += dt;
+    // SPEC 3.71: contact efficiency (contact/elapsed), times lost (a real
+    // RANGE crossing out — independent of lit/dark, which never gates
+    // accrual at all, see the CFG note above), and the longest unbroken
+    // hold — all three are Brian's own ask for this encounter specifically
+    // ("time alone hides the skill"). `inRange` is sticky so only the
+    // TRANSITION counts, not every frame spent outside.
+    if (shadowState.started) {
+        var inRangeNow = len(sub(t.pos, ship.pos)) <= CFG.shadowRange;
+        if (inRangeNow) {
+            if (!shadowState.inRange) shadowState.currentHold = 0;
+            shadowState.currentHold += dt;
+            if (shadowState.currentHold > shadowState.longestHold) shadowState.longestHold = shadowState.currentHold;
+            shadowState.contact += dt;
+        } else {
+            if (shadowState.inRange) shadowState.timesLost++;
+            shadowState.currentHold = 0;
+        }
+        shadowState.inRange = inRangeNow;
         if (shadowState.contact >= CFG.shadowNeedS) finishShadow();
     }
 }
@@ -1804,7 +1837,7 @@ function nebulaIntro() {
 function finishNebula() {
     won = true;
     var seconds = nebulaState.elapsed;
-    var prevBest = recordNebulaRun(seconds);
+    var prevBest = recordRun('nebula', { seconds: seconds, hull: Math.round(hull) });
     var rankText = prevBest === undefined ? 'Your first time.'
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
@@ -1881,7 +1914,7 @@ function gateBeamDiffDeg(t) {
 function finishGateRun() {
     won = true;
     var seconds = gateRunState.elapsed;
-    var prevBest = recordGateRunRun(seconds, gateRunState.wasted);
+    var prevBest = recordRun('gaterun', { seconds: seconds, wasted: gateRunState.wasted });
     var rankText = prevBest === undefined ? 'Your first time.'
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
@@ -2094,6 +2127,14 @@ function missionEnd(success) {
         // nothing to credit, gainFavor's own `poi` guard needs a falsy value,
         // not an object wrapping a null name.
         if (mission.poiName) gainFavor({ name: mission.poiName }, CFG.favorMission);
+        // SPEC 3.71: escort and defend keep separate boards, both ranked by
+        // the friendly's own hull percent at the end — a station-offered
+        // mission records here too, same as a drill; only the debrief's
+        // own options text differs by poiName (below).
+        var hullPct = Math.round(frac * 100);
+        var cleared = mission.cleared || 0;
+        recordRun(mission.kind, { hullPct: hullPct, cleared: cleared, credits: reward,
+                                   ownHullPct: Math.round(hull), seconds: Math.round(mission.elapsed) });
         saveProfile();
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
@@ -2103,9 +2144,12 @@ function missionEnd(success) {
             // shared debrief shell — station-offered and drill both get one,
             // just with different options text (3.70's own "station-offered
             // escort/defend — their own mission-complete lines split").
+            var lastWaveLine = mission.kind === 'defend' ? ' Last wave cleared at ' + fmtTime(mission.elapsed) + '.' : '';
             openDebrief('Mission complete',
-                [ mission.friendly.name + ' home at ' + Math.round(frac * 100) + ' percent.',
-                  reward + ' credits earned, reaction mass topped up.' ],
+                [ mission.friendly.name + ' home at ' + hullPct + ' percent.' + lastWaveLine,
+                  reward + ' credits earned, reaction mass topped up.',
+                  cleared + (mission.kind === 'escort' ? (cleared === 1 ? ' drone cleared.' : ' drones cleared.')
+                                                        : (cleared === 1 ? ' raider cleared.' : ' raiders cleared.')) ],
                 mission.poiName ? 'X returns to the sector.' : 'Enter plays again, X for the mission menu.');
         }, 900);
     } else {
@@ -2477,6 +2521,16 @@ var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while
 var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
 var nebulaState = null; // SPEC 3.63: { elapsed, started, inside, cloudCenter } while mode === 'nebula'
 var gateRunState = null; // SPEC 3.64: { elapsed, started, wasted } while mode === 'gaterun'
+// SPEC 3.71: the standalone Mining drill's own clock/started pair — null
+// for a quadrant field visit, the demo/contract's own leg, the haul, or
+// the distress call, all of which reach mode 'mining' by a DIFFERENT path
+// (a direct newGame('mining', ...) call, never startMission('mining')) and
+// so never have this set at all. `cores` counts a real E extraction.
+var miningState = null; // { elapsed, started, cores } while the drill is live
+// SPEC 3.71: the standalone Combat drill's own clock and laser-accuracy
+// counters — null outside it (a mission/capital encounter's own combat
+// tracks nothing here; those get their own fields below).
+var combatState = null; // { elapsed, started, shotsFired, shotsLanded } while the drill is live
 // SPEC 3.59 (ideas14.txt): the turret defense drill — the ship doesn't fly;
 // three fixed zones (left/centre/right), each with its own laser cooldown
 // and shield, at most one incoming at a time. { zone, zones: [{laserReadyAt,
@@ -3863,7 +3917,10 @@ function destroyTarget(t, extra) {
     // generic check would never fire for escort (whose win condition is
     // the leg timer) and would fire too early for defend (right after any
     // single wave, before the next one spawns) if left in charge here.
-    if (mission) return false;
+    // SPEC 3.71: one kill counter for the board's own "cleared" column —
+    // t.kind is falsy only for combat ships, so this never counts the
+    // friendly itself (kind: 'friendly') dying.
+    if (mission) { if (!t.kind) mission.cleared = (mission.cleared || 0) + 1; return false; }
     var left = aliveTargets().length;
     if (left === 0) {
         won = true;
@@ -3875,11 +3932,17 @@ function destroyTarget(t, extra) {
         // to a standalone drill with no sectorHome anyway.
         if (capital) {
             var capPos = capital.pos;
+            // SPEC 3.71: captured now, not read inside the timeout below —
+            // `capital` itself is about to be nulled by clearMission() if
+            // the player retries or leaves before that timeout fires.
+            var capSeconds = Math.round(capital.elapsed), capRefused = capital.refused;
+            recordRun('capital', { seconds: capSeconds, hull: Math.round(hull), refused: capRefused });
             setTimeout(function () { SIM.cues.play('explosion_kill', { pos: capPos, size: 'capital' }); }, 400);
             setTimeout(function () {
                 openDebrief('The capital ship breaks apart',
-                    [ (extra || '') + 'Last turret down.',
-                      'Your hull ' + Math.round(hull) + ' percent.' ],
+                    [ (extra || '') + 'Last turret down. Time ' + fmtTime(capSeconds) + '.',
+                      'Your hull ' + Math.round(hull) + ' percent.',
+                      capRefused + (capRefused === 1 ? ' shot refused by a closed door.' : ' shots refused by a closed door.') ],
                     'Enter plays again, X for the mission menu.');
             }, 900);
             return true;
@@ -3933,6 +3996,20 @@ function destroyTarget(t, extra) {
                 lines = [ headline, 'Contract clock ' + fmtTime(contract.elapsed) + '.',
                           'Next: mine ' + CFG.demoOreGoal + ' ore at any field and deliver it to Station Meridian.' ];
                 options = 'X returns to the sector.';
+            } else if (combatState) {
+                // SPEC 3.71: the standalone drill's own board — headline is
+                // time to clear (never a real Contested Zone; combatState
+                // is only ever set for startMission('combat'), not the
+                // sectorHome path, which has no board of its own).
+                var accuracyPct = combatState.shotsFired > 0
+                    ? Math.round(combatState.shotsLanded / combatState.shotsFired * 100) : 0;
+                recordRun('combat', { seconds: Math.round(combatState.elapsed), hull: Math.round(hull),
+                                       missilesUsed: CFG.missileMax - missiles, accuracy: accuracyPct });
+                lines = [ headline + ' Time ' + fmtTime(combatState.elapsed) + '.',
+                          'Your hull ' + Math.round(hull) + ' percent.',
+                          'Missiles used: ' + (CFG.missileMax - missiles) + ' of ' + CFG.missileMax + '.',
+                          'Accuracy ' + accuracyPct + ' percent.' ];
+                options = 'Enter plays again, X for the mission menu.';
             } else {
                 lines = [ headline, 'Your hull ' + Math.round(hull) + ' percent.',
                           'Missiles remaining ' + missiles + '.' ];
@@ -4319,6 +4396,10 @@ function startBeam(tool) {
         return;
     }
     if (L) wearLaser(L.family);   // SPEC 3.26: committed to firing — every burst wears, hit or miss
+    // SPEC 3.71: the standalone Combat drill's own laser-accuracy counter —
+    // counts the BURST, not the tick (a burst that lands one tick out of
+    // five still counts as one landed shot, via beam.landedCounted below).
+    if (L && combatState) combatState.shotsFired++;
     // SPEC 3.52: any beam tool (laser, extractor, vacuum) committing to fire
     // cuts an active tractor — silent, the hum stopping is already the
     // audible tell, no second say() competing with the firing announcement.
@@ -4458,6 +4539,7 @@ function beamTick() {
             // SPEC 3.69: a capital turret behind its own shield door — the
             // one refusal that ISN'T an offline buzz, since this is
             // combat feedback, not a mode/capability mismatch.
+            if (capital) capital.refused++;   // SPEC 3.71
             SIM.cues.play('shield_splash');
             say('Shielded.');
         } else {
@@ -4465,6 +4547,8 @@ function beamTick() {
             // rocks) via CFG.laserShipMult, so the spoken number reflects it.
             dmg = Math.ceil(dmg * laserMatchupMult(L, t) * CFG.laserShipMult);
             beam.totalDamage += dmg;
+            // SPEC 3.71: one landed shot per BURST, not per tick.
+            if (combatState && !beam.landedCounted) { beam.landedCounted = true; combatState.shotsLanded++; }
             if (damageTarget(t, dmg)) { stopBeam(true); return; }
             say(String(dmg));
         }
@@ -4526,6 +4610,7 @@ function vacTick() {
         }
         say('Core depleted. Ore hold ' + ore + '.' + bonus);
         if (targets[selected] === t) selectNearest();
+        if (miningState) miningState.cores++;   // SPEC 3.71: the standalone drill's own board
         checkMiningEnd();
         return;
     }
@@ -4713,6 +4798,7 @@ function stepMissile(dt) {
                 say(t.name + ' is blasted out of control and hurtles toward the edge of the cloud!');
             }
         } else if (t.doorUp) {
+            if (capital) capital.refused++;   // SPEC 3.71
             SIM.cues.play('shield_splash');
             say('Shielded.');
         } else if (!damageTarget(t, CFG.missileDamage)) {
@@ -6054,6 +6140,7 @@ function haulHomeTarget() { return haul ? targets[haul.homeIdx] : null; }
 // visibly/audibly connected under ordinary play regardless of how strained
 // the line is — strain is a warning, not a physical leash length.
 function updateHaulTow(t, dt) {
+    haul.elapsed += dt;   // SPEC 3.71: "also kept", not the headline
     var tier = TRACTOR_TIERS[tractor.tier - 1];
     var idealPos = sub(ship.pos, scale(shipForward(), CFG.haulTowDist));
     var toIdeal = sub(idealPos, t.pos);
@@ -6094,6 +6181,7 @@ function updateHaulTow(t, dt) {
 
     if (haul.strain >= 1) {
         stopHaulCreak();
+        haul.parted++;   // SPEC 3.71
         stopTractor('Tow line parted.');
         return;
     }
@@ -6110,9 +6198,14 @@ function finishHaul() {
     stopTractor(null);   // silent — openDebrief below is the one combined say() (SPEC 2.15)
     won = true;
     var spent = Math.round(haul.rcsSpent);
+    // SPEC 3.71: reaction mass spent is the headline (lower is better) —
+    // time and how many times the line parted ride alongside.
+    recordRun('haul', { rcsSpent: spent, seconds: Math.round(haul.elapsed), parted: haul.parted });
     openDebrief('Tow complete',
         [ 'Reaction mass spent ' + spent + ', par ' + CFG.haulPar + '.',
-          spent <= CFG.haulPar ? 'Under par.' : 'Over par by ' + (spent - CFG.haulPar) + '.' ],
+          spent <= CFG.haulPar ? 'Under par.' : 'Over par by ' + (spent - CFG.haulPar) + '.',
+          'Time ' + fmtTime(haul.elapsed) + '.',
+          haul.parted + (haul.parted === 1 ? ' time parted.' : ' times parted.') ],
         'Enter tries again, X for the mission menu.');
 }
 
@@ -6304,13 +6397,62 @@ function checkMiningEnd() {
     }
     won = true;
     if (ore > 0) setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
-    // SPEC 3.70: a 7-minute clock and reaction-mass-spent line land with
-    // 3.71's own scoring pass — for now this reads what's already tracked.
+    // SPEC 3.71: the standalone drill's own board — the cloud cleared
+    // before the clock ran out. `ore` is the headline (higher wins);
+    // `updateMining`'s own clock-out path (finishMiningDrillClock, below)
+    // is the other way this can end, never both.
+    if (miningState) {
+        var msg = miningState;
+        recordRun('mining', { ore: ore, seconds: Math.round(msg.elapsed), cleared: true, cores: msg.cores });
+        setTimeout(function () {
+            openDebrief('Cloud cleared',
+                [ 'Ore hold ' + ore + '.',
+                  'Cleared with ' + fmtTime(Math.max(0, CFG.miningDrillS - msg.elapsed)) + ' to spare.',
+                  msg.cores + (msg.cores === 1 ? ' core extracted.' : ' cores extracted.') ],
+                'Enter mines a fresh cloud, X for the mission menu.');
+        }, 700);
+        return;
+    }
     setTimeout(function () {
         openDebrief('Cloud cleared',
             [ 'Ore hold ' + ore + '.' ],
             'Enter mines a fresh cloud, X ' + (sectorHome ? 'to return to the sector.' : 'for the mission menu.'));
     }, 700);
+}
+// SPEC 3.71: the standalone Mining drill's own 7-minute clock (elsewhere,
+// a real quadrant field or the demo/contract's own leg never sets
+// miningState at all — see its declaration). Ends the run at zero
+// regardless of what's left in the cloud; a beam already in flight (E or
+// V) finishes its own current tick untouched, same as any other tool does
+// once `won` flips — nothing here interrupts it directly.
+function updateMining(dt) {
+    if (!miningState || won || lost || !miningState.started) return;
+    var before = CFG.miningDrillS - miningState.elapsed;
+    miningState.elapsed += dt;
+    var left = CFG.miningDrillS - miningState.elapsed;
+    CFG.miningClockMarks.forEach(function (m) {
+        if (before > m && left <= m) say(m + (m === 1 ? ' second left.' : ' seconds left.'));
+    });
+    if (left <= 0) finishMiningDrillClock();
+}
+function finishMiningDrillClock() {
+    won = true;
+    var msg = miningState;
+    recordRun('mining', { ore: ore, seconds: CFG.miningDrillS, cleared: false, cores: msg.cores });
+    if (ore > 0) setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
+    setTimeout(function () {
+        openDebrief('Time up',
+            [ 'Ore hold ' + ore + '.',
+              msg.cores + (msg.cores === 1 ? ' core extracted.' : ' cores extracted.') ],
+            'Enter mines a fresh cloud, X for the mission menu.');
+    }, 700);
+}
+// SPEC 3.71: the standalone Combat drill's own clock — just a ticker;
+// destroyTarget's generic branch is still what actually ends the drill
+// on the fifth kill, same as before this round.
+function updateCombat(dt) {
+    if (!combatState || won || lost || !combatState.started) return;
+    combatState.elapsed += dt;
 }
 
 // E — the extractor. Only bites on a rock that has been mined to its core.
@@ -6615,7 +6757,7 @@ function turretDebriefLines() {
 // shared debrief shell now — see openDebrief() below.
 function openTurretDebrief() {
     var accuracy = turretAccuracyPct();
-    recordTurretRun(Math.round(turretState.score), accuracy, turretState.bestStreak);
+    recordRun('turret', { score: Math.round(turretState.score), accuracy: accuracy, bestStreak: turretState.bestStreak });
     openDebrief('Turret defense ' + (won ? 'held' : 'over'), turretDebriefLines(),
                  'Enter tries again, X for the mission menu.');
 }
@@ -7024,81 +7166,41 @@ function zStatusKey() {
 }
 
 // ---- run log --------------------------------------------------------------------
-// A read-only browsable list, same shell as the quadrant map: the sim
-// freezes and ducks while open, arrows step, Escape closes.
-// SPEC 3.28: the quadrant's own timed contract keeps its own best-10 log,
-// `profile.contractRuns` — a separate board from the fixed delivery run's
-// `profile.runs` (the contract's legs vary with whatever the sky looks like
-// that trip, so the two times were never comparable). Rather than add a
-// second menu item for it, runLogItems() lists the delivery runs first,
-// then the contract runs after — one flat browsable list, each line naming
-// which board it's from, but the two arrays never merge or get sorted
-// against each other.
+// A read-only browsable list, same shell as the quadrant map / F2: the sim
+// freezes and ducks while open, arrows step, Escape closes. SPEC 3.71
+// (ideas16.txt): regrouped by board — one heading per encounter (EVERY
+// board in BOARD_ORDER gets one, even with zero runs so far, and says "No
+// runs yet." rather than vanishing — "a pilot who hears eleven headings
+// must not wonder where the twelfth went"), same {text, heading, name}
+// shape buildShipLines() already uses, so H/Shift+H and a cycling first-
+// letter jump both just reuse that exact pattern (shipScreenKey's own).
 function runLogItems() {
-    var items = profile.runs.map(function (r, i) {
-        return 'Delivery run number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + TIERS[r.tier].name + ' difficulty' +
-               (r.upgrades ? ', ' + r.upgrades + ' upgrades' : '') + ', ' + r.date + '.';
+    var items = [];
+    BOARD_ORDER.forEach(function (kind) {
+        var b = BOARDS[kind];
+        var list = profile.boards[kind] || [];
+        items.push({ text: b.label + ', heading. ' + list.length + (list.length === 1 ? ' run.' : ' runs.'),
+                     heading: true, name: b.label });
+        if (!list.length) {
+            items.push({ text: 'No runs yet.', heading: false });
+        } else {
+            list.forEach(function (r, i) {
+                items.push({ text: 'Number ' + (i + 1) + ': ' + b.line(r) + ', ' + r.date + '.', heading: false });
+            });
+        }
     });
-    items = items.concat(profile.contractRuns.map(function (r, i) {
-        return 'Timed delivery contract number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' +
-               TIERS[r.tier].name + ' difficulty, ' + r.date + '.';
-    }));
-    // SPEC 3.41: the flight course's own board — a third list, self-labeled
-    // like the contract's own, so none of the three ever merge or sort
-    // against each other.
-    items = items.concat(profile.courseRuns.map(function (r, i) {
-        // SPEC 3.53: older entries (before the accuracy readout) have no
-        // avgOffset — omit the clause rather than speak "undefined".
-        return 'Flight course number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
-               (typeof r.avgOffset === 'number' ? ', average ' + Math.round(r.avgOffset) + ' off centre' : '') +
-               ', ' + r.date + '.';
-    }));
-    items = items.concat(profile.turretRuns.map(function (r, i) {
-        return 'Turret defense number ' + (i + 1) + ': score ' + r.score +
-               (typeof r.accuracy === 'number' ? ', ' + r.accuracy + ' percent accuracy' : '') +
-               (typeof r.bestStreak === 'number' ? ', best streak ' + r.bestStreak : '') +
-               ', ' + r.date + '.';
-    }));
-    items = items.concat(profile.minefieldRuns.map(function (r, i) {
-        return 'Minefield number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
-               (typeof r.detonations === 'number' ? ', ' + r.detonations + (r.detonations === 1 ? ' mine' : ' mines') + ' detonated' : '') +
-               ', ' + r.date + '.';
-    }));
-    items = items.concat(profile.shadowRuns.map(function (r, i) {
-        return 'The shadow number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
-    }));
-    items = items.concat(profile.nebulaRuns.map(function (r, i) {
-        return 'Nebula transit number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
-    }));
-    // SPEC 3.64: the gate run's own board — a ninth list, self-labeled.
-    return items.concat(profile.gateRunRuns.map(function (r, i) {
-        return 'The gate run number ' + (i + 1) + ': ' + fmtTime(r.seconds) +
-               (typeof r.wasted === 'number' ? ', ' + r.wasted + (r.wasted === 1 ? ' pass wasted' : ' passes wasted') : '') +
-               ', ' + r.date + '.';
-    }));
+    return items;
 }
 
 function openRunLog() {
-    if (!profile.runs.length && !profile.contractRuns.length && !profile.courseRuns.length &&
-        !profile.turretRuns.length && !profile.minefieldRuns.length && !profile.shadowRuns.length &&
-        !profile.nebulaRuns.length && !profile.gateRunRuns.length) {
-        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, the turret drill, the minefield, the shadow, nebula transit, or the gate run to set one.');
-        return;
-    }
+    var total = BOARD_ORDER.reduce(function (n, k) { return n + (profile.boards[k] || []).length; }, 0);
     runlog.open = true;
     runlog.idx = -1;
     keysDown = {};
     thrusterSync(null);
     if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, 0.0001, 0.2);
-    say('Run log. ' + profile.runs.length + ' delivery run' + (profile.runs.length === 1 ? '' : 's') +
-        ', ' + profile.contractRuns.length + ' timed contract' + (profile.contractRuns.length === 1 ? '' : 's') +
-        ', ' + profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's') +
-        ', ' + profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's') +
-        ', ' + profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's') +
-        ', ' + profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's') +
-        ', ' + profile.nebulaRuns.length + ' nebula transit' + (profile.nebulaRuns.length === 1 ? '' : 's') +
-        ', ' + profile.gateRunRuns.length + ' gate run' + (profile.gateRunRuns.length === 1 ? '' : 's') +
-        '. Up and down arrows browse, Escape closes.');
+    say('Run log. ' + BOARD_ORDER.length + ' boards, ' + total + (total === 1 ? ' run.' : ' runs.') +
+        ' Up and down arrows browse, H jumps headings, a letter jumps to one, Escape closes.');
 }
 
 function closeRunLog() {
@@ -7107,19 +7209,52 @@ function closeRunLog() {
     say('Run log closed.');
 }
 
-function runLogKey(lname) {
+function runLogSpeakLine(items) {
+    var ln = items[runlog.idx];
+    if (ln) say(ln.text);
+}
+
+// SPEC 3.71: H/Shift+H heading nav and a cycling first-letter jump, copied
+// faithfully from shipScreenKey's own (F2) — several board labels share an
+// initial ("Minefield"/"Mining", "Timed contract"/"Turret defense",
+// "Combat training"/"Capital ship"), so searching forward from just past
+// the cursor and wrapping cycles through all of them, same idiom as F2.
+function runLogKey(lname, shift) {
     if (lname === 'escape') { closeRunLog(); return; }
     var items = runLogItems(), n = items.length;
+    if (runlog.idx >= n) runlog.idx = n - 1;   // a board's own runs shrink under a stale cursor? never today, but defensive
     if (lname === 'arrowdown') {
-        if (runlog.idx < n - 1) { runlog.idx++; say(items[runlog.idx]); }
+        if (runlog.idx < n - 1) { runlog.idx++; runLogSpeakLine(items); }
         else { SIM.audio.blip(220, 80, 0.1); say('End of the list.'); }
     } else if (lname === 'arrowup') {
-        if (runlog.idx > 0) { runlog.idx--; say(items[runlog.idx]); }
+        if (runlog.idx > 0) { runlog.idx--; runLogSpeakLine(items); }
         else { runlog.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the list.'); }
+    } else if (lname === 'h') {
+        var i = runlog.idx;
+        if (shift) {
+            for (i = runlog.idx - 1; i >= 0; i--) if (items[i].heading) break;
+            if (i < 0) { SIM.audio.blip(220, 80, 0.1); say('No previous heading.'); return; }
+        } else {
+            for (i = runlog.idx + 1; i < n; i++) if (items[i].heading) break;
+            if (i >= n) { SIM.audio.blip(220, 80, 0.1); say('No next heading.'); return; }
+        }
+        runlog.idx = i; runLogSpeakLine(items);
+    } else if (lname === 'home') {
+        runlog.idx = 0; runLogSpeakLine(items);
+    } else if (lname === 'end') {
+        runlog.idx = n - 1; runLogSpeakLine(items);
     } else if (lname === 'y') {
         speakTotals();
+    } else if (typeof lname === 'string' && lname.length === 1 && /[a-z]/.test(lname)) {
+        var found = -1;
+        for (var k = 0; k < n; k++) {
+            var idx = (runlog.idx + 1 + k) % n;
+            if (items[idx].heading && items[idx].name.charAt(0).toLowerCase() === lname) { found = idx; break; }
+        }
+        if (found >= 0) { runlog.idx = found; runLogSpeakLine(items); }
+        else { SIM.audio.blip(220, 80, 0.1); say('No board starts with that letter.'); }
     } else {
-        say('Up and down arrows read the run log, Escape closes.');
+        say('Up and down arrows read the run log, H jumps headings, a letter jumps to one, Escape closes.');
     }
 }
 
@@ -7827,10 +7962,12 @@ function dockAtStation(poi, extra) {
         // make — writeFavor bypasses the "no favor in demo" rule on
         // purpose here, matching the spec's own explicit callout.
         writeFavor(poi.name, CFG.favorDeliveryHandover);
-        var isBest = recordRun(demo.elapsed);
-        var bestLine = isBest === true ? 'New personal best!'
-                      : isBest === false ? 'Best is ' + fmtTime(profile.runs[0].seconds) + '.'
-                      : '';
+        // SPEC 3.71: `runs` under the shared BOARDS shape now — same
+        // richer delta phrasing every other board already speaks.
+        var prevBestRun = recordRun('runs', { seconds: demo.elapsed, tier: tierIdx, upgrades: profile.upgrades.length });
+        var bestLine = prevBestRun === undefined ? 'Your first time.'
+                      : demo.elapsed < prevBestRun ? 'New personal best by ' + fmtTime(prevBestRun - demo.elapsed) + '.'
+                      : fmtTime(demo.elapsed - prevBestRun) + ' off your best.';
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
         say(extra + greeting + 'Docked at ' + poi.name + '. Cargo received, ' + delivered + ' ore. Delivery complete! ' +
             'Run time ' + fmtTime(demo.elapsed) + '. ' + bestLine + ' ' + service + stationMenuIntro());
@@ -7852,10 +7989,11 @@ function dockAtStation(poi, extra) {
         // below regardless.
         addRcs(CFG.rcsMission);
         gainFavor(poi, CFG.favorMission);   // SPEC 3.23: treated as "a mission completed for that port"
-        var cIsBest = recordContractRun(contract.elapsed);
-        var cBestLine = cIsBest === true ? 'New personal best!'
-                       : cIsBest === false ? 'Best is ' + fmtTime(profile.contractRuns[0].seconds) + '.'
-                       : '';
+        // SPEC 3.71: `contract` under the shared BOARDS shape now.
+        var prevBestContract = recordRun('contract', { seconds: contract.elapsed, tier: tierIdx });
+        var cBestLine = prevBestContract === undefined ? 'Your first time.'
+                       : contract.elapsed < prevBestContract ? 'New personal best by ' + fmtTime(prevBestContract - contract.elapsed) + '.'
+                       : fmtTime(contract.elapsed - prevBestContract) + ' off your best.';
         saveProfile();
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
         say(extra + greeting + 'Docked at ' + poi.name + '. Cargo received, ' + cDelivered + ' ore. Contract complete! ' +
@@ -9423,7 +9561,7 @@ function onKeyDown(e) {
     if (map.open) { if (lname === 'f1') { closeMap(); openHelp(); } else mapKey(lname); return; }
 
     // The run log captures everything the same way.
-    if (runlog.open) { runLogKey(lname); return; }
+    if (runlog.open) { runLogKey(lname, !!e.shiftKey); return; }
 
     // F2 ship status, same shell.
     if (shipScreen.open) { shipScreenKey(lname, !!e.shiftKey); return; }
@@ -9662,6 +9800,14 @@ function onKeyDown(e) {
                 var wasHaul = mode === 'mining' && !!haul;
                 // SPEC 3.69: same reasoning as wasHaul above.
                 var wasCapital = mode === 'combat' && !!capital;
+                // SPEC 3.71: same reasoning again — miningState/combatState
+                // are about to be nulled by newGame()'s own clearMission()
+                // call too, so whether THIS retry belongs to the standalone
+                // drill (as opposed to a quadrant field/demo/contract mining
+                // trip, or a mission/capital combat encounter) has to be
+                // captured now, not re-checked after.
+                var wasMiningDrill = mode === 'mining' && !!miningState;
+                var wasCombatDrill = mode === 'combat' && !!combatState;
                 if (wasHaul) {
                     newGame(null, null, true);
                     say(haulIntro());
@@ -9690,7 +9836,7 @@ function onKeyDown(e) {
                     } else if (mode === 'shadow') {
                         // SPEC 3.62: same fix, same reasoning, built alongside
                         // rather than after finding it a second time.
-                        shadowState = { elapsed: 0, started: false, contact: 0 };
+                        shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
                         say(shadowIntro());
                     } else if (mode === 'nebula') {
                         // SPEC 3.63: same shape again, built alongside from
@@ -9703,6 +9849,20 @@ function onKeyDown(e) {
                         // SPEC 3.64: same shape again.
                         gateRunState = { elapsed: 0, started: false, wasted: 0 };
                         say(gateRunIntro());
+                    } else if (mode === 'mining' && wasMiningDrill) {
+                        // SPEC 3.71: same shape again — only for the
+                        // standalone drill (wasMiningDrill, captured above
+                        // BEFORE newGame() nulled miningState); a quadrant
+                        // field/demo/contract mining retry never reaches
+                        // this branch (their own loss routes through the
+                        // tug instead, never Enter).
+                        miningState = { elapsed: 0, started: false, cores: 0 };
+                        say(miningIntro());
+                    } else if (mode === 'combat' && wasCombatDrill) {
+                        // SPEC 3.71: same shape again, for the standalone
+                        // Combat drill.
+                        combatState = { elapsed: 0, started: false, shotsFired: 0, shotsLanded: 0 };
+                        say(combatIntro());
                     } else {
                         say(mode === 'mining' ? miningIntro() : combatIntro());
                     }
@@ -9846,6 +10006,13 @@ function simTick(dt) {
         if (mode === 'nebula' && nebulaState && !nebulaState.started) nebulaState.started = true;
         // SPEC 3.64: same rule for the gate run.
         if (mode === 'gaterun' && gateRunState && !gateRunState.started) gateRunState.started = true;
+        // SPEC 3.71: same rule for the Mining and Combat drills' own clocks
+        // — miningState/combatState are only ever set for the standalone
+        // drill (see their own declarations above), so this never touches
+        // a quadrant field visit, the demo/contract, the haul, distress,
+        // a mission, or the capital ship.
+        if (mode === 'mining' && miningState && !miningState.started) miningState.started = true;
+        if (mode === 'combat' && combatState && !combatState.started) combatState.started = true;
     }
     thrusterSync(k);
     if (k.s && thrustSt !== 'off') {
@@ -9894,6 +10061,9 @@ function simTick(dt) {
     if (mode === 'shadow') updateShadow(dt);
     if (mode === 'nebula') updateNebula(dt);
     if (mode === 'gaterun') updateGateRun(dt);
+    if (mode === 'mining') updateMining(dt);   // SPEC 3.71: a no-op unless miningState is set
+    if (mode === 'combat') updateCombat(dt);   // SPEC 3.71: a no-op unless combatState is set
+    if (mode === 'combat' && capital) capital.elapsed += dt;   // SPEC 3.71: the capital ship's own clock
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
@@ -9953,6 +10123,9 @@ window.__sim = {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
             // SPEC 3.70: the shared debrief, whatever encounter opened it.
             debrief: { open: debrief.open, idx: debrief.idx, title: debrief.title, lines: debrief.lines.slice() },
+            // SPEC 3.71: the raw boards, for testing the record/migration
+            // pipeline directly instead of only through spoken Run log text.
+            boards: profile ? profile.boards : null,
             menuSub: menuSub ? { idx: encounterIdx, label: itemLabel(menuSub[encounterIdx]), count: menuSub.length } : null,
             tug: tug ? { remaining: Math.round(tug.remaining * 10) / 10, total: Math.round(tug.total * 10) / 10, paid: tug.paid, poi: tug.poiData.name } : null,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
@@ -10323,6 +10496,7 @@ function clearMission() {
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
     won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; nebulaState = null; gateRunState = null;
+    miningState = null; combatState = null;   // SPEC 3.71
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     debrief.open = false;   // SPEC 3.70 (was SPEC 3.65's turret-only turretDebrief)
     stopHaulCreak(); haul = null;   // SPEC 3.60
@@ -10353,10 +10527,12 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     // SPEC 3.60: same reasoning as missionSpec above — clearMission() just
     // nulled `haul`, so a fresh one is set AFTER, only when this call is
     // actually starting (or restarting) a haul run.
-    if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, strain: 0, rcsSpent: 0, lastYaw: ship.yaw, lastPitch: ship.pitch };
+    if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, strain: 0, rcsSpent: 0, lastYaw: ship.yaw, lastPitch: ship.pitch,
+                                elapsed: 0, parted: 0 };   // SPEC 3.71
     // SPEC 3.69: same reasoning again — `capital` set fresh AFTER
     // clearMission() nulled it, only when actually (re)starting this run.
-    if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null };
+    if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null,
+                                      elapsed: 0, refused: 0 };   // SPEC 3.71
     // SPEC 3.55: same reasoning again — a fresh `distress` set AFTER
     // clearMission() nulled it (or left a recovered one alone, see
     // clearMission itself), only when actually accepting the call.
@@ -10468,17 +10644,16 @@ var MENU_ITEMS = [
       desc: 'Volume for world sounds, cockpit instruments, sound effects, and music, plus a Beacons line: on, off, or only your selected nav target.',
       run: function () { openSoundMenu(); } },
     { label: 'Run log',
+      // SPEC 3.71: reads BOARD_ORDER generically now, so a future new
+      // board never needs this touched again — same reasoning the Run
+      // log's own regrouping follows.
       desc: function () {
           var parts = [];
-          if (profile.runs.length) parts.push(profile.runs.length + ' delivery run' + (profile.runs.length === 1 ? '' : 's'));
-          if (profile.contractRuns.length) parts.push(profile.contractRuns.length + ' timed contract' + (profile.contractRuns.length === 1 ? '' : 's'));
-          if (profile.courseRuns.length) parts.push(profile.courseRuns.length + ' flight course' + (profile.courseRuns.length === 1 ? '' : 's'));
-          if (profile.turretRuns.length) parts.push(profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's'));
-          if (profile.minefieldRuns.length) parts.push(profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's'));
-          if (profile.shadowRuns.length) parts.push(profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's'));
-          if (profile.nebulaRuns.length) parts.push(profile.nebulaRuns.length + ' nebula transit' + (profile.nebulaRuns.length === 1 ? '' : 's'));
-          if (profile.gateRunRuns.length) parts.push(profile.gateRunRuns.length + ' gate run' + (profile.gateRunRuns.length === 1 ? '' : 's'));
-          return parts.length ? 'Your best times: ' + parts.join(', ') + '.' : 'No runs recorded yet.';
+          BOARD_ORDER.forEach(function (k) {
+              var n = (profile.boards[k] || []).length;
+              if (n) parts.push(n + ' ' + BOARDS[k].label.toLowerCase() + (n === 1 ? '' : 's'));
+          });
+          return parts.length ? 'Your best runs: ' + parts.join(', ') + '.' : 'No runs recorded yet.';
       },
       run: function () { openRunLog(); } },
     // A separate standalone page (CLAUDE.md: never part of the game's own
@@ -10657,7 +10832,7 @@ function startMission(m) {
         say(minefieldIntro());
     } else if (m === 'shadow') {
         // SPEC 3.62: same reasoning again.
-        shadowState = { elapsed: 0, started: false, contact: 0 };
+        shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
         say(shadowIntro());
     } else if (m === 'nebula') {
         // SPEC 3.63: same reasoning again. cloudCenter is fixed for the
@@ -10678,8 +10853,22 @@ function startMission(m) {
         // is — newGame()'s own clearMission() call nulls it out first.
         turretState = makeTurretState();
         say(turretIntro());
+    } else if (m === 'mining') {
+        // SPEC 3.71: the standalone Mining drill's own 7-minute clock —
+        // never set for a quadrant field visit or the demo/contract's own
+        // leg, which reach mode 'mining' through a different call
+        // (newGame('mining', ...) directly, never startMission('mining')).
+        miningState = { elapsed: 0, started: false, cores: 0 };
+        say(miningIntro());
+    } else if (m === 'combat') {
+        // SPEC 3.71: the standalone Combat drill's own clock and laser-
+        // accuracy counters — a mission or the capital ship never sets
+        // combatState (both reach mode 'combat' through newGame() too,
+        // but with `mission`/`capital` already set before this call).
+        combatState = { elapsed: 0, started: false, shotsFired: 0, shotsLanded: 0 };
+        say(combatIntro());
     } else {
-        say(m === 'sector' ? sectorIntro() : m === 'combat' ? combatIntro() : miningIntro());
+        say(sectorIntro());
     }
 }
 

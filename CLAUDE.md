@@ -3963,3 +3963,41 @@ the coast ignores the turning nose; the following thrust's own facing
 differed from the one before it by 78.4°, inside the specified range.
 All three manifest keys confirmed decoded, zero console errors. Not
 yet heard by Brian. Next per the build order: 3.71 (scoring).
+
+**Round 57, continued (Sonnet, 2026-09-09): built SPEC 3.71, scoring.**
+See SPEC.md's own DONE paragraph for the full shape — in brief: one
+`BOARDS` table (rank/dir/line-per-kind) plus a generic
+`recordRun(kind, entry)` replace eight separate record functions;
+`profile.boards[kind]` replaces eight top-level arrays via a v13→v14
+migration; the real count is **fourteen boards**, not the spec's own
+"twelve" (flagged, not silently fixed). New clocks/counters landed
+alongside: Mining's own 7-minute drill clock with spoken marks
+(`miningState`, gated so only the standalone drill ever sees it);
+Combat training's own clock plus a real laser-accuracy counter (one
+burst committed, one burst landed — never per-tick); the shadow's
+three own metrics (contact efficiency, times lost, longest hold, off a
+sticky in-range flag); the haul's time/parted; the capital ship's
+time/shots-refused; escort/defend's shared kill counter
+(`mission.cleared`), with defend's "time to last wave" needing no new
+field at all. The Run log is rebuilt on F2's own heading/letter-jump
+shape — every board gets a heading even empty ("No runs yet."), a
+repeated letter cycles boards that share one. **A real, load-bearing
+bug found in testing, caught before it could touch Brian's own
+save**: the migration's first draft could never actually copy an old
+board's data — `defaultProfile()` now pre-seeds all fourteen boards as
+empty arrays, so a guard meant to protect an already-migrated board
+from being overwritten was always true, permanently blocking the copy
+instead. Caught by seeding a real v13 save with actual entries in three
+boards and watching them vanish after boot; fixed by keying the copy
+on the OLD array actually having entries, with the unconditional
+`delete` of the old field doing the real idempotency work. Re-verified
+against the same seeded save (all three boards intact, a fresh course
+win correctly reading "New personal best by 42 seconds" against the
+migrated time), the Run log's duplicate-letter cycling (Minefield →
+Mining → Minefield) and Home/Shift+H/End, the mining drill's clock-out
+finish, and the escort drill's board recording the exact run flown.
+Zero console errors throughout. Not independently live-tested: the
+spoken 60-/10-second mining marks specifically, and several boards'
+own recording beyond direct code review (flagged, not assumed). Not
+yet heard by Brian. Next per the build order: 3.74 (the star) —
+closing Phase 3E's ideas16.txt batch in full.

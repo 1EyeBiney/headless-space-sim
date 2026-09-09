@@ -7104,6 +7104,78 @@ here is heard by Brian yet.
   headings walk in order, the letter jump cycles, an empty board is
   spoken; the delivery run's own board is untouched.
 
+**DONE (Round 57, Sonnet).** One `BOARDS` table (`rank`/`dir`/`line()`
+per kind) plus one generic `recordRun(kind, entry)` replace what had
+grown into eight separate push/sort/slice/save functions —
+`BOARD_ORDER` lists the real count, **fourteen**, not the spec's own
+"twelve": "four new kinds... plus escort/defend drills" is six new
+boards (combat/mining/haul/capital/escort/defend) alongside the eight
+that already existed, not four; flagged rather than silently
+reconciled. `profile.boards[kind]` replaces the eight top-level
+arrays; `loadProfile()` gained a v13→v14 migration folding each old
+array in unchanged. **Mining's clock** (`CFG.miningDrillS` 420,
+`miningClockMarks` [60, 10]) is real now — a new `miningState`
+(elapsed/started/cores), gated so only `startMission('mining')`'s own
+standalone drill ever sets it (a quadrant field, the demo/contract,
+haul, and distress all reach mode `'mining'` a different way and never
+see it), a new `updateMining(dt)` ticking the clock and speaking the
+marks, and `finishMiningDrillClock()` ending the run at zero — ore in
+the hold at that moment (whichever came first, clock or cloud) is the
+headline. **Combat training** gained the identical treatment
+(`combatState`, `updateCombat(dt)`) plus a genuine laser-accuracy
+counter: `startBeam` counts the burst committed, `beamTick` counts one
+landed burst (not one landed tick) the first time a tick actually
+scores against a ship. **The shadow** gained the three metrics Brian
+asked for directly — contact efficiency, times lost, longest hold —
+computed incrementally in `updateShadow` off a sticky `inRange` flag
+that only fires on the real crossing, never every frame spent outside.
+**The haul** gained `elapsed`/`parted`; **the capital ship** gained
+`elapsed`/`refused` (incremented at both places a closed door already
+refuses a hit — the laser branch and the missile branch); **escort and
+defend** gained a shared `mission.cleared` kill counter (incremented in
+`destroyTarget`'s own mission early-return, guarded on `!t.kind` so the
+friendly's own death never counts) — defend's "time to last wave
+cleared" needed no new field at all, since `mission.elapsed` at the
+instant its win condition fires already IS that number. The Run log
+(`runLogItems`/`runLogKey`) is rebuilt on F2's own `{text, heading,
+name}` shape — every one of the fourteen boards gets a heading whether
+or not it has runs yet (an empty one reads "No runs yet."), H/Shift+H
+jumps headings, a repeated first letter cycles through boards sharing
+one (Minefield/Mining, Timed contract/Turret defense, Combat training/
+Capital ship), Home/End jump to the first/last line — all copied
+faithfully from `shipScreenKey`'s own already-tested pattern. **A real,
+load-bearing migration bug found in testing, not shipped**: the first
+draft's fold-in step skipped copying an old board's real data whenever
+`profile.boards[kind]` already existed as an array — which it ALWAYS
+did, since `defaultProfile()` now pre-seeds all fourteen keys as empty
+arrays for a fresh profile, so the guard meant to protect an
+already-migrated board from being overwritten instead protected an
+EMPTY board from ever receiving the old data at all, silently dropping
+every pre-3.71 save's real runs. Caught by seeding a genuine v13 save
+(real entries in three boards) and finding them gone after boot,
+before this ever reached Brian's own save; fixed by keying the copy on
+the old array actually having entries, with `delete profile[oldKey]`
+(unconditional) doing the actual idempotency work instead — re-verified
+against the same seeded save with all three boards intact and a fresh
+course win correctly ranking against the migrated best ("New personal
+best by 42 seconds"), a duplicate-initial letter jump cycling Minefield
+→ Mining → Minefield, and Home/Shift+H/End all landing correctly. Also
+confirmed live: the mining drill's clock-out finish (a forced 420-second
+run recording `{ore, seconds: 420, cleared: false, cores: 0}` and
+opening a "Time up" debrief); the escort drill's board recording the
+exact run just flown (`{hullPct: 100, cleared: 0, credits: 300,
+ownHullPct: 100, seconds: 180}`) with "0 drones cleared" spoken
+correctly. Zero console errors throughout. **Not independently
+live-tested this round, flagged as a coverage gap**: the spoken
+60-/10-second mining clock marks specifically (the underlying elapsed
+tracking they depend on was proven correct via the clock-out finish,
+but the marks' own `say()` calls weren't separately observed — a test-
+tooling limitation, not a suspected bug), and the haul/capital/nebula/
+gate-run/minefield/turret/mining boards' own recording beyond what the
+edits above already make straightforward by inspection. Every number
+is a placeholder; nothing here is heard by Brian yet. Next per the
+build order: 3.74 (the star).
+
 #### 3.72 Turret defense, third pass: no score in play, louder tones, one incoming kind (ideas16.txt) — DECIDED (Brian, 2026-09-09: the volley goes, the player's missiles stay)
 
 - Brian: "on the 3-zone turret encounter, remove incoming missiles or
