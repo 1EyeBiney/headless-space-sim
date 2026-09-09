@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → 3.59b (numpad 3×3, optional) or 3.42 escort in formation, next →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere → 3.72 turret third pass → 3.73 the shadow thrusts → 3.71 scoring boards (after Brian's table picks) → 3.74 the star's corona, opening the quadrant-2 track** → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6862,6 +6862,323 @@ comparison pass, never a prerequisite. Every number — the approach
 distance, the beam's own timing tolerance — is a placeholder for
 Brian's ear. Not yet heard or flown by Brian.
 
+**ideas16.txt (Brian, 2026-09-09, reviewed by Fable the same day)** —
+five notes after playing the Round 45–55 builds: the turret again, a
+browsable debrief for every encounter, the star as a hydrogen source
+(with gravity), the shadow's own sound, and scoring for everything —
+"please create a table." Written as 3.70–3.74 below; verdicts and the
+questions in Part C. 3.71 carries the table he asked for. Proposed
+order: **3.70 → 3.72 → 3.73 → 3.71 → 3.74**, with 3.74 the first item
+of the quadrant-2 track rather than the last of Phase 3E — see its
+own note on why.
+
+#### 3.70 The debrief, everywhere: line by line, and a reminder for the pilot who walked away (ideas16.txt) — DECIDED
+
+- Brian: "most encounters that give scoring or other tends to give that
+  information in one big verbal blurb, we need to be able to go through
+  the post encounter information line by line with arrow keys ... and
+  then have that exit/replay options repeated 10s and 20s for those that
+  walk away and come back and need to know what to do. This
+  post-encounter scoring summary with navigation needs to happen on all
+  encounters."
+- **What exists**: exactly one encounter does this — the turret's own
+  debrief (3.65: `turretDebrief`, `debriefLines()`, `openTurretDebrief`,
+  `turretDebriefKey`), seven lines, arrows browse, Escape closes,
+  Enter/X fall through. Every other encounter ends in one `say()`:
+  the course (time + tally + average + rank in one breath), the
+  minefield, the shadow, nebula transit, the gate run, the haul (mass
+  vs par), the capital ship, combat training ("Victory"), mining
+  ("Cloud cleared"), the escort/defend drills, the Contested Zone's
+  own clear line in the quadrant.
+- **The shell**: the turret's debrief becomes the shared one. One
+  module-level `debrief = { open, idx, title, lines, options }`
+  replaces `turretDebrief`; `openDebrief(title, lines, options)` is
+  called by every encounter's own finish (win AND loss — a lost drill
+  debriefs too, from `shipDestroyed`'s delayed line, the way the
+  turret already does; a tug death does not, the countdown is that
+  state's own voice). The opening line is short and the same shape
+  everywhere: "[Title] [held/complete/over]. [line 1]. Up and down
+  arrows browse [N] lines, Escape closes. [options]." — where
+  `options` is the encounter's own exit text, exactly what it says
+  today ("Enter tries again, X for the mission menu." for a drill; "X
+  returns to the sector." for a station-offered mission; "Enter plays
+  again..." for a replayable one). Arrows read one line, End/Home the
+  last/first, Escape closes it ("Debrief closed. [options]"), Y passes
+  through to totals, F1/F2/F3/F12 too; Enter/X are deliberately NOT
+  claimed, so they do what they do today from the same frozen
+  `over()` state. `lines[0]` is always the headline number (the one
+  the board ranks by, 3.71); the rest are that encounter's own
+  measures, one fact a line — the current blurbs SPLIT, not rewritten:
+  the course's becomes "Time 1 minute 32 seconds." / "6 of 8 gates
+  clean, 2 missed." / "Average 81 off centre." / "New personal best by
+  12 seconds."
+- **The reminder is an idle timer, not a metronome.** "Repeated 10s
+  and 20s for those that walk away" is 3.39's own Press-Enter shape
+  (`beginRemindFirstMs` 10 s, then `beginRemindEveryMs` 20 s) — reuse
+  the pattern with its own pair, `debriefRemindFirstMs` 10000 /
+  `debriefRemindEveryMs` 20000, speaking "[Title] over. [options]" —
+  BUT it must never talk over a pilot who is reading: any key while the
+  debrief is open (or while `over()` with it closed) resets the timer,
+  so it only ever fires into silence. Cleared the instant Enter/X/a
+  menu pick leaves the state. (Without the reset, a reminder landing
+  mid-browse overwrites the line just read — SPEC 2.15's collapse from
+  a real timer, the same kind Round 54 found between the nebula's alert
+  and the repair crew.)
+- **Encounter by encounter, the lines** (from what each already
+  computes — no new measures here; 3.71 adds those): combat training —
+  time, hull remaining, missiles used; mining — ore, time, reaction
+  mass spent; course — as above; minefield — time, detonations, hull;
+  shadow — time, contact seconds; nebula — time, hull; gate run —
+  time, passes wasted; escort/defend drills — friendly hull %, credits,
+  hostiles cleared; turret — its seven, unchanged; haul — mass spent,
+  par, over/under; capital — time, hull. The Contested Zone (sector) —
+  hostiles, hull, favor/comms lines; station-offered escort/defend —
+  their own mission-complete lines split. Loss lines: "Ship lost." as
+  the headline, then what was reached.
+- Test: every listed encounter opens the debrief on its end (win and
+  loss where a loss exists); arrows walk every line with no
+  `undefined`; Escape closes to the same Enter/X state; the reminder
+  fires at 10 s of silence and every 20 s after, never within 10 s of a
+  key press, and is dead after Enter/X; the turret's own debrief is
+  byte-for-byte what it was, through the shared shell.
+
+#### 3.71 Scoring: the table, then a leaderboard per encounter (ideas16.txt) — the table is here, the boards wait on Brian's picks
+
+- Brian: "We need some scoring metrics for The Shadow as well. We should
+  do this for all the encounters, determine whatever scoring metrics we
+  decide to use, whether time, amounts, distances, etc. Please create a
+  table for all the encounters and have columns for the scoring metrics
+  we should use for these, then after we decide that, we can build
+  leaderboards and ways to navigate these leaderboards, as I think
+  people will want to know historical info on their encounters."
+- **What exists**: eight boards, best-10 each, one flat Run log —
+  delivery run, timed contract, course, turret, minefield, shadow,
+  nebula, gate run (`profile.runs`/`contractRuns`/`courseRuns`/
+  `turretRuns`/`minefieldRuns`/`shadowRuns`/`nebulaRuns`/
+  `gateRunRuns`, one `recordXRun` each, the same bookkeeping copied
+  eight times). Four encounters have no board at all: combat training,
+  mining, the haul, the capital ship; the escort/defend drills and the
+  distress call neither. The Run log reads all eight lists end to end,
+  no headings, no jump — fine at two boards, not at twelve.
+- **The table.** "Today" is what the board ranks by now; "Proposed
+  headline" is Fable's pick for the ONE number a board sorts on (the
+  debrief's own line 1, 3.70); "Also kept" are the measures stored
+  beside it and read in the Run log's line, never sorted on. Brian
+  decides the headline column; everything else follows it.
+
+| Encounter | Today | Proposed headline (ranks) | Also kept (read, not ranked) |
+| --- | --- | --- | --- |
+| Combat training | none | time to clear | hull remaining, missiles used, laser accuracy (bursts that landed / bursts fired) |
+| Mining | none | ore collected | time, reaction mass spent, cores extracted |
+| Flight course | time | time (keep) | gates clean/missed, average off centre |
+| Minefield | time | time (keep) | detonations, hull remaining |
+| The shadow | time | time (keep) | contact efficiency % (contact ÷ elapsed), times contact lost, longest unbroken hold |
+| Nebula transit | time | time (keep) | hull remaining, seconds inside the cloud |
+| The gate run | time | time (keep) | passes wasted |
+| Escort drill | none | freighter hull % at the end | drones cleared, credits paid, own hull |
+| Defend drill | none | miner hull % at the end | raiders cleared, time to the last wave cleared |
+| Turret defense | score | score (keep) | accuracy, best streak, volleys caught, missiles used, weakest zone |
+| The haul | none | reaction mass spent (lower is better) | time, times the line parted, over/under par |
+| Capital ship | none | time to the fourth turret | hull remaining, shots refused by a closed door |
+| Delivery run (sector) | time | time (keep) | difficulty, modules |
+| Timed contract (sector) | time | time (keep) | difficulty |
+| Contested Zone (sector) | none | — (see question 4) | hostiles, hull |
+| Distress call (station) | none | — (see question 4) | time from accept to dock |
+
+- **The shadow's own metrics (Brian's specific ask)**: time is the
+  headline (it already is), but time alone hides the skill — a pilot
+  who loses contact eight times and re-acquires fast can post the same
+  time as one who never lost it. So the three "also kept": **contact
+  efficiency** (`contact / elapsed`, 100% = never out of range),
+  **times contact lost** (a range crossing out, counted in
+  `updateShadow` on the transition), **longest unbroken hold** in
+  seconds. Read in the debrief and the Run log; not ranked.
+- **One shape, twelve boards**: `recordRun(kind, entry)` replaces the
+  eight copies — `profile.boards[kind]` (best-10, sorted by the kind's
+  own `rank` field and direction from a `BOARDS` table: `{ kind, label,
+  rank: 'seconds' | 'ore' | 'score' | 'rcs' | 'hullPct', dir: 'asc' |
+  'desc', line: fn(entry) }`), with a `PROFILE_VERSION` bump that
+  folds the eight existing arrays into it unchanged (an old save's
+  `courseRuns` becomes `boards.course`, entries intact). Four new
+  kinds (combat, mining, haul, capital) plus escort/defend drills.
+- **Navigating them**: the Run log regrouped by encounter — one
+  heading per board with entries under it (the F2 shape: H/Shift+H
+  jump headings, a first letter jumps to a board and cycles on
+  repeats, arrows read), a "Run log. 12 boards, N runs." opener, an
+  empty board says "No runs yet." rather than vanishing (a pilot who
+  hears eleven headings must not wonder where the twelfth went — the
+  3.66 rule). The mission menu's own Run log line stays the count
+  summary. "Career" beyond best-10 (every run, dated) is a later
+  question — best-10 per board is the promise for now.
+- Test (once decided): every encounter's finish records to its own
+  board with the headline and the kept fields; an old save's eight
+  arrays migrate intact and read the same lines; the Run log's
+  headings walk in order, the letter jump cycles, an empty board is
+  spoken; the delivery run's own board is untouched.
+
+#### 3.72 Turret defense, third pass: no score in play, louder tones, one incoming kind (ideas16.txt) — DECIDED, one question
+
+- Brian: "on the 3-zone turret encounter, remove incoming missiles or
+  projectiles from enemies. do not announce scored in the game play.
+  make the volume of the rising tones to make them heard better."
+- **No score in play.** The per-clear line drops its "plus N": "Centre
+  cleared." / "Centre cleared by missile. 2 left." / "Shields catch it
+  in the left zone." — the explosion or splash cue and the streak line
+  ("Streak! Shields up, 6 seconds.") stay, since those are events, not
+  bookkeeping. `I` still reads the running score on demand (asked-for
+  is not announced); the debrief reads the total. Score arithmetic
+  itself is untouched.
+- **Louder rising tones.** `buildIncomingVoice` ramps every incoming to
+  a hardcoded `0.22` — no knob. It becomes `CFG.turretIncomingVol`,
+  default doubled (0.45), a placeholder for Brian's ear — and, since
+  3.67 put the deep-space bed under this drill too, a second knob
+  `CFG.turretAmbientDuck` (0.5) halves the bed for the drill's duration
+  (restored by `clearMission`'s own stop/restart), so the tones rise
+  over something quieter rather than just louder over the same bed.
+  Both are the World sound level's own scaling on top — a pilot who
+  runs World at "quiet" has already asked for quiet.
+- **One incoming kind (the question).** "Remove incoming missiles or
+  projectiles from enemies" — the drill has two kinds since 3.65: the
+  **shot** (a rising tone, cleared by Space or F) and the **volley** (a
+  noise sweep, shield-only, Fable's own addition). Fable's reading: the
+  volley is what goes — it was proposed, not asked for, and "remove
+  the [thing] I can't shoot" is the plainest sense of the note; the
+  drill returns to one kind, pure timing. `CFG.turretVolleyChance` → 0
+  (the mechanism stays, one number away). The alternative readings —
+  drop the player's OWN F missiles, or drop the shots and keep the
+  volleys — are Part C question 1; built as the volley until he says
+  otherwise.
+- Test: a clear speaks no number; `I` and the debrief still do; the
+  tone's ramp target reads `CFG.turretIncomingVol` and the bed's gain
+  the duck; no volley spawns across a full drill at chance 0.
+
+#### 3.73 The shadow, second pass: louder, and it thrusts (ideas16.txt) — DECIDED, one push-back
+
+- Brian: "I think we need to increase the sound of the ship we are
+  supposed to be finding. I will go try and find some thruster rocket
+  sounds to use when it is firing thrusters, otherwise we need a sound
+  to indicate when that ship's engines are thrusting."
+- **Louder**: `CFG.shadowGain` (2.0) multiplies the shadow's voice
+  gain over `targetGain` when lit — the dark ramp still goes to
+  nothing. A knob for his ear.
+- **It has to thrust for a thruster to sound.** The push-back: as built
+  the shadow flies a straight line at one constant speed (the escort
+  freighter's route code, as the spec said) — it never accelerates, so
+  there is no moment for a thruster sound to mark. So the route gains
+  what the note assumes: each lit leg opens with a **burst** —
+  `shadowBurstS` (2.5 s) at `shadowBurstSpeed` (110), then it settles
+  back to `shadowSpeed` (45) — and each dark leg is a **coast** at
+  whatever speed it had (engine off means no thrust, so the cut is
+  honest). The burst is the audible event Brian wants, and it gives
+  R's closing/opening readout something to read (a target that changes
+  speed is why 3.62 mentioned R at all). A dark leg that starts mid-
+  burst keeps the burst's speed, silently — the hard case, on purpose.
+- **The sound**: until Brian's recording lands (**3.73a**, a manifest
+  key `shadow_thruster`, the same lettered sub-stage every encounter's
+  audio uses), the burst plays the ship's OWN thruster machinery at
+  the shadow's world position — `THRUSTER_DEFS`' forward jet, through a
+  `worldOut` panner instead of the UI bus, pitched down a little
+  (`shadowThrusterRate` 0.8) so it doesn't read as the pilot's own W.
+  Positioned, so the burst is itself a bearing cue — a dark ship that
+  bursts is briefly findable again, which is the point.
+- **Its metrics** are 3.71's row (contact efficiency, times lost,
+  longest hold); 3.73 only makes the target worth tracking.
+- Test: the voice reads `shadowGain × targetGain` lit and ~0 dark; a
+  lit leg's first `shadowBurstS` seconds run at `shadowBurstSpeed` with
+  the thruster at the ship's position, then `shadowSpeed`; a dark leg
+  coasts at its entry speed; R reports closing/opening across a burst.
+
+#### 3.74 The star: hydrogen at the corona, and gravity (ideas16.txt) — proposed, Fable recommends it opens the quadrant-2 track
+
+- Brian: "we do not have any stars/sun in the quadrants now and I
+  believe that was a part of the game we had planned on ... I think we
+  were going to have Hydrogen collection at least be 1 thing for the
+  star. We need probably to use vacuums and extractors ... fly close to
+  the star, and if we can simulate gravity and increased gravity the
+  closer the player gets ... fight the gravity pull. We should probably
+  figure out how to keep them from actually getting pulled into the
+  sun, maybe auto-thrusters on battery would be just enough to keep
+  them from getting pulled in and then you just need a tow cause you
+  are just frozen in place ... should we do that soon before we go
+  building Q2?"
+- **What exists**: `QUADRANT` has had "The Star" at ring 0 since 3.10 —
+  a beacon (its own drone), on the map under its own heading, and C
+  says "Nothing answers." Nothing else: no collision (`updateCollisions`
+  only knows stations and planets — you can fly through it), no pull,
+  no harvest. Brian's "we don't have a star" is right in substance.
+  A.3 already names "the sun of the quadrant (later)" as a hydrogen
+  source; A.9 lists hydrogen from containers and an extractor module;
+  3.18 (the first quadrant-2 item) creates `profile.resources.hydrogen`
+  from combat containers; 3.22 charges 30 of it to transit the gate.
+- **Why before quadrant 2 — yes, and first on that track.** Today's
+  plan gives a quadrant-1 pilot exactly one way to earn the gate fare:
+  kill ships for containers. A miner who won't fight never leaves. The
+  star is the miner's hydrogen — so it belongs BEFORE 3.18 (which then
+  lands its containers on a resource field that already exists, and
+  F3's hydrogen line, sitting at 0 since 2.15, finally moves) and well
+  before 3.22. The gravity well is also the one physics mechanic
+  quadrant 2's planets-as-ports (3.19) and the base (A.8) will want
+  again. Fable's order: **3.74 → 3.18 → 3.14 → 3.22 → ...** as the
+  quadrant-2 track, after 3.70–3.73. The galactic-map use Brian
+  remembers (the star as the thing jumps are reckoned from) needs no
+  code: A.13 already puts every gate on the outer ring in its edge's
+  own direction, and the star at the origin is the reference point that
+  makes those directions mean something.
+- **An encounter, not open flight.** Weapons and tools are cold in the
+  open sector (SPEC 3.10) and should stay so; the vacuum is a mining
+  tool. So: C within `poiInteract` of the star **enters the corona**
+  the way calling a field enters mining — `sectorHome` snapshot, a mode
+  of `'mining'` with a `corona` object layered on (the haul/distress
+  pattern), X returns to the sector. Inside: the star at the origin,
+  the ship spawned at `starEntryDist` (1600), no rocks — one target,
+  the corona itself, a `kind: 'poi'` at the star's position whose voice
+  is the star's own drone, brighter.
+- **Gravity.** In this encounter only, `updateCorona(dt)` adds an
+  acceleration toward the star every frame: `starPull ×
+  (starGravityDist / d)²`, capped at `starPullMax` — inverse-square,
+  so it is nothing at the entry distance and everything close in. The
+  stabilizer damping (`dampKeep`) still applies, so a ship that stops
+  thrusting doesn't fall freely — it drifts inward at a terminal speed
+  the pull and the damping set between them; W facing away holds
+  station, S facing in does not. A new spoken cue on each threshold of
+  `starPullPcts` ([25, 50, 75, 100] of full thrust), "Pull at half
+  thrust." — the one number that tells a pilot how much of their own W
+  the star is eating.
+- **The harvest.** V (the vacuum, no aim) within `starHarvestDist`
+  (600) collects **hydrogen** at `starHydrogenPerTick` × a closeness
+  multiplier (up to `starHarvestCloseMult` 3 at `starHarvestBest`, 250)
+  — the reward for going deeper — into `profile.resources.hydrogen`
+  (this item creates the field and its migration; 3.18 then adds
+  containers to it). E has no job here — the corona has no core; the
+  note's "vacuums and extractors" is read as "the mining tools", and
+  the vacuum's own ship-relative, no-aim shape is exactly a corona
+  scoop. The spoken per-tick line is the dust vacuum's own ("N"),
+  hydrogen instead of ore; `I` reads pull, hydrogen, and distance.
+- **Being pulled in — the tug, by radius.** Brian's picture: battery
+  auto-thrust just holds you, frozen, then a tug. Fable's reading that
+  needs no special case: there is a radius, `starCaptureDist`, where
+  the pull exceeds full thrust — inside it nothing climbs out. Crossing
+  it is **capture**: "Caught in the star's pull. A tug is coming." —
+  `startTug()` (2.16), the sector campaign's own loss path, at
+  `tugBaseS` with the star's own fee. Battery power makes this happen
+  naturally and earlier: on battery, thrust is `rcsBatteryFactor` (0.4)
+  of full, so the radius where the pull wins is bigger — a pilot who
+  burns their reaction mass fighting the pull is exactly the one who
+  gets caught, which is Brian's story told by the existing numbers. No
+  "frozen in place" state to build; the tug is the frozen state. The
+  hull does NOT burn in v1 (question 6) — capture is the only failure,
+  and it is a recoverable one.
+- Test (once built): C at the star enters the corona with the ship at
+  `starEntryDist` and zero pull; the pull measured at two distances
+  fits the inverse square; W facing away holds a distance, coasting
+  drifts inward at a settled speed; V outside `starHarvestDist` refuses
+  by name, inside it adds hydrogen at a rate that rises toward
+  `starHarvestBest`; crossing `starCaptureDist` starts the tug once
+  and X/Shift-chords refuse during it exactly as any tug wait does;
+  the same crossing on battery happens at a larger measured radius;
+  F3 reads the hydrogen; X mid-harvest returns to the sector with the
+  hydrogen kept.
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -8065,6 +8382,66 @@ live) / `blinkRcs` 4 / 3 s cooldown. 4. Field cap 80, −10 a
 repeat, floor 50 — placeholders. 5. Z's chain window (4 s) and the
 category order. 6. The capital ship: cannon turrets, beam turrets, or
 mixed; a parent hull of its own (v1: no); how many turrets (4).
+
+**Review (Fable, 2026-09-09) of Brian's `ideas16.txt`** — five notes,
+written into Phase 3E as 3.70–3.74. Verdicts:
+- **The debrief everywhere (3.70): yes, first.** The turret already
+  has the shape (3.65); every other encounter ends in one blurb. The
+  10 s/20 s repeat is 3.39's own Press-Enter pattern — with one rule
+  the note doesn't say but the ear needs: it is an IDLE timer, reset by
+  any key, or it talks over the pilot reading the lines it exists to
+  point at.
+- **Scoring (3.71): the table is written; the boards wait on Brian.**
+  Eight boards exist today, four encounters have none, the Run log is
+  flat. Fable's headline picks are in the table's third column — time
+  for most, ore for mining, friendly hull for the escort/defend
+  drills, reaction mass (lower wins) for the haul, score for the
+  turret. The shadow gets the three measures Brian asked for: contact
+  efficiency, times lost, longest hold. One `BOARDS` table replaces
+  eight copies of the same bookkeeping; the Run log gets headings and
+  a letter jump, F2's own shape.
+- **The turret, third pass (3.72): yes** — score silent in play (the
+  cue and the streak line stay), the tone's hardcoded 0.22 becomes a
+  knob and doubles, the deep-space bed ducks under the drill. The one
+  ambiguity is question 1.
+- **The shadow (3.73): yes, with a push-back** — a thruster sound
+  needs a thrust to mark, and the shadow never thrusts today (a
+  straight line at one speed). So each lit leg opens with a burst,
+  each dark leg coasts; the burst is the sound's job AND the reason R
+  finally has something to report. His recording is 3.73a; the ship's
+  own thruster, positioned and pitched down, stands in until then.
+- **The star (3.74): yes, and before quadrant 2 — first on that
+  track.** Brian is right in substance: "The Star" is a beacon and
+  nothing else (no pull, no collision, C says "Nothing answers").
+  The argument for doing it before 3.18/3.22: the gate fare is
+  hydrogen and today's only source is combat containers — a miner
+  who won't fight never leaves quadrant 1. Built as an encounter (C
+  enters the corona; tools are cold in open space and stay so), an
+  inverse-square pull the stabilizer already damps, V as the corona
+  scoop, and capture-by-radius handing off to the existing tug —
+  Brian's "battery holds you, frozen, then a tow" falls out of the
+  existing battery factor with no new state.
+
+**DECIDE (open, from ideas16.txt)**: 1. **Which incoming goes** —
+Fable built the note as "the volley" (the shield-only noise sweep,
+3.65's own addition); say if it's the player's own F missiles instead,
+or the shots. 2. **The table's headline column** — confirm or change
+each row's ranked number (time / ore / friendly hull / score / mass);
+the boards are built to whatever the column says. 3. **The debrief
+reminder as an idle timer** (resets on any key) — confirm; the
+literal "every 10 s and 20 s" would talk over browsing. 4. **Sector
+missions on a board or not** — the Contested Zone and the distress
+call have no drill-shaped end; Fable's lean: no board, the debrief
+only. 5. **Career history beyond best-10** — every run dated, or
+best-10 per board is enough for now (Fable: best-10 now, "every run"
+is a later item once boards exist). 6. **Does the star burn** —
+v1 has no hull heat, capture is the only failure; a `starHeatDist`
+ablation (the nebula's own mechanic) is one CFG away if the corona
+should hurt. 7. **The corona's numbers** — entry 1600, harvest under
+600, best at 250, capture radius set by pull = full thrust; all
+placeholders for the flight. 8. **Order** — 3.70 → 3.72 → 3.73 →
+3.71 → 3.74, then 3.18 → 3.14 → 3.22 as the quadrant-2 track; 3.59b
+and 3.42 stay parked.
 
 **Open for Phase 4/5 (ideas9, not for now):** the total station count
 that makes a 10-station union reachable; whether the computer starts

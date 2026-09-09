@@ -3782,3 +3782,43 @@ or 3.42 (escort in formation — still waiting on Brian having actually
 flown auto-target), then quadrant 2 as ordered — nothing past what
 Brian has explicitly asked for should be started without further word
 from him, per the standing rule.
+
+**Round 56 (Fable, docs only, 2026-09-09)**: Brian's `ideas16.txt`
+(untracked, like every ideas file) — five notes from playing Rounds
+45–55 — reviewed and written into SPEC.md as **3.70–3.74**, verdicts
+and eight questions in Part C ("DECIDE (open, from ideas16.txt)").
+**3.70** the debrief everywhere: the turret's own browsable debrief
+(3.65) becomes the shared shell for every encounter's end, win or
+loss, each current one-line blurb split into lines; the "repeat the
+exit/replay options at 10 s and 20 s" is 3.39's Press-Enter pattern
+reused as an IDLE timer — reset by any key, or it would talk over the
+pilot reading (the SPEC 2.15 collision from a real timer). **3.71**
+scoring: the table Brian asked for is in the item — 16 rows, today's
+board vs. Fable's proposed headline (time for most, ore for mining,
+friendly hull for escort/defend, reaction mass for the haul, score
+for the turret) vs. what's kept beside it; the shadow gets contact
+efficiency / times lost / longest hold; one `BOARDS` table +
+`profile.boards[kind]` replaces eight copies of the same bookkeeping
+(with a migration folding the existing arrays in intact); the Run
+log regrouped by encounter with headings and a letter jump (F2's
+shape). Boards wait on Brian's column picks. **3.72** turret third
+pass: no score spoken in play (cues and the streak line stay), the
+incoming tone's hardcoded 0.22 becomes `turretIncomingVol` doubled,
+the deep-space bed ducks under the drill, and Fable's reading of
+"remove incoming missiles or projectiles" is the volley (3.65's own
+shield-only noise) — question 1 if it's the player's F or the shots
+instead. **3.73** the shadow: louder (`shadowGain`), and — the
+push-back — it must actually THRUST for a thruster sound to mean
+anything (today it flies one speed in a straight line): each lit leg
+opens with a burst, each dark leg coasts; Brian's recording is 3.73a,
+the ship's own thruster positioned and pitched down stands in.
+**3.74** the star: Brian is right that "The Star" is a beacon and
+nothing else; built as an encounter (C enters the corona — tools stay
+cold in open space), an inverse-square pull the stabilizer already
+damps, V as the hydrogen scoop (creating `profile.resources.hydrogen`
+ahead of 3.18's containers), and capture-by-radius handing off to the
+existing tug — his "battery just holds you, frozen, then a tow" falls
+out of `rcsBatteryFactor` with no new state. Fable's recommendation:
+3.74 opens the quadrant-2 track (before 3.18/3.22), because the gate
+fare is hydrogen and a miner who won't fight has no other source in
+quadrant 1. Order: 3.70 → 3.72 → 3.73 → 3.71 → 3.74. Nothing built.
