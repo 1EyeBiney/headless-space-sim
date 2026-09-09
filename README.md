@@ -106,6 +106,12 @@ and the friendly lives, paying credits and a little standing at the
 station; lose the friendly and the mission pays nothing. Each mission
 goes back on offer a while after you take it.
 
+Missions also offers a **distress call**: a disabled ship drifts
+nearby, calling for help. No weapons this time — tractor it in with B,
+then E recovers it once it's close, and flying it home to the station
+that called for help pays out. Leave without recovering it, or lose
+your own ship first, and the call fails.
+
 Out in the open **Sector**, Station Meridian's own hail also offers a
 **Timed delivery** contract: clear the quadrant's current Contested Zone,
 mine 15,000 ore at any field, and dock back at Meridian with it — paid at

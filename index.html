@@ -336,6 +336,14 @@ var CFG_DEFAULTS = {
     missionCredits: 300,       // full reward at 100% friendly hull; SPEC 3.25 scales it down from there
     missionCooldownS: 600,    // per mission kind, per station, in persisted game time (profile.clock)
     contractCredits: 200,     // SPEC 3.28: paid on top of the ore's own sell price
+    // SPEC 3.55: the distress-call tow. Flat reward (there's no hull/frac to
+    // scale by — the derelict is either recovered or it isn't), a spawn
+    // distance matching escort/defend's own convention (see missionEscortHull
+    // above for the shape this borrows), and a `size` that maps the derelict
+    // onto the EXISTING tractor pull-rate/mass table (TRACTOR_TIERS,
+    // rockMass) unchanged — see makeDistressRoster.
+    distressCredits: 200,
+    distressSpawnDist: 350,
     missionEscortHull: 200,
     missionMinerHull: 150,
     missionEscortSpeed: 40,   // u/s, the freighter's own drift toward the planet
@@ -670,7 +678,7 @@ function defaultProfile() {
              // available again. quadrants/quadrantId are the moving
              // world's save; quadrantId always 'home' until SPEC 3.22's
              // Frontier exists.
-             clock: 0, missionCooldownUntil: { escort: 0, defend: 0, contract: 0 },
+             clock: 0, missionCooldownUntil: { escort: 0, defend: 0, contract: 0, distress: 0 },
              quadrants: {}, quadrantId: 'home',
              // SPEC 3.28: the quadrant's own timed delivery contract keeps a
              // separate best-10 log from the fixed Delivery run's `runs` —
@@ -737,7 +745,7 @@ function loadProfile() {
     // session-only variables into the profile; the quadrant save is new.
     if (typeof profile.clock !== 'number' || profile.clock < 0) profile.clock = 0;
     if (!profile.missionCooldownUntil || typeof profile.missionCooldownUntil !== 'object') profile.missionCooldownUntil = {};
-    ['escort', 'defend', 'contract'].forEach(function (k) {
+    ['escort', 'defend', 'contract', 'distress'].forEach(function (k) {
         if (typeof profile.missionCooldownUntil[k] !== 'number') profile.missionCooldownUntil[k] = 0;
     });
     if (!profile.quadrants || typeof profile.quadrants !== 'object') profile.quadrants = {};
@@ -1957,6 +1965,20 @@ var capital = null;
 // `threat`) — the door itself IS the one thing happening, same as any
 // other single in-progress attack. { t, clock, phase: 'opening'|'closing' }
 var capitalDoor = null;
+// SPEC 3.55 (ideas13.txt, Fable's pick): the distress-call tow — a mode of
+// 'mining' with this object layered on top, the demo/contract/mission/haul
+// pattern again. { poiName, recovered, derelict } — kept as its OWN var
+// rather than folded into `mission`, since `mission` (2.17's escort/defend
+// shape) is read unconditionally in a dozen places as `mission.friendly`;
+// this has no friendly, no waves, no strikes, just one recoverable target,
+// so a dedicated var sidesteps all of that rather than teaching every one
+// of those sites a distress-shaped exception. Modeled on `contract`'s own
+// shape instead: deliberately NOT cleared by clearMission() once recovered
+// (see clearMission itself) so it survives the trip back to the open
+// sector the same way an accepted contract survives leaving a mining/
+// combat pocket — "bring it home" needs the flag to outlive the encounter
+// that spawned the derelict.
+var distress = null;
 // The game clock (SPEC 2.17, persisted as of SPEC 3.10 — see profile.clock):
 // counts whenever the sim is live and not under an overlay, independent of
 // the delivery run's own `demo.elapsed`. Backs mission cooldowns and, as of
@@ -2253,6 +2275,7 @@ var HELP_SECTIONS = [
         function () { return 'The station works by range and standing: C within ' + CFG.stationCommRange + ' hails it for a talk, C within ' + CFG.stationTransporterRange + ' reaches the transporter once the station knows you, and C within ' + CFG.stationDockRange + ' docks once it trusts you and once you have come to a full stop — no corridor to fly, but the stabilizers need a moment to settle a coasting ship.'; },
         'Favor is a station\'s own standing toward you: Unknown, Known, Trusted, or Allied, spoken every time you hail. Earned by finishing a mission there or selling what it wants; lost by a failed mission or letting its own ship die; it decays slowly if you stay away, never past one tier below the best you ever reached. Station Meridian starts Trusted — it\'s home.',
         function () { return 'The comms hail (talk only) offers missions and a status report; the transporter, closer in and gated on Known standing, is where rearm, sell, and buy actually happen. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
+        function () { return 'A distress call sends you out as the tug this time: a disabled ship drifts nearby, calling for help. Tractor it in and E recovers it, then bring it home to the station that offered the call for ' + CFG.distressCredits + ' credits — no weapons involved.'; },
         function () { return 'Station Meridian also offers a timed delivery contract: clear the current Contested Zone, mine ' + CFG.demoOreGoal + ' ore at any field, and dock here with it — the ore\'s own price plus ' + CFG.contractCredits + ' credits, and its own best-time log, separate from the fixed Delivery run. Selling ore is blocked while one is open.'; },
         'Docked, the station menu opens, your hull, missiles, decoys, and warp tank are full, the beacons outside go quiet, and the ship is held until you undock — which puts you ' + CFG.undockDist + ' out, facing away, with the no-warp zone still to thrust clear of.',
         'The station menu sells your ore for credits, offers modules to fit to your ship, and undocks you. Up and down arrows browse it, Enter selects, Escape undocks from anywhere in the menu.',
@@ -2992,7 +3015,10 @@ function selectNearest() {
     targets.forEach(function (t, i) {
         // SPEC 2.17: a mission's friendly isn't Tab-cycled by default —
         // it's who you're protecting, not something to select and shoot.
-        if (!t.alive || t.kind === 'friendly') return;
+        // SPEC 3.55: EXCEPT the distress call's own derelict (tractorable),
+        // which is the one friendly the pilot actually needs to select and
+        // aim the tractor at — see the note on makeDistressRoster.
+        if (!t.alive || (t.kind === 'friendly' && !t.tractorable)) return;
         var d = len(sub(t.pos, ship.pos));
         if (d < bestD) { bestD = d; best = i; }
     });
@@ -3007,7 +3033,9 @@ function cycleTarget(dir) {
     dir = dir || 1;
     // SPEC 3.41: course gates are never Tab-cycled — the active gate is
     // chosen for the pilot, in order, same reason friendlies are excluded.
-    var alive = targets.map(function (t, i) { return (t.alive && t.kind !== 'friendly' && t.poiType !== 'course') ? i : -1; })
+    // SPEC 3.55: the distress call's own tractorable derelict is the one
+    // exception — see selectNearest's own matching note.
+    var alive = targets.map(function (t, i) { return (t.alive && (t.kind !== 'friendly' || t.tractorable) && t.poiType !== 'course') ? i : -1; })
                        .filter(function (i) { return i >= 0; });
     if (!alive.length) { say('No targets remain.'); return; }
     // Nearest-first order, stepping from the current selection.
@@ -5263,7 +5291,10 @@ function tractorKey() {
         return;
     }
     var t = targets[selected];
-    if (!t || !t.alive || t.kind !== 'rock') { say('No rock selected. Tab cycles targets.'); return; }
+    // SPEC 3.55: the distress call's own derelict is tractorable too (it
+    // maps onto this same size/mass table via makeDistressRoster) — every
+    // other non-rock target still refuses.
+    if (!t || !t.alive || (t.kind !== 'rock' && !t.tractorable)) { say('No rock selected. Tab cycles targets.'); return; }
     var tier = TRACTOR_TIERS[tractorLevel() - 1];
     var dist = len(sub(t.pos, ship.pos));
     if (dist > tier.range) {
@@ -5290,7 +5321,7 @@ function tractorKey() {
 function updateTractor(dt) {
     if (!tractor.active) return;
     var t = targets[tractor.targetIdx];
-    if (!t || !t.alive || t.kind !== 'rock') { stopTractor('Tractor lost its target.'); return; }
+    if (!t || !t.alive || (t.kind !== 'rock' && !t.tractorable)) { stopTractor('Tractor lost its target.'); return; }
     // SPEC 3.60: the one place the tractor trails a MOVING puller instead of
     // closing to a fixed stop distance from the ship — gated on `haul` so
     // every other tractor use (ordinary mining) never reaches this branch.
@@ -5468,6 +5499,41 @@ function startHaulMission() {
     say(haulIntro());
 }
 
+// ---- distress call: the tow, in reverse (SPEC 3.55, ideas13.txt) -----------
+// One disabled derelict, reusing the friendly-target machinery from 2.17
+// (kind: 'friendly' already keeps it out of the laser/missile/rock damage
+// paths) plus a `size` that maps it onto TRACTOR_TIERS/rockMass exactly like
+// a rock — no new pull-rate or reaction-mass math needed anywhere. `hp`/
+// `maxHp` are nominal (1/1): nothing in this mission ever damages it.
+// Deliberate correction to the spec's own text: it says the derelict is
+// "excluded from Tab like every other friendly," but the whole mechanic
+// needs it selectable to tractor and recover — `tractorable: true` is the
+// one flag that opens a narrow exception in selectNearest()/cycleTarget(),
+// leaving every OTHER friendly (escort/defend, the haul's own home beacon)
+// excluded exactly as before.
+function makeDistressRoster(d) {
+    var f = {
+        name: 'Derelict', kind: 'friendly', hp: 1, maxHp: 1, alive: true,
+        disabled: true, tractorable: true, size: ROCK_SIZES.length - 2,
+        pos: v3(0, 0, -CFG.distressSpawnDist), vel: v3(0, 0, 0),
+        voice: { type: 'sine', freq: 320, trem: 1.2 }
+    };
+    d.derelict = f;
+    return [f];
+}
+
+// SPEC 3.55: leaving before the derelict is recovered, or dying, fails the
+// call the same generic way escort/defend already do — clearMission()'s
+// existing favorFail hook (below) covers it, keyed the same way. Offered
+// only from a station's hail menu (see startMissionRun), never as a
+// standalone mission-menu drill — there's no "the station" to bring it
+// home to without one.
+function distressIntro() {
+    return 'A distress call. A disabled ship drifts nearby, calling for help — Tab finds it. ' +
+           'Tractor it in with B, then E recovers it once it is close. Bring it home to ' +
+           distress.poiName + ' to complete the call. F1 for help.';
+}
+
 // ---- rock lifecycle ---------------------------------------------------------
 function rockPush(t) { return t.resource ? 2.2 : ROCK_SIZES[t.size].push; }
 function pushRock(t, dv) { t.vel = add(t.vel, dv); }
@@ -5566,10 +5632,12 @@ function loseRock(t) {
 }
 
 function checkMiningEnd() {
-    // SPEC 3.60: the haul's own completion is home-distance-based, not
-    // "every rock accounted for" — defensive gate alongside the loseRock
-    // fix above, in case anything else ever calls this during a haul run.
-    if (mode !== 'mining' || won || haul) return;
+    // SPEC 3.60/3.55: the haul's and the distress call's own completions
+    // are NOT "every rock accounted for" — defensive gate alongside the
+    // loseRock fix above, in case anything else ever calls this during
+    // either run (neither has ever needed it to fire in testing, but the
+    // derelict/home-beacon targets aren't rocks either way).
+    if (mode !== 'mining' || won || haul || distress) return;
     if (aliveRocks().length > 0) return;
     if (debrisTotal() > 0) {
         // The rocks are done but the harvest isn't: sweep the dust to finish.
@@ -5589,6 +5657,30 @@ function checkMiningEnd() {
 
 // E — the extractor. Only bites on a rock that has been mined to its core.
 function startExtract() {
+    // SPEC 3.55: recovering the derelict is instant, one E press once it's
+    // been tractored close — not a multi-tick drain like a rock's core, so
+    // this branches away before any of the ordinary extractor gating below
+    // (which assumes a t.resource rock and a real beam).
+    if (distress && !distress.recovered) {
+        var d = targets[selected];
+        if (!d || d.kind !== 'friendly') { say('Select the derelict first. Tab cycles targets.'); return; }
+        var ad = len(sub(d.pos, ship.pos));
+        if (ad > CFG.tractorStopDist + 0.5) {
+            SIM.cues.play('refusal_dud');
+            say('Tractor it in first. Distance ' + round10(ad) + '.');
+            return;
+        }
+        distress.recovered = true;
+        stopTractor();
+        d.alive = false;
+        var di = targets.indexOf(d);
+        if (di >= 0) targets.splice(di, 1);
+        stopVoice(d);
+        selectNearest();
+        SIM.audio.blip(900, 200, 0.15, 0, 'sine');
+        say('Derelict secured. Bring it home to ' + distress.poiName + '.');
+        return;
+    }
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The extractor is a mining tool.'); return; }
     if (beam) { SIM.cues.play('refusal_wait'); return; }
     var t = targets[selected];
@@ -6086,7 +6178,7 @@ function statusReport() {
         line += 'Gate ' + (courseState.activeIndex + 1) + ' of ' + targets.length + '. ' +
                 'Clock ' + fmtTime(courseState.elapsed) + '. ';
     } else {
-        line += mode === 'mining' ? aliveRocks().length + ' rocks remain. '
+        line += mode === 'mining' ? (distress ? '' : aliveRocks().length + ' rocks remain. ')
               : mode === 'sector' ? aliveTargets().length + ' points of interest. '
               : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
               : aliveTargets().length + ' targets remain. ';
@@ -6106,6 +6198,10 @@ function statusReport() {
     }
     if (demo) line += 'Clock ' + fmtTime(demo.elapsed) + '. ' + demoObjective();
     else if (contract) line += 'Contract clock ' + fmtTime(contract.elapsed) + '. ' + contractObjective();
+    if (distress) {
+        line += distress.recovered ? 'Derelict secured, bring it home to ' + distress.poiName + '. '
+                                    : 'Derelict adrift — tractor it in, then E to recover it. ';
+    }
     if (mission) {
         var f = mission.friendly;
         line += f.name + ' shields ' + Math.round(f.shield / f.shieldPool * 100) + ' percent, hull ' +
@@ -6420,6 +6516,14 @@ function buildShipLines() {
         heading('Contract');
         line('Timed delivery, clock ' + fmtTime(contract.elapsed) + '.');
         line(contractObjective());
+    }
+
+    // SPEC 3.55: independent of Mission/Contract above, same reasoning.
+    if (distress) {
+        heading('Distress call');
+        line(distress.recovered
+            ? 'Derelict secured. Bring it home to ' + distress.poiName + '.'
+            : 'Derelict adrift nearby. Tractor it in, then E recovers it.');
     }
 
     heading('Shields');
@@ -7017,13 +7121,30 @@ function dockAtStation(poi, extra) {
         say(extra + greeting + 'Docked at ' + poi.name + '. Cargo received, ' + cDelivered + ' ore. Contract complete! ' +
             'Contract time ' + fmtTime(contract.elapsed) + '. ' + cBestLine + ' ' + payout + ' credits paid. ' +
             service + stationMenuIntro());
+    } else if (distress && distress.recovered && poi.name === distress.poiName) {
+        // SPEC 3.55: same shape as the contract branch above — "bring it
+        // home" completes at the SAME station that offered the call, not
+        // just any dock, matching distressIntro's own wording. A dock
+        // anywhere else while a recovered call is still open just falls to
+        // the generic branch below, unaffected.
+        distress = null;
+        profile.credits += CFG.distressCredits;
+        addRcs(CFG.rcsMission);   // SPEC 3.32: named alongside escort/defend/contract
+        gainFavor(poi, CFG.favorMission);
+        saveProfile();
+        setTimeout(function () { SIM.cues.play('win_fanfare'); }, 300);
+        say(extra + greeting + 'Docked at ' + poi.name + '. The derelict is home. Distress call complete! ' +
+            CFG.distressCredits + ' credits paid. ' + service + stationMenuIntro());
     } else {
         say(extra + greeting + 'Docked at ' + poi.name + '. ' + service +
             (demo && !demo.delivered
                 ? 'The delivery needs ' + CFG.demoOreGoal + ' ore. Your hold reads ' + ore + '.'
                 : (contract && !contract.delivered
                     ? contractDockNote()
-                    : 'Your cargo hold reads ' + ore + ' ore, ' + profile.credits + ' credits.')) + ' ' + stationMenuIntro());
+                    : (distress
+                        ? (distress.recovered ? 'The derelict still needs to come home to ' + distress.poiName + '.'
+                                               : 'The distress call still needs the derelict recovered.')
+                        : 'Your cargo hold reads ' + ore + ' ore, ' + profile.credits + ' credits.'))) + ' ' + stationMenuIntro());
     }
 }
 
@@ -7542,8 +7663,8 @@ var COMM_ITEMS = [
           return activeMissions().every(function (m) { return !missionAvailable(m.kind); })
               ? 'Nothing available right now.'
               : (hailMenu.poi.name === 'Station Meridian'
-                  ? 'Escort or defend work, or a timed delivery contract, offered from here.'
-                  : 'Escort or defend work, offered from here.');
+                  ? 'Escort or defend work, a distress call, or a timed delivery contract, offered from here.'
+                  : 'Escort or defend work, or a distress call, offered from here.');
       },
       run: function () { hailMenu.submenu = 'missions'; missionIdx = 0; say(missionsMenuIntro()); } },
     DONATE_ORE_ITEM,
@@ -7653,6 +7774,15 @@ var MISSIONS = [
     { kind: 'defend', label: function () { return 'Defend the miner at ' + missionDestinationField(); },
       desc: function () {
           return 'Two waves of raiders. ' + CFG.missionCredits + ' credits at full hull; less if the miner takes damage.';
+      } },
+    // SPEC 3.55 (ideas13.txt, Fable's pick): the tow, in reverse — the
+    // player is the tug this time. No combat at all, just the tractor
+    // (3.52) and the extractor (E, reused as "recover") — see
+    // makeDistressRoster/startExtract's own distress branch.
+    { kind: 'distress', label: 'Distress call: tow it home',
+      desc: function () {
+          return 'A disabled ship drifts nearby. Tractor it in, E to recover it, then bring it home for ' +
+                 CFG.distressCredits + ' credits.';
       } }
 ];
 
@@ -7701,6 +7831,11 @@ function missionDestinationField() {
 // per-kind cooldown escort/defend also use.
 function missionAvailable(kind) {
     if (kind === 'contract' && contract && !contract.delivered) return false;
+    // SPEC 3.55: same "already open" shape as the contract above — a
+    // recovered-but-not-yet-docked distress call has no `delivered` flag of
+    // its own to check, since it's cleared to null the instant it IS
+    // docked home; truthiness alone is the right test here.
+    if (kind === 'distress' && distress) return false;
     return profile.clock >= (profile.missionCooldownUntil[kind] || 0);
 }
 
@@ -7708,6 +7843,7 @@ function missionText(i) {
     var m = activeMissions()[i];
     if (!missionAvailable(m.kind)) {
         if (m.kind === 'contract' && contract && !contract.delivered) return itemLabel(m) + '. A contract is already open.';
+        if (m.kind === 'distress' && distress) return itemLabel(m) + '. A distress call is already open.';
         return itemLabel(m) + '. Not available for ' +
                Math.ceil(profile.missionCooldownUntil[m.kind] - profile.clock) + ' more seconds.';
     }
@@ -7757,6 +7893,24 @@ function startMissionRun(kind) {
         if (SIM.audio.ctx && SIM.audio.masterGain && !menuOpen) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
         contract = { elapsed: 0, combatCleared: false, delivered: false, quotaSaid: false };
         say('Timed delivery accepted. ' + contractObjective() + ' I reads the contract clock.');
+        return;
+    }
+    // SPEC 3.55: like escort/defend below, this snapshots sectorHome and
+    // enters an encounter — but 'mining' (the tractor/extractor are the
+    // whole mechanic), no `mission` object at all (see the `distress` var's
+    // own comment for why it's kept separate), and ore/hull/etc. reset the
+    // same way starting any other fresh encounter does.
+    if (kind === 'distress') {
+        var poiD = hailMenu.poi;
+        touchStationVisit(poiD.name);
+        hailMenu.open = false;
+        hailMenu.submenu = null;
+        sectorHome = snapshotSector(poiD);
+        ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+        autoTargetCharges = CFG.autoTargetCharges;
+        refillRcs(); collisionDamage = 0; repairAllSystems();
+        newGame('mining', null, false, false, poiD.name);
+        say('Distress call accepted. ' + distressIntro());
         return;
     }
     var poi = hailMenu.poi;
@@ -9050,11 +9204,13 @@ window.__sim = {
                                                maxHp: mission.friendly.maxHp, alive: mission.friendly.alive,
                                                shield: Math.round(mission.friendly.shield * 10) / 10,
                                                shieldPool: mission.friendly.shieldPool } } : null,
+            distress: distress ? { poiName: distress.poiName, recovered: distress.recovered } : null,
             laserBoost: laserBoostActive() ? Math.ceil((laserBoostUntil - Date.now()) / 1000) : 0,
             clock: Math.round(profile.clock * 10) / 10,
             missionCooldown: { escort: Math.round(Math.max(0, profile.missionCooldownUntil.escort - profile.clock)),
                                defend: Math.round(Math.max(0, profile.missionCooldownUntil.defend - profile.clock)),
-                               contract: Math.round(Math.max(0, profile.missionCooldownUntil.contract - profile.clock)) },
+                               contract: Math.round(Math.max(0, profile.missionCooldownUntil.contract - profile.clock)),
+                               distress: Math.round(Math.max(0, profile.missionCooldownUntil.distress - profile.clock)) },
             quadrant: (!demo && profile.quadrants[profile.quadrantId] && profile.quadrants[profile.quadrantId].zone) ? (function () {
                 var q = profile.quadrants[profile.quadrantId];
                 return { zone: { name: q.zone.name, pos: q.zone.pos },
@@ -9339,6 +9495,12 @@ function clearMission() {
     // penalty for walking away from it early, deliberately — it's a
     // self-paced errand, not a mission with something at stake.
     if (mission && !mission.ended && mission.poiName) loseFavor({ name: mission.poiName }, CFG.favorFail);
+    // SPEC 3.55: the same rule, for the distress call — leaving before the
+    // derelict is recovered fails it. A RECOVERED-but-not-yet-docked call is
+    // deliberately spared below (see the `distress = null` line) rather than
+    // wiped here, since "bring it home" needs the flag to survive the trip
+    // back out of this mining pocket into the open sector.
+    if (distress && !distress.recovered && distress.poiName) loseFavor({ name: distress.poiName }, CFG.favorFail);
     targets.forEach(stopVoice);
     killMissile();
     stopTractor();
@@ -9354,6 +9516,11 @@ function clearMission() {
     turretDebrief.open = false;   // SPEC 3.65
     stopHaulCreak(); haul = null;   // SPEC 3.60
     stopCapitalVoice(); capital = null; capitalDoor = null;   // SPEC 3.69
+    // SPEC 3.55: NOT unconditional, unlike every other scoped state above —
+    // a recovered distress call survives leaving this encounter (the same
+    // way `contract` already survives leaving the open quadrant it's not
+    // tied to at all); only an unrecovered one is actually wiped here.
+    if (!(distress && distress.recovered)) distress = null;
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -9368,7 +9535,7 @@ function clearMission() {
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
 
-function newGame(m, missionSpec, startHaulRun, startCapitalRun) {
+function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoiName) {
     if (m) mode = m;
     clearMission();
     if (missionSpec) mission = missionSpec;   // SPEC 2.17: set AFTER clearMission clears the old one
@@ -9379,6 +9546,10 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun) {
     // SPEC 3.69: same reasoning again — `capital` set fresh AFTER
     // clearMission() nulled it, only when actually (re)starting this run.
     if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null };
+    // SPEC 3.55: same reasoning again — a fresh `distress` set AFTER
+    // clearMission() nulled it (or left a recovered one alone, see
+    // clearMission itself), only when actually accepting the call.
+    if (startDistressPoiName) distress = { poiName: startDistressPoiName, recovered: false };
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'course') {
@@ -9393,6 +9564,11 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun) {
         // standard cloud — mining's own makeMiningRoster() is completely
         // untouched by this branch.
         targets = makeHaulRoster();
+    } else if (mode === 'mining' && distress) {
+        // SPEC 3.55: a dedicated one-derelict roster, same shape as haul's
+        // branch just above — mining's own makeMiningRoster() untouched.
+        targets = makeDistressRoster(distress);
+        targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
     } else if (mode === 'combat' && capital) {
         // SPEC 3.69: four turrets, no other roster at all — `capital`
         // itself isn't a target (no lock, no Tab), just the thing they

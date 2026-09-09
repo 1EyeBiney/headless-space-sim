@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE** → 3.55 the distress tow, next → 3.61 the minefield →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE** → 3.61 the minefield, next →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -5366,7 +5366,7 @@ A-section, and it bears directly on the encounters note below.
   — the new checks are additive (`if (mission.poiName) ...`), not a
   rewrite of the existing branch.
 
-#### 3.55 Distress call: the tow, in reverse (ideas13.txt, Fable's pick, confirmed by Brian) — proposed, next after 3.52
+#### 3.55 Distress call: the tow, in reverse (ideas13.txt, Fable's pick, confirmed by Brian) — DONE
 
 - Brian: "I can't remember whether we have another encounter/instance
   mission already planned or not but we need to start thinking of other
@@ -5428,6 +5428,104 @@ A-section, and it bears directly on the encounters note below.
   favor and ends the mission; leaving or dying beforehand fails it via
   the existing generic path with no new code; the station-offered
   Escort/Defend/Contract missions are unaffected.
+
+**DONE (Round 51, Sonnet).** Built mostly as specced, with one deliberate
+architectural departure from the letter of the spec and one deliberate
+correction to a self-contradiction the spec's own text had, both flagged
+below. `distress` is a NEW module-level var (`{poiName, recovered}`,
+the `demo`/`contract`/`haul`/`capital` pattern) rather than being folded
+into `mission` (2.17's escort/defend shape) as the spec's own wording
+suggested ("poiName stamped like the others... reusing the friendly-
+target machinery from 2.17"). Reason: `mission.friendly` is read
+UNCONDITIONALLY in roughly a dozen places (`updateMission`, `missionEnd`,
+F2's Mission heading, `I`'s status line, `state()`, two `poke()` hooks) —
+a distress mission has no friendly, no waves, no strikes, so reusing
+`mission` would have meant teaching every one of those sites a
+distress-shaped exception. A dedicated var, modeled on `contract`'s own
+shape instead (right down to surviving `clearMission()` once "complete"
+the same way `contract` already does), reaches the same "poiName
+stamped, clearMission's generic favorFail fires for free" outcome the
+spec asked for with none of that risk — `clearMission()` gained exactly
+one guarded line for the fail case, mirroring the existing
+`mission`/`favorFail` line beside it. The correction: the spec's own
+text says the derelict is "excluded from Tab like every other friendly"
+— but the whole mechanic needs it selectable to tractor and recover, so
+`selectNearest()`/`cycleTarget()`'s friendly-exclusion (2.17's own rule)
+now carries one exception, a `tractorable` flag set only on this
+derelict, leaving every other friendly (escort/defend, the haul's home
+beacon) excluded exactly as before. The derelict itself rides
+`makeDistressRoster()`, entered via `newGame('mining', null, false,
+false, poiName)` (a 5th param, `startDistressPoiName`, the exact
+haul/capital pattern of setting fresh state AFTER `clearMission()` nulls
+it) — 'mining' mode specifically, since B (tractor) and E (extractor,
+reused as "recover") are both mode-gated there, and neither needed new
+plumbing: the derelict carries a rock-shaped `size` (medium) so the
+EXISTING `TRACTOR_TIERS`/`rockMass` math (built for rocks) applies to it
+completely unchanged, only the two `t.kind !== 'rock'` guards in
+`tractorKey()`/`updateTractor()` needed a `|| t.tractorable` exception to
+match. `startExtract()` gained an early distress branch — recovery is
+instant (one E press within `tractorStopDist`), not a multi-tick drain
+like a rock core, so it never touches the ordinary extractor/vac-beam
+code at all. `dockAtStation()` gained a `distress.recovered`-aware
+branch, same shape as 3.28's contract branch, paying `CFG.distressCredits`
+(200, a flat reward — there's no hull fraction to scale by, the derelict
+is either recovered or it isn't) plus `CFG.favorMission`, gated on
+docking at the SAME station that offered the call (matching
+`distressIntro`'s own "bring it home to X" wording); a dock anywhere
+else while recovered falls through to a new one-line status instead of
+silence. `missionAvailable`/`missionText` gained the same "already open"
+refusal contract's own entries have (distress has no `delivered` flag of
+its own — since it's nulled the instant it's actually complete,
+truthiness alone is the right test). **One real bug found in testing,
+not caught by node's own syntax check**: `updateTractor()` unconditionally
+reads `t.vel` (`t.vel = scale(t.vel, ...)`) for damping — every rock
+already carries one from `spawnRock`, but `makeDistressRoster()`'s first
+draft never gave the derelict a `vel` field at all, crashing the instant
+the tractor engaged (`Cannot read properties of undefined (reading 'x')`
+inside `scale`). Fixed by adding `vel: v3(0,0,0)` to the derelict's own
+shape. Machine-tested at a local server through the full real flow (no
+mocks): warped to Station Meridian, hailed at comm range, opened
+Missions, confirmed the distress entry's own description text, accepted
+it (confirmed `mode: 'mining'`, `distress: {poiName, recovered:false}`,
+the derelict spawned at 350 and auto-selected as the sole target via T);
+engaged the tractor and stepped simulated time — the medium pull rate
+measured exactly 4/s (24 units closed over 6s) confirming the derelict
+correctly reads as a rock-shaped 'medium' for the pull-rate/mass tables
+— continued stepping to the tractor's own auto-stop at exactly 250
+("In extractor range."); pressed E and confirmed "Derelict secured.
+Bring it home to Station Meridian.", `distress.recovered: true`, the
+target removed from the roster; pressed X and confirmed `distress`
+survived the return to `mode: 'sector'` (unlike every other scoped
+state, which `clearMission()` wipes unconditionally); warped back and
+docked, confirming "Docked at Station Meridian. The derelict is home.
+Distress call complete! 200 credits paid." with credits landing at
+exactly 300 (100 start + 200) and Meridian's favor at exactly 56 (40
+start + 16 `favorMission`), and `distress` correctly nulled. Separately
+confirmed the FAILURE path: accepted a second call (after poking
+`profile.clock` forward past the cooldown), left via X WITHOUT
+recovering, and confirmed favor dropped by exactly 10 (`favorFail`,
+56→46) and `distress` nulled — matching escort/defend's own generic
+abandon penalty with zero new code, as specced. Separately confirmed
+the "already open" refusal: recovered a third call, left, then hailed a
+DIFFERENT station (Station Two) and opened Missions there — its own
+distress entry correctly refused with "A distress call is already
+open." rather than the generic cooldown message, and Station Two's own
+Missions description read "Escort or defend work, or a distress call,
+offered from here." (the Meridian-only phrasing gained its own third
+clause too, for the timed contract). Zero console errors throughout,
+reconfirmed on a genuinely fresh tab after the vel-bug fix (this
+project's own stale-console-error gotcha, checked rather than assumed).
+**Not exercised this round**: dying (rather than leaving via X) before
+recovery, which should route through the SPEC 2.16 tug and reach the
+same `clearMission()` favorFail guard with no distress-specific code —
+structurally identical to the tested X-abandon path and to how
+escort/defend's own tug interaction was already confirmed in Round 15,
+so left as reasoned-through rather than separately driven this round; a
+scavenger-raider threat layered on top (left explicitly open in the
+spec itself, Fable's lean was to skip it for v1). Help text (F1, the
+comms-hail description) and README both updated to mention the call.
+Every number — the spawn distance, the reward, the derelict's own tone
+— is a placeholder for Brian's ear. Not yet heard or flown by Brian.
 
 ### Phase 3E — the encounters (ideas14.txt + Brian in chat + Fable's five, 2026-09-07)
 

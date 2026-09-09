@@ -3571,3 +3571,48 @@ door timing) is a placeholder for Brian's ear; the metal-door recording
 itself waits on 3.69a. This closes Phase 3E's ideas15.txt batch — next
 per SPEC.md's build order is **3.55** (the distress-call tow), unless
 Brian wants to fly/hear what's shipped since 3.24 first.
+
+**Round 51 (Sonnet, 2026-09-09): built SPEC 3.55, the distress-call tow.**
+The player is the tug this time — a disabled derelict, tractored in and
+recovered with E (reused, the same idea as extracting an ore core), then
+flown home for a flat credit reward. See SPEC.md's own DONE paragraph
+for the full shape and both real findings from testing. Two deliberate
+departures from the letter of the spec, both flagged there in detail:
+(1) a new dedicated `distress` module-level var (the `demo`/`contract`/
+`haul`/`capital` pattern) rather than folding into `mission` as the
+spec's own wording suggested — `mission.friendly` is read unconditionally
+in roughly a dozen places, none of which a friendly-less distress
+mission could satisfy without a distress-shaped exception at every one;
+`distress` reaches the same "poiName stamped, clearMission's generic
+favorFail fires for free" outcome by modeling on `contract`'s own shape
+instead (surviving `clearMission()` once recovered, the same way
+`contract` survives leaving the open quadrant). (2) the spec's own text
+said the derelict should be "excluded from Tab like every other
+friendly" — but the mechanic needs it selectable to tractor and recover,
+so `selectNearest()`/`cycleTarget()`'s 2.17-era friendly-exclusion now
+carries one flagged exception (`tractorable`), narrow enough that every
+OTHER friendly (escort/defend, the haul's home beacon) stays excluded
+exactly as before. The derelict itself is deliberately rock-SHAPED (a
+medium-size field on an otherwise `kind: 'friendly'` target) so the
+existing `TRACTOR_TIERS`/`rockMass` math applies to it completely
+unchanged — only two `t.kind !== 'rock'` guards (`tractorKey`,
+`updateTractor`) needed a one-line exception. **One real bug found in
+testing**: `updateTractor()` unconditionally reads `t.vel` for damping
+— every rock gets one from `spawnRock`, but the derelict's first draft
+had none, crashing the instant the tractor engaged; fixed with an
+explicit `vel: v3(0,0,0)`. Machine-tested at a local server through the
+complete real flow three times (no mocks): a full accept → tractor →
+recover → leave → dock success (credits 100→300, Meridian favor 40→56,
+the tractor's own medium pull rate measured exactly 4/s over stepped
+simulated time); a full accept → abandon-without-recovering failure
+(favor 56→46, matching `CFG.favorFail` exactly, `distress` correctly
+nulled); and the "already open" refusal at a SECOND station's own
+Missions list while a recovered-but-undocked call was still pending.
+Zero console errors, reconfirmed on a genuinely fresh tab after the
+vel-bug fix. Not exercised: dying (rather than leaving) before recovery
+— reasoned through as routing to the same `clearMission()` favorFail
+guard via the SPEC 2.16 tug with zero distress-specific code, matching
+escort/defend's own already-confirmed tug interaction, but not
+separately driven this round. This closes SPEC.md's Phase 3E build
+order through 3.55 — next up is 3.61 (the minefield), unless Brian wants
+to fly/hear what's shipped first.
