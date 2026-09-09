@@ -611,6 +611,22 @@ var CFG_DEFAULTS = {
     shadowLitMinS: 6, shadowLitMaxS: 14,
     shadowSilentMinS: 4, shadowSilentMaxS: 9,
 
+    // SPEC 3.63 (ideas14.txt/Fable): nebula transit — the staged pulsar/
+    // space_loop batch finally gets a job. A cloud sphere ahead of the
+    // start; inside it, the sensor reads 3.27's own "half" state (lock
+    // zone halved, tick doubled, scoped to nebulaState.inside rather
+    // than the real shipSystems.sensor — the exact reasoning 3.62's
+    // t.dark check already established) and the hull slowly ablates.
+    // A motionless pulsar sits just past the far edge — the one stable
+    // bearing — while the actual exit gate drifts slowly around that
+    // same point, never quite where the pulsar points.
+    nebulaCenterDist: 1800,     // cloud center, straight ahead of the start
+    nebulaRadius: 1000,         // inside this of the center: half sensor, hull ablates
+    nebulaHullPerS: 1.2,        // slow — minutes, not seconds, to matter
+    nebulaHullAlertPcts: [50, 25],
+    nebulaExitDrift: 5,         // u/s random walk, same shape as a mine's drift
+    nebulaExitRadius: 120,      // proximity to the exit that ends the run
+
     // SPEC 3.59 (ideas14.txt): turret defense — three fixed zones, ship
     // stationary, weapons act on whichever zone is selected. First pass is
     // the 3-zone version only; the numpad 3x3 (3.59b) is a later item.
@@ -693,7 +709,7 @@ var profile = null;
 // than this code (an unlikely rollback scenario) keeps its own version
 // stamp — Object.assign already preserves any fields this code doesn't
 // know about, so nothing about an unrecognized newer field gets dropped.
-var PROFILE_VERSION = 11;
+var PROFILE_VERSION = 12;
 
 function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0, runs: [],
@@ -726,7 +742,10 @@ function defaultProfile() {
              // a fifth board, same reasoning.
              minefieldRuns: [],
              // SPEC 3.62: the shadow's own best-10 log — a sixth board.
-             shadowRuns: [] };
+             shadowRuns: [],
+             // SPEC 3.63: the nebula transit's own best-10 log — a seventh
+             // board.
+             nebulaRuns: [] };
 }
 
 function loadProfile() {
@@ -829,6 +848,8 @@ function loadProfile() {
     if (!Array.isArray(profile.minefieldRuns)) profile.minefieldRuns = [];
     // v10 -> v11 (SPEC 3.62): the shadow's own run log.
     if (!Array.isArray(profile.shadowRuns)) profile.shadowRuns = [];
+    // v11 -> v12 (SPEC 3.63): the nebula transit's own run log.
+    if (!Array.isArray(profile.nebulaRuns)) profile.nebulaRuns = [];
     // v3 -> v4 (SPEC 3.26): laser levels replace 2.12's free version-cycling.
     // A pre-4 save's slots held version ids (mining3, etc) directly with no
     // separate "owned level" concept — the highest version found per family
@@ -958,6 +979,17 @@ function recordShadowRun(seconds) {
     profile.shadowRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
     profile.shadowRuns.sort(function (a, b) { return a.seconds - b.seconds; });
     profile.shadowRuns = profile.shadowRuns.slice(0, 10);
+    saveProfile();
+    return prevBest;
+}
+
+// SPEC 3.63: the nebula transit's own best-10 board, same shape again.
+function recordNebulaRun(seconds) {
+    if (!profile) return undefined;
+    var prevBest = profile.nebulaRuns.length ? profile.nebulaRuns[0].seconds : undefined;
+    profile.nebulaRuns.push({ seconds: seconds, date: new Date().toISOString().slice(0, 10) });
+    profile.nebulaRuns.sort(function (a, b) { return a.seconds - b.seconds; });
+    profile.nebulaRuns = profile.nebulaRuns.slice(0, 10);
     saveProfile();
     return prevBest;
 }
@@ -1600,6 +1632,79 @@ function updateShadow(dt) {
     }
 }
 
+// ---- nebula transit (SPEC 3.63, ideas14.txt/Fable) -------------------------
+// The staged pulsar/space_loop recordings finally get a job. A cloud
+// sphere sits ahead of the start; `insideNebula()` (read by zoneRad() and
+// tickBeat, right alongside their existing systemState('sensor') === 'half'
+// checks — the exact scoped-override shape 3.62's t.dark check already
+// established, so the real sensor never actually reports broken in F2/I)
+// is true whenever the ship is within CFG.nebulaRadius of the cloud's own
+// center. A motionless pulsar (kind: 'poi', poiType: 'pulsar') sits just
+// past the far edge — the one stable bearing — while the real exit
+// (poiType: 'nebulaExit') drifts slowly around that same point, the same
+// small-random-walk shape a mine's own drift already uses.
+function insideNebula() {
+    return !!(nebulaState && nebulaState.inside);
+}
+function makeNebulaRoster() {
+    var anchor = v3(0, 0, -(CFG.nebulaCenterDist + CFG.nebulaRadius + 400));
+    var pulsar = { name: 'Pulsar', poiType: 'pulsar', kind: 'poi', desc: 'a steady, fixed bearing',
+                   pos: v3(anchor.x, anchor.y, anchor.z), alive: true, resource: false,
+                   beaconAsset: 'nebula_pulsar' };
+    var ang = Math.random() * Math.PI * 2;
+    var exit = { name: 'Exit Gate', poiType: 'nebulaExit', kind: 'poi', desc: 'clear of the nebula',
+                 pos: v3(anchor.x, anchor.y, anchor.z),
+                 vel: v3(Math.cos(ang) * CFG.nebulaExitDrift, 0, Math.sin(ang) * CFG.nebulaExitDrift),
+                 alive: true, resource: false };
+    buildPoiVoice(pulsar);
+    buildPoiVoice(exit);
+    return [pulsar, exit];
+}
+function nebulaIntro() {
+    return 'Nebula transit. A cloud sits ahead — inside it the sensor runs half strength, and the hull slowly ablates. ' +
+           'A pulsar holds one steady bearing; the exit gate itself drifts, so trust the pulsar to aim, not to arrive. ' +
+           'Tab cycles between them. The clock starts the moment you thrust.';
+}
+function finishNebula() {
+    won = true;
+    var seconds = nebulaState.elapsed;
+    var prevBest = recordNebulaRun(seconds);
+    var rankText = prevBest === undefined ? 'Your first time.'
+                 : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
+                 : fmtTime(seconds - prevBest) + ' off your best.';
+    SIM.cues.play('win_fanfare');
+    say('Clear of the nebula. Time ' + fmtTime(seconds) + '. Your hull ' + Math.round(hull) + ' percent. ' + rankText);
+}
+// Called every frame from simTick while mode === 'nebula'. Drifts the
+// exit, tracks the inside/outside boundary (one combined say() on each
+// crossing — never two in the same tick), ablates the hull only while
+// inside, and checks the exit's own proximity.
+function updateNebula(dt) {
+    if (!nebulaState || won || lost) return;
+    if (nebulaState.started) nebulaState.elapsed += dt;
+    var exit = targets.filter(function (t) { return t.poiType === 'nebulaExit'; })[0];
+    if (exit && exit.alive) {
+        exit.pos = add(exit.pos, scale(exit.vel, dt));
+        if (exit.nodes) SIM.audio.movePanner(exit.nodes.panner, exit.pos);
+    }
+    var wasInside = nebulaState.inside;
+    nebulaState.inside = len(sub(ship.pos, nebulaState.cloudCenter)) <= CFG.nebulaRadius;
+    if (nebulaState.inside && !wasInside) {
+        say('Entering the nebula. Sensor at half strength; the hull will slowly ablate.');
+    } else if (!nebulaState.inside && wasInside) {
+        say('Clear of the nebula cloud. Sensor restored; the hull stops ablating.');
+    }
+    if (nebulaState.inside) {
+        var before = hull;
+        hull = Math.max(0, hull - CFG.nebulaHullPerS * dt);
+        CFG.nebulaHullAlertPcts.forEach(function (p) {
+            if (before > p && hull <= p) say('Hull ' + Math.round(hull) + ' percent, ablating.');
+        });
+        if (hull <= 0) { shipDestroyed('the nebula'); return; }
+    }
+    if (exit && exit.alive && len(sub(exit.pos, ship.pos)) <= CFG.nebulaExitRadius) finishNebula();
+}
+
 // ---- escort/defend missions (SPEC 2.17) ------------------------------------
 // Only the friendly is in the roster at mission start — raiders arrive in
 // scripted waves via spawnMissionWave(), not all at once. Same voice/asset
@@ -2153,6 +2258,7 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
 var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mode === 'course'
 var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while mode === 'minefield'
 var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
+var nebulaState = null; // SPEC 3.63: { elapsed, started, inside, cloudCenter } while mode === 'nebula'
 // SPEC 3.59 (ideas14.txt): the turret defense drill — the ship doesn't fly;
 // three fixed zones (left/centre/right), each with its own laser cooldown
 // and shield, at most one incoming at a time. { zone, zones: [{laserReadyAt,
@@ -2272,7 +2378,9 @@ function zoneRad() {
     // SPEC 3.27: a half-broken targeting sensor narrows the LOCK zone only
     // (not the laser-aim or missile cones, which belong to their own
     // separately-breakable systems).
-    var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
+    // SPEC 3.63: inside the nebula, the sensor reads the same "half" state
+    // — insideNebula() is scoped to this drill, never the real sensor.
+    var sensorMult = (systemState('sensor') === 'half' || insideNebula()) ? CFG.repairSensorPct : 1;
     return { laser: z.laser * k, lockOn: z.lockOn * k * sensorMult,
              lockOff: z.lockOff * k * sensorMult, missile: z.missile * k };
 }
@@ -2479,6 +2587,12 @@ var HELP_SECTIONS = [
         'The instant it goes dark, the lock drops and the tick goes silent — no bearing updates at all until it lights back up. Fly on the last bearing you had; R still reports range with closing or opening either way.',
         function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
         function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
+    ] },
+    { heading: 'Nebula transit', items: [
+        function () { return 'A cloud sits ahead. Inside it the sensor runs at half strength — the lock zone narrows and the tick slows, exactly like a damaged sensor — and the hull slowly ablates. Both stop the instant you leave it.'; },
+        'A pulsar sits just past the far side, motionless — the one steady bearing. The real exit gate is a separate target near the same spot, but it drifts slowly, so it is rarely exactly where the pulsar points. Tab cycles between them.',
+        'Trust the pulsar to aim yourself in the right direction; the exit itself still has to be found by ear once you are close.',
+        'Reach the exit and the run ends with the time and your hull remaining. Losing the whole hull inside the cloud ends the run the same way any other loss does. The Run log keeps its own separate board.'
     ] },
     { heading: 'Capital ship', items: [
         'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them, T reports which one is selected and whether its own shield door is open.',
@@ -3207,7 +3321,9 @@ function tickBeat() {
     // scoped to just t.dark rather than the real shipSystems.sensor —
     // flipping the real sensor would wrongly show it broken in F2/I.
     if (systemState('sensor') === 'off' || t.dark) { tick.timer = setTimeout(tickBeat, 400); return; }
-    var sensorSlow = systemState('sensor') === 'half' ? 2 : 1;   // "tick slower"
+    // SPEC 3.63: inside the nebula, the tick doubles its interval too —
+    // same scoped insideNebula() check as zoneRad()'s own sensorMult.
+    var sensorSlow = (systemState('sensor') === 'half' || insideNebula()) ? 2 : 1;   // "tick slower"
     var a = aim(t.pos);
     var interval;
     if (locked && lockToneKind() === 'poi') {
@@ -6412,7 +6528,7 @@ function statusReport() {
         len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
         line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
     }
-    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && autoTargetFitted()) {
+    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'nebula' && autoTargetFitted()) {
         line += autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge. ' : ' auto-target charges. ');
     }
     if (mode === 'course') {
@@ -6428,13 +6544,16 @@ function statusReport() {
         line += (shadowTarget && shadowTarget.dark ? 'Ship dark. ' : 'Ship lit. ') +
                 'Contact ' + Math.round(shadowState.contact) + ' of ' + CFG.shadowNeedS + ' seconds. ' +
                 'Clock ' + fmtTime(shadowState.elapsed) + '. ';
+    } else if (mode === 'nebula') {
+        line += 'Your hull ' + Math.round(hull) + ' percent. ' + (nebulaState.inside ? 'Inside the nebula, sensor at half. ' : 'Clear of the nebula. ') +
+                'Clock ' + fmtTime(nebulaState.elapsed) + '. ';
     } else {
         line += mode === 'mining' ? (distress ? '' : aliveRocks().length + ' rocks remain. ')
               : mode === 'sector' ? aliveTargets().length + ' points of interest. '
               : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
               : aliveTargets().length + ' targets remain. ';
     }
-    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow') {
+    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'nebula') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
                 chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
@@ -6597,16 +6716,20 @@ function runLogItems() {
                (typeof r.detonations === 'number' ? ', ' + r.detonations + (r.detonations === 1 ? ' mine' : ' mines') + ' detonated' : '') +
                ', ' + r.date + '.';
     }));
-    // SPEC 3.62: the shadow's own board — a seventh list, self-labeled.
-    return items.concat(profile.shadowRuns.map(function (r, i) {
+    items = items.concat(profile.shadowRuns.map(function (r, i) {
         return 'The shadow number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
+    }));
+    // SPEC 3.63: nebula transit's own board — an eighth list, self-labeled.
+    return items.concat(profile.nebulaRuns.map(function (r, i) {
+        return 'Nebula transit number ' + (i + 1) + ': ' + fmtTime(r.seconds) + ', ' + r.date + '.';
     }));
 }
 
 function openRunLog() {
     if (!profile.runs.length && !profile.contractRuns.length && !profile.courseRuns.length &&
-        !profile.turretRuns.length && !profile.minefieldRuns.length && !profile.shadowRuns.length) {
-        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, the turret drill, the minefield, or the shadow to set one.');
+        !profile.turretRuns.length && !profile.minefieldRuns.length && !profile.shadowRuns.length &&
+        !profile.nebulaRuns.length) {
+        say('No runs recorded yet. Finish a delivery run, a timed contract, the flight course, the turret drill, the minefield, the shadow, or nebula transit to set one.');
         return;
     }
     runlog.open = true;
@@ -6620,6 +6743,7 @@ function openRunLog() {
         ', ' + profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's') +
         ', ' + profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's') +
         ', ' + profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's') +
+        ', ' + profile.nebulaRuns.length + ' nebula transit' + (profile.nebulaRuns.length === 1 ? '' : 's') +
         '. Up and down arrows browse, Escape closes.');
 }
 
@@ -9204,6 +9328,13 @@ function onKeyDown(e) {
                         // rather than after finding it a second time.
                         shadowState = { elapsed: 0, started: false, contact: 0 };
                         say(shadowIntro());
+                    } else if (mode === 'nebula') {
+                        // SPEC 3.63: same shape again, built alongside from
+                        // the start this time.
+                        nebulaState = { elapsed: 0, started: false, inside: false,
+                                         cloudCenter: v3(0, 0, -CFG.nebulaCenterDist) };
+                        if (SIM.audio.ctx) SIM.audio.playMusic('nebula_cloud', { vol: CFG.stationAmbientVol, fadeS: 1.5 });
+                        say(nebulaIntro());
                     } else {
                         say(mode === 'mining' ? miningIntro() : combatIntro());
                     }
@@ -9343,6 +9474,8 @@ function simTick(dt) {
         if (mode === 'minefield' && minefieldState && !minefieldState.started) minefieldState.started = true;
         // SPEC 3.62: same rule for the shadow.
         if (mode === 'shadow' && shadowState && !shadowState.started) shadowState.started = true;
+        // SPEC 3.63: same rule for nebula transit.
+        if (mode === 'nebula' && nebulaState && !nebulaState.started) nebulaState.started = true;
     }
     thrusterSync(k);
     if (k.s && thrustSt !== 'off') {
@@ -9389,6 +9522,7 @@ function simTick(dt) {
     if (mode === 'course') updateCourse(dt);
     if (mode === 'minefield') updateMinefield(dt);
     if (mode === 'shadow') updateShadow(dt);
+    if (mode === 'nebula') updateNebula(dt);
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
@@ -9799,7 +9933,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null;
+    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; nebulaState = null;
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     turretDebrief.open = false;   // SPEC 3.65
     stopHaulCreak(); haul = null;   // SPEC 3.60
@@ -9847,6 +9981,8 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     } else if (mode === 'shadow') {
         targets = makeShadowRoster();
         targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
+    } else if (mode === 'nebula') {
+        targets = makeNebulaRoster();
     } else if (mode === 'turret') {
         // SPEC 3.59: no targets at all — the three zones and their incomings
         // are their own state (turretState), built by startMission() right
@@ -9948,6 +10084,7 @@ var MENU_ITEMS = [
           if (profile.turretRuns.length) parts.push(profile.turretRuns.length + ' turret defense' + (profile.turretRuns.length === 1 ? '' : 's'));
           if (profile.minefieldRuns.length) parts.push(profile.minefieldRuns.length + ' minefield' + (profile.minefieldRuns.length === 1 ? '' : 's'));
           if (profile.shadowRuns.length) parts.push(profile.shadowRuns.length + ' shadow' + (profile.shadowRuns.length === 1 ? '' : 's'));
+          if (profile.nebulaRuns.length) parts.push(profile.nebulaRuns.length + ' nebula transit' + (profile.nebulaRuns.length === 1 ? '' : 's'));
           return parts.length ? 'Your best times: ' + parts.join(', ') + '.' : 'No runs recorded yet.';
       },
       run: function () { openRunLog(); } },
@@ -9994,6 +10131,12 @@ var ENCOUNTER_ITEMS = [
     { label: 'The shadow',
       desc: function () { return 'Tail a ship that cuts its engine at random. Hold within ' + CFG.shadowRange + ' for ' + CFG.shadowNeedS + ' seconds total — lit or dark — to finish. Weapons cold.'; },
       run: function () { startMission('shadow'); } },
+    // SPEC 3.63 (ideas14.txt/Fable): the sensor runs at half strength
+    // inside the cloud and the hull slowly ablates. See makeNebulaRoster/
+    // updateNebula.
+    { label: 'Nebula transit',
+      desc: function () { return 'A cloud ahead halves your sensor and ablates the hull while you are inside it. A pulsar holds one steady bearing; the exit gate itself drifts.'; },
+      run: function () { startMission('nebula'); } },
     // SPEC 3.54: the same missions offered from a station's hail menu,
     // playable directly so a pilot can hear them without flying to a
     // station first. No sectorHome, no favor, no cooldown, credits kept,
@@ -10118,6 +10261,16 @@ function startMission(m) {
         // SPEC 3.62: same reasoning again.
         shadowState = { elapsed: 0, started: false, contact: 0 };
         say(shadowIntro());
+    } else if (m === 'nebula') {
+        // SPEC 3.63: same reasoning again. cloudCenter is fixed for the
+        // whole run (the cloud itself never moves); nebula_cloud crossfades
+        // over startSpaceAmbient()'s own space_ambient bed, which newGame()
+        // already started a moment ago — playMusic's own prev-node fade
+        // handles the overlap the same way docking's interior loop does.
+        nebulaState = { elapsed: 0, started: false, inside: false,
+                         cloudCenter: v3(0, 0, -CFG.nebulaCenterDist) };
+        if (SIM.audio.ctx) SIM.audio.playMusic('nebula_cloud', { vol: CFG.stationAmbientVol, fadeS: 1.5 });
+        say(nebulaIntro());
     } else if (m === 'turret') {
         // SPEC 3.59: built AFTER newGame() for the same reason courseState
         // is — newGame()'s own clearMission() call nulls it out first.

@@ -3691,3 +3691,53 @@ Zero console errors, reconfirmed on a fresh tab. Every number is a
 placeholder for Brian's ear. Not yet heard or flown by Brian. This
 closes SPEC 3.62 — next per the build order is 3.63 (nebula transit),
 unless Brian wants to fly/hear what's shipped first.
+
+**Round 54 (Sonnet, 2026-09-09): built SPEC 3.63, nebula transit.** The
+staged pulsar/space_loop recordings finally get a job. A new mode,
+`'nebula'`, reached from the Encounters list. Two `kind: 'poi'` targets,
+both wired through the existing `beaconAsset` mechanism (SPEC 3.31): a
+motionless Pulsar (`nebula_pulsar`, pulsar1.mp3 — a placeholder pick)
+just past the cloud's far edge, and a separate Exit Gate that starts at
+the same point but drifts away via a small random-walk velocity (the
+same shape a mine's drift already uses) — Tab-ing the pulsar always
+gives a reliable bearing while the real exit wanders nearby, matching
+"pulsar stable, everything else drifts" literally as two targets, one
+that never moves and one that does. `insideNebula()` is checked
+alongside the EXISTING `systemState('sensor')` checks in `zoneRad()`/
+`tickBeat()` — the same scoped-override pattern 3.62's `t.dark` check
+established, reused a second time now that two independent things can
+degrade tracking. Hull ablates directly (not via `hullHit()`, which
+would have spammed a cue and a full line every frame) only while
+inside, with 50/25% alert lines. New manifest keys `nebula_pulsar`/
+`nebula_cloud`; the cloud bed crossfades over `startSpaceAmbient()`'s
+own bed via `playMusic`'s existing prev-node fade, no new plumbing
+needed. **A real interaction found in testing, left as designed rather
+than fixed**: the existing repair crew (3.27/3.36) automatically fights
+the ablation the instant hull drops below its own field cap, spending
+reaction mass to claw some of it back and occasionally speaking its
+own line — since that call and this drill's own alert both call
+`say()` in the same `simTick`, whichever runs later can silently
+overwrite the other in the shared aria-live div (SPEC 2.15's own rule,
+this time between two systems never designed with each other in mind).
+Not fixed — the underlying state stays correct regardless of which
+line gets heard, the same reasoning Round 28 gave for an identical
+still-unfixed collision elsewhere; flagged for Brian's ear as either a
+fun tension or an unwanted subsidy, which only playing it will answer.
+Machine-tested at a local server entirely through real `__sim.step()`
+time (a genuine testing lesson: an early hull-drop reading came out
+wildly inflated from the double-advance gotcha this project has hit
+before — a tight sequence of real-time `await`s let the tab's own
+visible `requestAnimationFrame` loop advance the sim on top of manual
+steps; a tight, no-await re-run gave the exact correct per-second
+rate): the halved lock angles confirmed exactly on crossing the cloud
+boundary and restored on leaving, with the REAL sensor state staying
+`'ok'` throughout; a forced hull-to-2 test confirmed `shipDestroyed`
+firing correctly with a clean Enter-retry; reaching the drifting exit
+confirmed a real finish and a genuine `profile.nebulaRuns` entry; F1
+confirmed a "Nebula transit" heading in the right position among 15
+headings. Zero console errors, reconfirmed on a fresh tab. Deliberately
+not built: the danger variants (Brian's own nebula-description
+prompts), explicitly specced as later lettered sub-items. Every number
+is a placeholder for Brian's ear. Not yet heard or flown by Brian. This
+closes SPEC 3.63 — next per the build order is 3.64 (the gate run),
+unless Brian wants to fly/hear what's shipped first.

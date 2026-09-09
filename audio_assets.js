@@ -242,7 +242,17 @@ window.AUDIO_MANIFEST = {
   // music replaces it. Brian's own 20s stereo loop (the "r" is his own
   // loop marker; "10" suggests siblings not dropped yet). DOES preload —
   // it plays in nearly every encounter, unlike the menu track.
-  space_ambient: 'audio/quadrant/deep_space/deep_space_10r.mp3'
+  space_ambient: 'audio/quadrant/deep_space/deep_space_10r.mp3',
+
+  // SPEC 3.63: nebula transit — the staged pulsar/space_loop batch
+  // (audio/stations/) finally gets a job. nebula_pulsar is the one
+  // stable bearing inside the cloud (a placeholder pick, pulsar1, of
+  // the seven on disk — pulsar4 doesn't exist); nebula_cloud is the
+  // cloud's own ambient bed (space_loop1, likewise a placeholder pick
+  // of the seven — space_loop2 doesn't exist). Both DO preload, same
+  // reasoning as the station beacons.
+  nebula_pulsar: 'audio/stations/pulsar1.mp3',
+  nebula_cloud: 'audio/stations/space_loop1.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything

@@ -234,6 +234,16 @@ lit or dark — staying with it through a dark leg by dead reckoning
 still counts. Reach the total needed and the run reports how long it
 took. Weapons, shields, and auto-target are all off.
 
+## Nebula transit
+
+A cloud sits ahead. Inside it your sensor runs at half strength — the
+same effect a damaged sensor has — and the hull slowly ablates; both
+stop the moment you leave. A pulsar sits motionless just past the far
+side, the one steady bearing to aim yourself by; the real exit gate is
+a separate target nearby that drifts slowly, so it's rarely exactly
+where the pulsar points. Tab cycles between them. Reach the exit and
+the run reports the time and your hull remaining.
+
 ## Capital ship
 
 A large ship slowly orbits and turns to face you, carrying four turrets.

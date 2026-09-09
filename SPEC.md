@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE** → 3.63 nebula transit, next →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE** → 3.64 the gate run, next →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6687,7 +6687,7 @@ Every number — the speed, the range, the needed contact, the lit/dark
 phase lengths — is a placeholder for Brian's ear. Not yet heard or
 flown by Brian.
 
-#### 3.63 Nebula transit — proposed (Fable; the staged pulsar/space_loop audio finally gets a job)
+#### 3.63 Nebula transit — DONE
 
 - Inside the cloud the sensor runs at 3.27's "half" state (lock zone
   halved, tick doubled) and a **pulsar** — one of Brian's `pulsar1-8`
@@ -6701,6 +6701,97 @@ flown by Brian.
 - Test: sensor state reads half inside and ok outside; the pulsar's
   bearing is stable while everything else drifts; reaching the gate
   ends it; the hull drain stops at the boundary.
+
+**DONE (Round 54, Sonnet).** A new mode, `'nebula'`, reached from the
+Encounters list (a menu drill, no station). `makeNebulaRoster()` spawns
+two `kind: 'poi'` targets, both wired through the existing
+`beaconAsset` mechanism (SPEC 3.31) rather than any new voice code: a
+motionless **Pulsar** (`nebula_pulsar`, `audio/stations/pulsar1.mp3` —
+one placeholder pick of the seven pulsar recordings on disk, pulsar4
+doesn't exist) sitting just past the far edge of the cloud, and a
+separate **Exit Gate** that starts at the SAME point but drifts away
+from it via a small constant-speed random-walk velocity (the exact
+shape a mine's own drift already uses) — so Tab-ing to the pulsar
+always gives a reliable "aim roughly here" bearing while the actual
+exit (a distinct target) wanders slowly nearby, matching the spec's
+own "pulsar stable, everything else drifts" framing literally: two
+targets, one that never moves and one that does. `insideNebula()` (a
+new one-line helper reading `nebulaState.inside`) is checked alongside
+the EXISTING `systemState('sensor') === 'off'`/`'half'` checks in both
+`zoneRad()` and `tickBeat()` — the exact scoped-override pattern SPEC
+3.62's `t.dark` check established two rounds ago, reused a second time
+now that there are two independent reasons a target's tracking might
+degrade. `updateNebula(dt)` tracks the boundary crossing itself (one
+combined `say()` per crossing, never two in the same tick) and only
+ablates the hull (`CFG.nebulaHullPerS`, direct `hull -=`, not a
+`hullHit()` call — that would have spammed the "hull_hit" cue and a
+full announcement every single frame) while inside, with alert lines
+at `CFG.nebulaHullAlertPcts` [50, 25] mirroring the reaction-mass/warp-
+core alert shape used everywhere else in this codebase. A cue-space
+manifest addition: `nebula_pulsar`/`nebula_cloud` (space_loop1,
+likewise a placeholder pick — space_loop2 doesn't exist), both
+preloading. `nebula_cloud` crossfades onto the music bus AFTER
+`newGame()` already started `startSpaceAmbient()`'s own space_ambient
+bed for this same mode — `playMusic`'s own prev-node fade absorbs the
+immediate overlap for free, the identical shape docking's interior
+loop already relies on, so `startSpaceAmbient()` itself needed no
+mode-aware guard. **A real interaction found in testing, left as
+designed rather than "fixed"**: the existing repair crew
+(`updateRepairCrew`, SPEC 3.27/3.36) automatically starts healing the
+hull the instant it drops below `CFG.repairHullFieldCap` (80) — which
+happens almost immediately once ablation starts — so the crew fights
+the ablation the whole time the ship is inside the cloud (net drain
+≈ 1.2 − 0.28/s at stock numbers, not the raw `nebulaHullPerS` alone),
+spending reaction mass to do it and occasionally speaking its own
+"Damage control on the hull." on a repair-state transition; since that
+call and this drill's own 50%/25% alert both call `say()` from
+different functions within the SAME `simTick`, whichever runs later
+(the repair crew, called after `updateNebula` in the frame) can
+silently overwrite the other's line in the shared aria-live div —
+SPEC 2.15's own "two say() calls in one tick, only the last is heard"
+rule, this time between two entirely different systems that were never
+designed with each other in mind. Not fixed: reconciling every
+possible cross-system speech collision in this codebase is far bigger
+than one drill, and the underlying STATE (hull, reaction mass, the
+crew's own activity) stays completely correct regardless of which line
+a screen reader happens to catch — the same reasoning Round 28 gave for
+an identical, still-unfixed collision between `shipDestroyed`'s own
+delayed line and the tug countdown. Flagged here for Brian's ear:
+whether the repair crew fighting the ablation is a fun tension (it
+buys time, at a reaction-mass cost) or an unwanted subsidy that makes
+the hull-loss threat toothless is exactly the kind of thing only
+playing it will answer. Machine-tested at a local server, entirely
+through real `__sim.step()` time and direct `poke()` placement (no
+mocks, and — a genuine testing lesson from this round — an early
+multi-second hull-drop reading came out wildly inflated because a
+tight sequence of `await` real-time gaps between steps let the tab's
+own visible `requestAnimationFrame` loop advance the sim again on top
+of the manual `step()` calls, exactly the double-advance gotcha this
+project has hit and documented before; a tight, no-await re-run of the
+identical sequence gave the correct, exact `CFG.nebulaHullPerS`-per-
+second rate, confirming the ablation math itself was never wrong):
+confirmed `zoneRad()`'s lock-on/off angles reading exactly halved
+(8°/12° → 4°/6°) the instant the ship crossed into the cloud radius
+and back to the real, unhalved values the instant it left, while
+`state().lockDebug.sensorState` stayed `'ok'` throughout — the real
+sensor never lies about being broken; confirmed the "Entering"/"Clear
+of" boundary announcements firing exactly on each crossing; forced
+hull to 2 and stepped past the ablation to confirm `shipDestroyed`
+firing correctly ("Hull breached by the nebula. Ship lost."), `lost:
+true`, and a clean Enter-retry resetting hull to 100 and rebuilding a
+fresh cloud; warped to the drifting Exit Gate and confirmed a real
+finish ("Clear of the nebula. Time N seconds. Your hull N percent."),
+a genuine `profile.nebulaRuns` entry written to `localStorage`, and a
+correct personal-best comparison on a second run; F1 confirmed a
+"Nebula transit" heading in the right position among 15 total
+headings. Zero console errors throughout, reconfirmed on a genuinely
+fresh tab. Deliberately NOT built: the danger variants (Brian's own
+nebula-description prompts #3/5/8/10) — explicitly specced as later
+lettered sub-items, same convention as every other encounter's own
+audio sub-stages, never a blocker for the base build. Every number —
+the cloud radius, the ablation rate, the alert thresholds, the exit's
+own drift speed — is a placeholder for Brian's ear. Not yet heard or
+flown by Brian.
 
 #### 3.64 The gate run — proposed (Fable)
 
