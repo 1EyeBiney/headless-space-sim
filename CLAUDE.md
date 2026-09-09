@@ -3822,3 +3822,16 @@ out of `rcsBatteryFactor` with no new state. Fable's recommendation:
 3.74 opens the quadrant-2 track (before 3.18/3.22), because the gate
 fare is hydrogen and a miner who won't fight has no other source in
 quadrant 1. Order: 3.70 → 3.72 → 3.73 → 3.71 → 3.74. Nothing built.
+**Round 56, continued (Fable, docs only)**: Brian answered all eight
+ideas16 questions in one message — the volley goes (not the player's
+F missiles); the scoring table stands with one change, **Mining gets
+a 7-minute clock** (`miningDrillS` 420, ore at the clock is the
+headline); **no reminder timer at all** — the Enter/X hint is the
+LAST LINE of every debrief, reached by Down or End (3.70 rewritten:
+"remove the nag message"); sector missions get no board, debrief
+only; best-10 per board for now; **the corona hurts** (`starHeatDist`
+400 / `starHeatPerS` 2, the nebula's own ablation, with the richest
+scoop deliberately inside the heat radius — added to 3.74); the
+corona's numbers as proposed; order confirmed 3.70 → 3.72 → 3.73 →
+3.71 → 3.74, then 3.18 → 3.14 → 3.22. Part C's DECIDE block is now
+ANSWERED. Nothing open from ideas16. Next: Sonnet builds 3.70.
