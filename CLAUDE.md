@@ -4001,3 +4001,45 @@ spoken 60-/10-second mining marks specifically, and several boards'
 own recording beyond direct code review (flagged, not assumed). Not
 yet heard by Brian. Next per the build order: 3.74 (the star) —
 closing Phase 3E's ideas16.txt batch in full.
+
+**Round 57, continued (Sonnet, 2026-09-09): built SPEC 3.74, the
+star — closing Phase 3E's ideas16.txt batch in full.** `callPoi`'s own
+`'star'` branch (which only ever said "Nothing answers" before this)
+now enters an encounter: `sectorHome` snapshot, `newGame('mining', ...,
+true)` via a new `startCorona` sixth parameter (same shape haul/
+capital/distress already use), so any loss correctly routes through
+the ordinary sector-campaign tug with zero special-casing. Gravity
+(`starPullAccel`, inverse-square, capped) pulls the ship toward the
+origin; the pull is spoken as a percent of the pilot's OWN current
+effective thrust (mass, battery, and a half-broken thrust system all
+folded in, the same three factors `simTick`'s own W already reads).
+`starGravityDist`/`starPull`/`starCaptureDist` are deliberately
+constructed so the pull equals 100% of nominal full thrust exactly at
+the capture radius — "the pull exceeds full thrust" there is literally
+true by the numbers, not just descriptive. Heat reuses the nebula's
+own direct hull-ablation shape (3.63); both ways of losing the ship —
+capture or hull-to-zero — go through the ordinary `shipDestroyed()`,
+which is already tug-routed since `sectorHome` is set. V gained a
+`corona` branch in both `startDustVac` and `dustTick` (checked before
+the ordinary debris-field logic, which would otherwise misfire
+"cloud cleared"), scooping real hydrogen into `profile.resources.
+hydrogen` — F3's own hydrogen line, hardcoded to "0. Not collectible
+yet" since SPEC 2.15, finally reads something real. E refuses by
+name. Machine-tested at a local server via real `__sim.step()`
+sequences from a genuine Sector entry: a single step at the pull's own
+reference distance measured the exact accel expected; a full inward
+sweep logged the heat-entry line and both the 50% and 75% pull alerts
+at their predicted crossing points, with hull loss matching the heat
+rate almost exactly; capture triggered precisely at its own radius,
+correctly dispatching the tug; V at the richest harvest point measured
+the exact predicted per-tick gain, accumulating for real and reading
+back correctly on F3; E and X both confirmed. One same-tick collision
+flagged, not fixed (SPEC 2.15's own known shape): since capture and
+the "Pull at 100 percent" alert are constructed to cross at the exact
+same distance, the alert never actually gets heard — capture's own
+line always wins the shared aria-live div first. Zero console errors.
+Every number is a placeholder for Brian's ear. Not yet heard or flown
+by him. This closes Phase 3E's ideas16.txt batch in full (3.70 through
+3.74). Next per the build order: the quadrant-2 track (3.18 → 3.14 →
+3.22), unless Brian wants to fly or hear what's shipped first — the
+standing rule.

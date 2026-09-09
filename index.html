@@ -690,7 +690,27 @@ var CFG_DEFAULTS = {
     // the Encounters-menu drill runs to a clock). Ore in the hold when the
     // clock or the cloud runs out first is the board's headline.
     miningDrillS: 420,               // 7 minutes
-    miningClockMarks: [60, 10]        // seconds-left spoken marks
+    miningClockMarks: [60, 10],       // seconds-left spoken marks
+
+    // SPEC 3.74 (ideas16.txt, Brian, 2026-09-09): the star's own corona —
+    // hydrogen for a miner who won't fight, ahead of quadrant 2's own gate
+    // fare. Pull is inverse-square: `starPull * (starGravityDist/d)^2`,
+    // capped at starPullMax — by construction, starPull equals CFG.thrust
+    // (70) at d = starGravityDist = starCaptureDist (200), so the pull
+    // reads as exactly 100% of nominal full thrust at the capture radius
+    // and grows past it inside — "the pull exceeds full thrust" there,
+    // literally. starHeatDist (400) sits outside starCaptureDist on
+    // purpose, so a pilot can be ablating before they're anywhere near
+    // capture; starHarvestBest (250) sits inside the heat radius but
+    // outside capture — risky, not yet fatal, matching "the deepest,
+    // richest scoop is the one that costs hull."
+    starEntryDist: 1600,
+    starGravityDist: 200, starPull: 70, starPullMax: 140,
+    starPullPcts: [25, 50, 75, 100],
+    starCaptureDist: 200,
+    starHarvestDist: 600, starHarvestBest: 250, starHarvestCloseMult: 3,
+    starHydrogenPerTick: 6,
+    starHeatDist: 400, starHeatPerS: 2, starHeatPcts: [50, 25]
 };
 
 // The live config: a fresh copy of the numeric baseline with the active
@@ -763,7 +783,7 @@ function defaultProfile() {
     return { version: PROFILE_VERSION, tier: 0, credits: CFG.startCredits, upgrades: [], chaff: 0,
              slots: STARTING_SLOTS.slice(), laserSlot: 0,
              sound: { world: SOUND_LEVELS.length - 1, cockpit: SOUND_LEVELS.length - 1, effects: SOUND_LEVELS.length - 1 }, beacons: 'on',
-             resources: { salvage: 0, alloy: 0 },
+             resources: { salvage: 0, alloy: 0, hydrogen: 0 },   // SPEC 3.74: the field this item creates
              // SPEC 3.26: levels are earned at the station, not cycled for
              // free — one owned level and one health per family.
              laserLevels: { mining: 1, rapid: 1 }, laserHealth: { mining: 100, rapid: 100 },
@@ -823,9 +843,12 @@ function loadProfile() {
         profile.sound[c.id] = (i >= 0 && i < SOUND_LEVELS.length && snd[c.id] !== undefined) ? i : SOUND_LEVELS.length - 1;
     });
     beaconMode = BEACON_MODES.some(function (m) { return m.id === profile.beacons; }) ? profile.beacons : 'on';
-    if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0 };
+    if (!profile.resources || typeof profile.resources !== 'object') profile.resources = { salvage: 0, alloy: 0, hydrogen: 0 };
     if (typeof profile.resources.salvage !== 'number') profile.resources.salvage = 0;
     if (typeof profile.resources.alloy !== 'number') profile.resources.alloy = 0;
+    // SPEC 3.74: the field this item creates — a pre-existing save simply
+    // never had one, same backfill shape as salvage/alloy got in 2.15.
+    if (typeof profile.resources.hydrogen !== 'number') profile.resources.hydrogen = 0;
     // v2 -> v3 (SPEC 3.10): the game clock and mission cooldowns move from
     // session-only variables into the profile; the quadrant save is new.
     if (typeof profile.clock !== 'number' || profile.clock < 0) profile.clock = 0;
@@ -2571,6 +2594,14 @@ var capitalDoor = null;
 // combat pocket — "bring it home" needs the flag to outlive the encounter
 // that spawned the derelict.
 var distress = null;
+// SPEC 3.74: the star's own corona — an encounter, mode 'mining' with this
+// object layered on (the haul/distress pattern), entered by C at the star
+// and left any time by X. `lastPullPct` is the sticky "last spoken
+// threshold" the pull alert compares against each frame (the warp-core/
+// rcs alert shape); `insideHeat` is the sticky boundary flag the nebula's
+// own ablation announcement already uses. No board, no debrief — Brian's
+// own spec never asks for either here, since there's nothing to "finish."
+var corona = null;
 // The game clock (SPEC 2.17, persisted as of SPEC 3.10 — see profile.clock):
 // counts whenever the sim is live and not under an overlay, independent of
 // the delivery run's own `demo.elapsed`. Backs mission cooldowns and, as of
@@ -2852,6 +2883,13 @@ var HELP_SECTIONS = [
         'The tow line has a strain: fly smoothly and it stays quiet. Hard thrust, a sharp turn, and above all braking or backing into the load all strain it — a creak rises to warn you before it parts. A parted line lets the load coast on its own; B re-engages once you catch up to it.',
         'Bring the load within reach of the home beacon, still latched, to finish — the run reports the reaction mass it cost against a par.',
         'Weapons still work here the same as any mining trip; there is no reason to fire on the load, but nothing stops you either.'
+    ] },
+    { heading: 'The star', items: [
+        'Call the star (C) at any point in the quadrant and it pulls you into its corona — the star itself sits at the center, and the pull only gets stronger the closer you get.',
+        function () { return 'The pull is spoken as a percent of your own current thrust — 25, 50, 75, then 100 — since it is your own W the star is eating. Facing away and holding W resists it; coasting drifts you inward at whatever speed the pull and the stabilizers settle on.'; },
+        function () { return 'V scoops hydrogen here, no aim needed — richer the closer you sit, up to ' + CFG.starHarvestBest + ' units out, where it caps. E has no job — the corona has no core.'; },
+        function () { return 'Inside ' + CFG.starHeatDist + ' units the hull ablates, with alerts at half and a quarter. Losing the whole hull, or drifting past ' + CFG.starCaptureDist + ' units and being caught outright, both end the same way any sector loss does — a tug.'; },
+        'Weapons are cold, same as any point of interest in open space. X returns to the sector any time — there is no clock and nothing to finish, just hydrogen to gather and a pull to respect.'
     ] },
     { heading: 'Minefield', items: [
         function () { return CFG.mineCount + ' mines drift slowly between the start and an exit beacon — Tab finds the beacon; the mines themselves are never a target, only something to listen for.'; },
@@ -3336,6 +3374,13 @@ function buildPoiVoice(t) {
         // audible everywhere via the same long beaconMax every POI shares.
         osc('sine', 30).connect(gain);
         tremolo(0.2, G * 0.3);
+    } else if (t.poiType === 'corona') {
+        // SPEC 3.74: the same star drone, up close and brighter — a
+        // second, higher oscillator and a faster, deeper flicker mark
+        // "you are inside it now" apart from the compass-point beacon.
+        osc('sine', 30).connect(gain);
+        osc('sine', 62).connect(gain);
+        tremolo(0.9, G * 0.6);
     } else {
         // Planet: vast, slow atmospheric drone with a lazy shimmer.
         osc('sine', 45).connect(gain);
@@ -4622,6 +4667,26 @@ function vacTick() {
 // SHIP (no aiming — it cleans the neighborhood). Runs until the area is
 // clear or the pilot drifts out of range of any remaining dust.
 function dustTick() {
+    // SPEC 3.74: the corona reuses this exact tool (V, no aim) for a
+    // completely different resource — hydrogen, ship-relative to the
+    // star at the origin, scaled by closeness rather than drawn from a
+    // debris field. Branches away before any of the ordinary dust-field
+    // logic below, which would find no debris here and misfire
+    // checkMiningEnd() as "cloud cleared."
+    if (corona) {
+        var cdist = len(ship.pos);
+        if (cdist > CFG.starHarvestDist) {
+            stopBeam(true);
+            say('Out of harvest range. Fly within ' + CFG.starHarvestDist + ' of the star. Distance ' + round10(cdist) + '.');
+            return;
+        }
+        var hAmount = Math.round(CFG.starHydrogenPerTick * starHarvestMult(cdist));
+        profile.resources.hydrogen += hAmount;
+        saveProfile();
+        say(String(hAmount));
+        beam.timer = setTimeout(beamTick, CFG.dustVacTickMs);
+        return;
+    }
     var f = null, best = CFG.dustVacRange;
     debris.forEach(function (d) {
         var dd = len(sub(d.pos, ship.pos));
@@ -6283,6 +6348,88 @@ function distressIntro() {
            distress.poiName + ' to complete the call. F1 for help.';
 }
 
+// ---- the star's corona (SPEC 3.74, ideas16.txt) ----------------------------
+// An encounter, not open flight — C within poiInteract of the star enters
+// this the same way calling a field enters mining (sectorHome snapshot,
+// mode 'mining', X returns to the sector — see callPoi's own 'star'
+// branch). One target, the corona itself, `kind: 'poi'`, brighter than
+// the compass-point drone every other POI type shares. No board, no
+// debrief — there's nothing to "finish" here, only a place to leave.
+function makeCoronaRoster() {
+    var t = { name: 'The Corona', poiType: 'corona', kind: 'poi', desc: 'the star, up close',
+              pos: v3(0, 0, 0), alive: true, resource: false };
+    buildPoiVoice(t);
+    return [t];
+}
+function coronaIntro() {
+    return 'The corona. The star pulls harder the closer you get — facing away and holding W resists it, ' +
+           'coasting drifts you in. V scoops hydrogen here, richer the closer you sit, up to ' +
+           CFG.starHarvestBest + ' units out. Inside ' + CFG.starHeatDist + ' the hull ablates. ' +
+           'Weapons are cold. X returns to the sector.';
+}
+// Inverse-square, capped — nothing at starEntryDist, everything close in.
+// The star sits at the world origin, so `dist` is just the ship's own
+// distance from (0,0,0); no separate target lookup needed.
+function starPullAccel(dist) {
+    var d = Math.max(dist, 1);
+    return Math.min(CFG.starPull * Math.pow(CFG.starGravityDist / d, 2), CFG.starPullMax);
+}
+// 1x at starHarvestDist, rising linearly to starHarvestCloseMult at
+// starHarvestBest and staying there for anything closer still — "up to
+// 3x AT starHarvestBest," not an ever-richer reward for going past it.
+function starHarvestMult(dist) {
+    if (dist >= CFG.starHarvestDist) return 1;
+    if (dist <= CFG.starHarvestBest) return CFG.starHarvestCloseMult;
+    var frac = (CFG.starHarvestDist - dist) / (CFG.starHarvestDist - CFG.starHarvestBest);
+    return 1 + (CFG.starHarvestCloseMult - 1) * frac;
+}
+// Called every frame from simTick while mode === 'mining' && corona. Pulls
+// the ship toward the origin, speaks the pull as a percent of the pilot's
+// OWN current full thrust (so battery power — a smaller denominator —
+// makes the same physical pull read as a bigger bite, exactly Brian's
+// "how much of my own W the star is eating"), ablates the hull inside
+// starHeatDist (the nebula's own direct hull -= shape, 3.63, reused
+// rather than a per-frame hullHit — no knockout roll belongs here), and
+// routes BOTH ways of losing the ship — capture by radius, or the hull
+// burning to zero — through the ordinary shipDestroyed() (2.16): sectorHome
+// is already set (this encounter is only ever entered by C from the open
+// quadrant), so tugCandidate() is already true and needs no special case.
+function updateCorona(dt) {
+    if (!corona || over()) return;
+    var dist = len(ship.pos);
+    var pullAccel = starPullAccel(dist);
+    if (dist > 0.5) ship.vel = add(ship.vel, scale(ship.pos, -pullAccel / dist * dt));
+
+    var thrustSt = systemState('thrust');
+    var mass = shipMass(), rf = rcsFactor(), tf = thrustSt === 'half' ? CFG.repairThrustPct : thrustSt === 'off' ? 0 : 1;
+    var fullThrust = (CFG.thrust / mass) * rf * tf;
+    var pullPct = fullThrust > 0 ? pullAccel / fullThrust * 100 : 999;
+    CFG.starPullPcts.forEach(function (p) {
+        if (corona.lastPullPct < p && pullPct >= p) say('Pull at ' + p + ' percent thrust.');
+    });
+    corona.lastPullPct = pullPct;
+
+    var insideHeatNow = dist <= CFG.starHeatDist;
+    if (insideHeatNow && !corona.insideHeat) say('Entering the corona\'s heat. The hull will ablate.');
+    else if (!insideHeatNow && corona.insideHeat) say('Clear of the heat. The hull stops ablating.');
+    if (insideHeatNow) {
+        var before = hull;
+        hull = Math.max(0, hull - CFG.starHeatPerS * dt);
+        CFG.starHeatPcts.forEach(function (p) {
+            if (before > p && hull <= p) say('Hull ' + Math.round(hull) + ' percent, burning.');
+        });
+        corona.insideHeat = insideHeatNow;
+        if (hull <= 0) { shipDestroyed('the star'); return; }
+    } else {
+        corona.insideHeat = insideHeatNow;
+    }
+
+    if (dist <= CFG.starCaptureDist) {
+        say('Caught in the star\'s pull.');
+        shipDestroyed('the star\'s pull');
+    }
+}
+
 // ---- rock lifecycle ---------------------------------------------------------
 function rockPush(t) { return t.resource ? 2.2 : ROCK_SIZES[t.size].push; }
 function pushRock(t, dv) { t.vel = add(t.vel, dv); }
@@ -6386,7 +6533,7 @@ function checkMiningEnd() {
     // loseRock fix above, in case anything else ever calls this during
     // either run (neither has ever needed it to fire in testing, but the
     // derelict/home-beacon targets aren't rocks either way).
-    if (mode !== 'mining' || won || haul || distress) return;
+    if (mode !== 'mining' || won || haul || distress || corona) return;   // SPEC 3.74: same defensive gate
     if (aliveRocks().length > 0) return;
     if (debrisTotal() > 0) {
         // The rocks are done but the harvest isn't: sweep the dust to finish.
@@ -6481,6 +6628,10 @@ function startExtract() {
         say('Derelict secured. Bring it home to ' + distress.poiName + '.');
         return;
     }
+    // SPEC 3.74: the corona has no core — "vacuums and extractors" in
+    // Brian's own note is read as "the mining tools" generically, and V
+    // is the one that actually does anything here.
+    if (corona) { SIM.cues.play('refusal_offline'); say('The corona has no core. V scoops hydrogen instead.'); return; }
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The extractor is a mining tool.'); return; }
     if (beam) { SIM.cues.play('refusal_wait'); return; }
     var t = targets[selected];
@@ -6502,6 +6653,18 @@ function startExtract() {
 function startDustVac() {
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The vacuum is a mining tool.'); return; }
     if (beam) { SIM.cues.play('refusal_wait'); return; }
+    // SPEC 3.74: the corona's own harvest — no debris field to check range
+    // against, just the ship's own distance from the star at the origin.
+    if (corona) {
+        var cdist = len(ship.pos);
+        if (cdist > CFG.starHarvestDist) {
+            SIM.cues.play('refusal_dud');
+            say('Too far to harvest hydrogen. Fly within ' + CFG.starHarvestDist + '. Distance ' + round10(cdist) + '.');
+            return;
+        }
+        startBeam('dust');
+        return;
+    }
     var any = debris.some(function (d) { return len(sub(d.pos, ship.pos)) < CFG.dustVacRange; });
     if (!any) {
         say(debrisTotal() > 0
@@ -7667,7 +7830,10 @@ function buildResourceLines() {
                 '. Spent by thrust, braking, and the stabilizers; earned back from combat kills, ' +
                 'vacuuming dust, mining an ice core, buying it at a station, or finishing a mission.');
     lines.push('Warp charge: ' + warpPct() + ' percent. Spent by hyperwarp jumps.');
-    lines.push('Hydrogen: 0. Not collectible yet — combat drops and a mining module add it later.');
+    // SPEC 3.74: real now — V scoops it from the star's own corona.
+    // Combat containers (SPEC 3.18) will add a second source later.
+    lines.push('Hydrogen: ' + (profile ? profile.resources.hydrogen : 0) +
+                '. Scooped from the star\'s corona with V. Pays the jump gate\'s own fare.');
     lines.push('Credits: ' + (profile ? profile.credits : 0) + '. Spent on modules, lasers, and collision repairs.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.') + ' Fired with F.');
     lines.push(chaff + (chaff === 1 ? ' decoy.' : ' decoys.') + ' Spent with D against an incoming missile.');
@@ -9441,7 +9607,17 @@ function callPoi() {
         // favor/hydrogen check yet, just the placeholder 2.6 text.
         say(t.name + ' control: transit lane not commissioned.');
     } else if (t.poiType === 'star') {
-        say(t.name + '. Nothing answers.');
+        // SPEC 3.74: an encounter, not open flight — the same
+        // sectorHome-snapshot-then-newGame('mining') shape calling a
+        // field or the Contested Zone already uses, so this correctly
+        // routes any loss through the ordinary sector-campaign tug.
+        // `corona` is set INSIDE newGame() (its own `startCorona` param),
+        // same reasoning haul/capital/distress are — clearMission() runs
+        // first and would otherwise null it right back out.
+        sectorHome = snapshotSector(t);
+        newGame('mining', null, false, false, null, true);
+        ship.pos = v3(0, 0, -CFG.starEntryDist);
+        say(t.name + '. ' + coronaIntro());
     } else {
         say(t.name + ' orbital relay: atmospheric operations are not yet available. ' +
             'The view is spectacular, though.');
@@ -10062,6 +10238,7 @@ function simTick(dt) {
     if (mode === 'nebula') updateNebula(dt);
     if (mode === 'gaterun') updateGateRun(dt);
     if (mode === 'mining') updateMining(dt);   // SPEC 3.71: a no-op unless miningState is set
+    if (mode === 'mining' && corona) updateCorona(dt);   // SPEC 3.74
     if (mode === 'combat') updateCombat(dt);   // SPEC 3.71: a no-op unless combatState is set
     if (mode === 'combat' && capital) capital.elapsed += dt;   // SPEC 3.71: the capital ship's own clock
     stepMissile(dt);
@@ -10497,6 +10674,7 @@ function clearMission() {
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
     won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; nebulaState = null; gateRunState = null;
     miningState = null; combatState = null;   // SPEC 3.71
+    corona = null;   // SPEC 3.74
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     debrief.open = false;   // SPEC 3.70 (was SPEC 3.65's turret-only turretDebrief)
     stopHaulCreak(); haul = null;   // SPEC 3.60
@@ -10520,7 +10698,7 @@ function clearMission() {
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
 
-function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoiName) {
+function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoiName, startCorona) {
     if (m) mode = m;
     clearMission();
     if (missionSpec) mission = missionSpec;   // SPEC 2.17: set AFTER clearMission clears the old one
@@ -10537,6 +10715,9 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     // clearMission() nulled it (or left a recovered one alone, see
     // clearMission itself), only when actually accepting the call.
     if (startDistressPoiName) distress = { poiName: startDistressPoiName, recovered: false };
+    // SPEC 3.74: same reasoning again — a fresh `corona` set AFTER
+    // clearMission() nulled it, only when actually (re)entering the star.
+    if (startCorona) corona = { lastPullPct: 0, insideHeat: false };
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'course') {
@@ -10566,6 +10747,13 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
         // branch just above — mining's own makeMiningRoster() untouched.
         targets = makeDistressRoster(distress);
         targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
+    } else if (mode === 'mining' && corona) {
+        // SPEC 3.74: a dedicated one-target roster (the corona itself);
+        // mining's own makeMiningRoster() untouched, same shape as haul's
+        // and distress's own branches above — makeCoronaRoster() already
+        // builds its own voice internally (the minefield exit beacon's
+        // own precedent), so no forEach needed here.
+        targets = makeCoronaRoster();
     } else if (mode === 'combat' && capital) {
         // SPEC 3.69: four turrets, no other roster at all — `capital`
         // itself isn't a target (no lock, no Tab), just the thing they

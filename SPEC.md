@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere → 3.72 turret third pass → 3.73 the shadow thrusts → 3.71 scoring boards (after Brian's table picks) → 3.74 the star's corona, opening the quadrant-2 track** → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete, opening the quadrant-2 track** → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7527,6 +7527,85 @@ lab. Not yet heard by Brian. Next per the build order: 3.71 (scoring).
   hydrogen kept; inside `starHeatDist` the hull drops at exactly
   `starHeatPerS` per stepped second and stops the frame the ship
   leaves it; hull to zero routes to the same tug capture does.
+
+**DONE (Round 57, Sonnet) — closes Phase 3E's ideas16.txt batch in
+full.** `CFG.starGravityDist`/`starPull`/`starCaptureDist` are all 200
+and `starPull` equals `CFG.thrust` (70) by deliberate construction — the
+pull reads as exactly the pilot's own current full thrust right at the
+capture radius, and "the pull exceeds full thrust" past it is then
+literally true, not just descriptive. `starHeatDist` (400) sits outside
+that on purpose, so ablation starts well before capture is any real
+danger; `starHarvestBest` (250) sits inside the heat radius but outside
+capture — risky, survivable, matching "the deepest, richest scoop is
+the one that costs hull" exactly. `callPoi`'s own `'star'` branch (which
+only ever said "Nothing answers" before this) now snapshots `sectorHome`
+and calls `newGame('mining', ..., true)` — a new `startCorona` sixth
+parameter, the same shape `startHaulRun`/`startCapitalRun`/
+`startDistressPoiName` already use, needed because `corona` has to be
+set INSIDE `newGame()` after its own `clearMission()` call nulls it, not
+before. `makeCoronaRoster()` builds the one `kind: 'poi'` target
+(`poiType: 'corona'`), voiced by a new branch in `buildPoiVoice` — the
+star's own 30 Hz drone plus a second, higher oscillator and a faster
+flicker, "the same drone, brighter." `updateCorona(dt)` pulls the ship
+toward the origin (`starPullAccel`, inverse-square, capped at
+`starPullMax`), speaks the pull as a percent of the pilot's OWN current
+effective full thrust (mass/battery/thrust-system-health all folded in
+via `shipMass()`/`rcsFactor()`/`systemState('thrust')` — the same three
+factors `simTick`'s own W thrust already reads, so "how much of your
+own W" is literally true even on battery or a half-broken thrust
+system), ablates the hull inside `starHeatDist` (the nebula's own direct
+`hull -=` shape, 3.63, reused rather than a per-frame `hullHit` — no
+knockout roll belongs here), and routes both ways of losing the ship —
+crossing `starCaptureDist`, or the hull reaching zero — through the
+ordinary `shipDestroyed()` (2.16): `sectorHome` is already set (the only
+way into this encounter), so `tugCandidate()` is already true and needed
+no special case at all, exactly as Fable's own read of the spec
+predicted. V (`startDustVac`/`dustTick`, both gained a `corona` branch
+checked before any of their ordinary debris-field logic, which would
+otherwise misfire `checkMiningEnd()` as "cloud cleared" the instant it
+found no debris here) scoops hydrogen straight into
+`profile.resources.hydrogen` — `starHarvestMult()` linearly ramps 1x at
+`starHarvestDist` (600) to `starHarvestCloseMult` (3x) at
+`starHarvestBest` and holds there, never rewarding going in past it. E
+(`startExtract`) refuses by name — "The corona has no core." F3's own
+hydrogen line, hardcoded to "0. Not collectible yet" since SPEC 2.15,
+now reads the real value with a real description; `defaultProfile()`/
+`loadProfile()` both gained the field (a plain backfill, same shape
+salvage/alloy got). F1 gained a "The star" heading. Machine-tested at a
+local server, mostly via real `__sim.step()` sequences from a genuine
+Sector entry (never mocked): C on The Star at 400 units correctly
+entered the corona with the ship placed at `starEntryDist`; a single
+step at exactly `starGravityDist` (200) measured the velocity gain at
+precisely 70 units/s² — matching `starPull` exactly, confirming the
+inverse-square formula's own reference point; a full inward sweep from
+1600 to 220 units logged "Entering the corona's heat" at exactly 400,
+"Pull at 50 percent" at 280 and "75 percent" at 224 (both within the
+formula's own predicted crossing points), and the hull reading 97.7 at
+that point — matching `starHeatPerS` × the real time spent inside 400
+almost exactly; continuing to 200 triggered capture precisely there,
+correctly routing to "Tug dispatched from Station Meridian, 90
+seconds."; V at exactly `starHarvestBest` (250) measured a per-tick gain
+of exactly 18 (`starHydrogenPerTick` 6 × the 3x closeness cap — the
+formula's own worked example, hit exactly), accumulating for real in
+`profile.resources.hydrogen` and read back correctly on F3; E refused by
+name; X returned cleanly to the sector at the snapshotted position with
+the hydrogen kept. Zero console errors throughout, confirmed on a
+genuinely fresh tab each time capture was tested (a repeated capture
+death otherwise leaves `lost` sticky across a naive re-poke, a real
+testing trap this round's own testing hit and diagnosed, not a game
+bug — worth remembering for anything similar). **One same-tick
+collision found and flagged, not fixed (SPEC 2.15's own known
+shape)**: because `starCaptureDist` equals `starGravityDist` by
+construction, the "Pull at 100 percent thrust" alert and capture itself
+always cross in the exact same frame — capture's own line wins the
+shared aria-live div every time, so "100 percent" is never actually
+heard in practice. Harmless (the tug still starts correctly), but
+worth Brian's ear if he'd rather nudge one of the two numbers apart so
+100% gets its own moment. Every number is a placeholder for his ear.
+Not yet heard or flown by Brian. This closes Phase 3E's ideas16.txt
+batch in full (3.70–3.74, all DONE) — next per the build order is the
+quadrant-2 track (3.18 → 3.14 → 3.22), unless Brian wants to fly/hear
+what's shipped first, per the standing rule.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
