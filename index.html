@@ -118,6 +118,25 @@ var CFG_DEFAULTS = {
     blinkRcs: 4,
     blinkCooldownS: 3,
 
+    // The capital ship (SPEC 3.69, ideas15.txt): a moving parent (not a
+    // target — no lock, no Tab, just a low hull drone) carrying four
+    // ordinary hostile turret targets at rotating offsets. Each turret's
+    // shield "door" is the telegraph: closed (doorUp, invulnerable) while
+    // it counts down to firing, open through the shot and a beat after.
+    // capitalOrbitRadius was 350 (matching the existing roster Cruiser's
+    // own orbit) until testing found a real placement bug: a turret's
+    // own offset (up to ~280 from the parent) stacks on TOP of the
+    // parent's orbit radius, so 350 routinely put turrets past 600 —
+    // CFG.laserRange/enemyCannonRange — meaning nothing was in reach
+    // from the ship's own default spawn at the origin. 200 keeps the
+    // farthest turret (~480) comfortably inside both.
+    capitalOrbitDegPerSec: 3, capitalOrbitRadius: 200, capitalOrbitY: 0,
+    capitalTurnRateDeg: 15,      // how fast the parent's own facing re-aims at the player
+    capitalTurretSpacing: 250,   // adjacent turrets at least this far apart
+    capitalTurretHp: 60,
+    capitalDoorOpenS: 4, capitalDoorCloseS: 2,
+    shieldedLockTremoloHz: 3,    // the 'shielded' lock tone's own slow wobble
+
     // Death by tug (SPEC 2.16): a lost ship in the sector campaign or the
     // delivery run waits for pickup instead of Enter-restarting in place.
     // SPEC 3.23: the influence-halving is gone — the tug now goes to the
@@ -1927,6 +1946,17 @@ var turretState = null;
 // (`tractor` itself, the module-level rig state, is untouched either way —
 // updateTractor's new haul branch is gated on this object specifically).
 var haul = null;
+// SPEC 3.69 (ideas15.txt): the capital ship — a moving parent, NOT a
+// target itself (no lock, no Tab), carrying capitalTurrets (real hostile
+// targets, `parent` pointing back here) while mode === 'combat'. { pos,
+// facing, orbitAngle, nodes } — nodes is its own low hull drone, built
+// once in startCapitalMission and stopped by clearMission.
+var capital = null;
+// While a capital turret's shield door is opening or closing, NOTHING
+// else in the threat system runs (updateEnemies checks this before
+// `threat`) — the door itself IS the one thing happening, same as any
+// other single in-progress attack. { t, clock, phase: 'opening'|'closing' }
+var capitalDoor = null;
 // The game clock (SPEC 2.17, persisted as of SPEC 3.10 — see profile.clock):
 // counts whenever the sim is live and not under an overlay, independent of
 // the delivery run's own `demo.elapsed`. Backs mission cooldowns and, as of
@@ -2200,6 +2230,14 @@ var HELP_SECTIONS = [
         'The tow line has a strain: fly smoothly and it stays quiet. Hard thrust, a sharp turn, and above all braking or backing into the load all strain it — a creak rises to warn you before it parts. A parted line lets the load coast on its own; B re-engages once you catch up to it.',
         'Bring the load within reach of the home beacon, still latched, to finish — the run reports the reaction mass it cost against a par.',
         'Weapons still work here the same as any mining trip; there is no reason to fire on the load, but nothing stops you either.'
+    ] },
+    { heading: 'Capital ship', items: [
+        'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them, T reports which one is selected and whether its own shield door is open.',
+        function () { return 'Each turret is closed and invulnerable by default — a hit on a closed door splashes off with "Shielded." and does nothing. A door opens ' + CFG.capitalDoorOpenS + ' seconds before that turret fires: that countdown is your only warning, so hearing a door open is the moment to bring your own weapon onto it. The door stays open through the shot and for another ' + CFG.capitalDoorCloseS + ' seconds after — that whole stretch is when it can be hit.'; },
+        'The lock tone itself tells you which state a turret is in: a wavering tone means its door is closed, a plain steady tone means it is open. The tone updates the instant the door changes, even if you are already locked on.',
+        'Only one turret\'s door is ever open at a time, so the fight is always in one place at once — find it by ear and you are never guessing.',
+        'The turrets sit spaced well apart on the ship, so bearing alone tells them apart even with more than one nearby.',
+        'Clear all four turrets and the whole ship breaks apart.'
     ] },
     { heading: 'Sector', items: [
         'S at the mission menu enters the sector: open space with four points of interest, each broadcasting its own beacon sound.',
@@ -2829,17 +2867,27 @@ function stopSolidTone() {
     if (!tick.solid) return;
     var n = tick.solid; tick.solid = null;
     try { SIM.audio.ramp(n.g.gain, 0.0001, 0.05); } catch (e) {}
-    setTimeout(function () { try { n.o.stop(); n.g.disconnect(); } catch (e) {} }, 120);
+    setTimeout(function () { try { n.o.stop(); if (n.lfo) n.lfo.stop(); n.g.disconnect(); } catch (e) {} }, 120);
 }
 
-function startSolidTone(vol) {
+// SPEC 3.69: an optional slow tremolo LFO on the gain — the 'shielded'
+// lock tone reuses this exact solid tone, just wavering, rather than
+// inventing a whole second voice.
+function startSolidTone(vol, tremoloHz) {
     if (!SIM.audio.ctx || tick.solid) return;
     var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0;
     var sp = SIM.audio.ctx.createStereoPanner ? SIM.audio.ctx.createStereoPanner() : null;
     if (sp) { g.connect(sp); sp.connect(SIM.audio.uiBus); } else g.connect(SIM.audio.uiBus);
     var o = SIM.audio.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
     o.connect(g); o.start();
-    tick.solid = { o: o, g: g, sp: sp };
+    var lfo = null;
+    if (tremoloHz) {
+        var targetVol = vol || CFG.lockToneVol;
+        var lg = SIM.audio.ctx.createGain(); lg.gain.value = targetVol * 0.4;
+        lfo = SIM.audio.ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = tremoloHz;
+        lfo.connect(lg); lg.connect(g.gain); lfo.start();
+    }
+    tick.solid = { o: o, g: g, sp: sp, lfo: lfo };
     SIM.audio.ramp(g.gain, vol || CFG.lockToneVol, 0.05);
 }
 
@@ -2856,6 +2904,10 @@ function lockToneKind() {
     if (!t) return 'solid';
     if (t.kind === 'rock' || t.kind === 'dust') return 'pulse';
     if (t.kind === 'poi') return 'poi';
+    // SPEC 3.69: a capital turret behind its own closed shield door — the
+    // reticle itself says so, a slow tremolo on the same solid tone
+    // (plain solid the instant the door opens).
+    if (t.doorUp) return 'shielded';
     return 'solid';
 }
 function lockToneUsesPulse() { return lockToneKind() === 'pulse'; }
@@ -2881,12 +2933,15 @@ function stopLockPulse() {
     lockPulseTimer = null;
 }
 
+var lockToneKindPlaying = null;   // SPEC 3.69: which kind is actually live, to catch a door flip mid-lock
 function startLockTone() {
     var kind = lockToneKind();
+    lockToneKindPlaying = kind;
     if (kind === 'pulse') startLockPulse();
+    else if (kind === 'shielded') startSolidTone(CFG.lockToneVol, CFG.shieldedLockTremoloHz);
     else startSolidTone(kind === 'poi' ? CFG.lockTonePoiVol : CFG.lockToneVol);
 }
-function stopLockTone() { stopLockPulse(); stopSolidTone(); }
+function stopLockTone() { lockToneKindPlaying = null; stopLockPulse(); stopSolidTone(); }
 
 function scheduleTick() {
     clearTimeout(tick.timer);
@@ -2986,7 +3041,7 @@ function bearingText(t) {
         line += ', ' + t.desc;
     }
     line += '. ' + bits.join(', ') + '. Distance ' + round10(a.dist) + '.';
-    if (!t.kind) line += ' Hull ' + hullPercent(t) + ' percent.';
+    if (!t.kind) line += ' Hull ' + hullPercent(t) + ' percent.' + (t.doorUp ? ' Shielded.' : '');
     return line;
 }
 
@@ -3142,6 +3197,16 @@ function updateTargeting(dt) {
         if (locked) { locked = false; stopLockTone(); SIM.cues.play('lock_lost'); }
         return;
     }
+    // SPEC 3.69: a capital turret's own door can flip open/closed while
+    // it's ALREADY locked — the tone otherwise only re-evaluates on a
+    // fresh lock acquire, which would leave a stale "shielded" tremolo
+    // playing after the door opens (or vice versa) until the lock happens
+    // to drop and re-land. `t.doorUp !== undefined` is only ever true for
+    // a capital turret, so this is a no-op for every other target kind.
+    if (locked && t.doorUp !== undefined && lockToneKind() !== lockToneKindPlaying) {
+        stopLockTone();
+        startLockTone();
+    }
     var a = aim(t.pos);
     var z = zoneRad();
     if (!locked && a.err < z.lockOn) {
@@ -3184,6 +3249,20 @@ function destroyTarget(t, extra) {
     if (left === 0) {
         won = true;
         shieldReset();
+        // SPEC 3.69: every turret down — the parent breaks up on its own,
+        // a real explosion at capital.pos on top of (not instead of) each
+        // turret's own kill sound already played above. Its own tail, not
+        // the demo/contract/zone-clear text below, none of which applies
+        // to a standalone drill with no sectorHome anyway.
+        if (capital) {
+            var capPos = capital.pos;
+            setTimeout(function () { SIM.cues.play('explosion_kill', { pos: capPos, size: 'capital' }); }, 400);
+            setTimeout(function () {
+                say((extra || '') + 'Last turret down. The capital ship breaks apart. ' +
+                    'Press Enter to play again, or X for the mission menu.');
+            }, 900);
+            return true;
+        }
         // SPEC 3.33 (Brian, ideas9/10 — reverses 3.23's own retirement of
         // this): clearing a sector-entered Contested Zone pays favor at
         // the nearest station, same as a mission — Brian's "stranger
@@ -3741,6 +3820,12 @@ function beamTick() {
             t.hp -= actual;
             if (t.hp <= 0) { rockEvent(t); return; }   // rockEvent stops the beam
             say(String(actual));
+        } else if (t.doorUp) {
+            // SPEC 3.69: a capital turret behind its own shield door — the
+            // one refusal that ISN'T an offline buzz, since this is
+            // combat feedback, not a mode/capability mismatch.
+            SIM.cues.play('shield_splash');
+            say('Shielded.');
         } else {
             // SPEC 1.20: Rookie doubles laser damage against ships (not
             // rocks) via CFG.laserShipMult, so the spoken number reflects it.
@@ -3993,6 +4078,9 @@ function stepMissile(dt) {
                 pushRock(t, scale(impactDir, 150));
                 say(t.name + ' is blasted out of control and hurtles toward the edge of the cloud!');
             }
+        } else if (t.doorUp) {
+            SIM.cues.play('shield_splash');
+            say('Shielded.');
         } else if (!damageTarget(t, CFG.missileDamage)) {
             // Survived: impact thump at the target plus a hull report. A
             // Rookie Cruiser just takes the hit and answers by missile; every
@@ -4069,6 +4157,18 @@ function stepCombatShips(dt) {
     targets.forEach(function (t) {
         if (!t.alive || t.kind) return;
         var moved = false;
+        // SPEC 3.69: a capital turret's own position is its parent's plus
+        // an offset rotated by the parent's current facing — set here,
+        // before anything else, so a turret has no `vel`/`orbit` of its
+        // own and the rest of this loop (facing, the cone, the panner)
+        // just treats it as an ordinary stationary-relative-to-its-parent
+        // ship, unchanged.
+        if (t.parent) {
+            var pyaw = t.parent.facing;
+            var pright = v3(Math.cos(pyaw), 0, Math.sin(pyaw));
+            t.pos = add(t.parent.pos, add(scale(pright, t.localOffset.x), v3(0, t.localOffset.y, 0)));
+            if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
+        }
         if (t.vel && len(t.vel) > 0.5) {
             var dv = scale(t.vel, dt);
             if (t.orbit) t.off = add(t.off || v3(0, 0, 0), dv);
@@ -4092,6 +4192,144 @@ function stepCombatShips(dt) {
     });
 }
 
+// ---- the capital ship (SPEC 3.69, ideas15.txt) ------------------------------
+// Brian: "a really big capital ship that had different guns/turrets...
+// each one of them maybe have shields protecting that gun/turret and that
+// shield needs to come down in order to fire and while the shield is down,
+// that gun/turret is vulnerable." A moving parent — not a target, no lock,
+// no Tab, just a low hull drone — carrying four ORDINARY hostile turret
+// targets (`parent` pointing back here, positioned in stepCombatShips)
+// whose own shield door is the telegraph: closed and invulnerable while it
+// counts down, open through the shot and a beat after.
+function updateCapital(dt) {
+    if (!capital) return;
+    capital.orbitAngle += CFG.capitalOrbitDegPerSec * Math.PI / 180 * dt;
+    capital.pos = v3(Math.cos(capital.orbitAngle) * CFG.capitalOrbitRadius, CFG.capitalOrbitY,
+                      Math.sin(capital.orbitAngle) * CFG.capitalOrbitRadius);
+    var toShip = sub(ship.pos, capital.pos);
+    var desiredYaw = Math.atan2(toShip.x, -toShip.z);
+    capital.facing = angleTowards(capital.facing, desiredYaw, CFG.capitalTurnRateDeg * Math.PI / 180 * dt);
+    if (capital.nodes) SIM.audio.movePanner(capital.nodes.panner, capital.pos);
+}
+
+// A low, wide two-oscillator drone through a tight lowpass — "no voice of
+// its own but a low hull drone."
+function buildCapitalVoice() {
+    if (!SIM.audio.ctx) return null;
+    var A = SIM.audio;
+    var gain = A.ctx.createGain(); gain.gain.value = 0.22;
+    var lp = A.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 250;
+    var panner = A.makePanner(capital.pos);
+    var o1 = A.ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 40;
+    var o2 = A.ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 40 * 1.5;
+    o1.connect(lp); o2.connect(lp); lp.connect(gain); gain.connect(panner); panner.connect(A.worldBus);
+    o1.start(); o2.start();
+    return { gain: gain, lp: lp, panner: panner, oscs: [o1, o2] };
+}
+function stopCapitalVoice() {
+    if (!capital || !capital.nodes) return;
+    var n = capital.nodes; capital.nodes = null;
+    try {
+        SIM.audio.ramp(n.gain.gain, 0.0001, 0.3);
+        setTimeout(function () { try { n.oscs.forEach(function (o) { o.stop(); }); n.panner.disconnect(); } catch (e) {} }, 400);
+    } catch (e) {}
+}
+
+// A single haulable-rock-shaped roster: four turrets, offsets at least
+// capitalTurretSpacing apart so the ear tells them apart by bearing alone
+// (L.8's own room already proved that works) — not by the door sound,
+// which is Brian's own worry, answered by spacing instead.
+function makeCapitalRoster() {
+    var offsets = [
+        { x: -CFG.capitalTurretSpacing, y: CFG.capitalTurretSpacing / 2 },
+        { x: CFG.capitalTurretSpacing, y: CFG.capitalTurretSpacing / 2 },
+        { x: -CFG.capitalTurretSpacing, y: -CFG.capitalTurretSpacing / 2 },
+        { x: CFG.capitalTurretSpacing, y: -CFG.capitalTurretSpacing / 2 }
+    ];
+    var weapons = ['laser', 'cannon', 'laser', 'cannon'];
+    var turrets = [];
+    // A real bug caught in testing: every OTHER field here is filled in
+    // at creation, but `pos` was left for stepCombatShips' own parent-
+    // sync to set on the first frame — `state()` (and anything else that
+    // reads a target's position) can run before that first frame ever
+    // ticks, crashing on `t.pos` being undefined. Computed here the exact
+    // same way stepCombatShips computes it every frame after, so a turret
+    // never has a moment without a real position.
+    var pyaw = capital.facing;
+    var pright = v3(Math.cos(pyaw), 0, Math.sin(pyaw));
+    for (var i = 0; i < 4; i++) {
+        var off = offsets[i];
+        turrets.push({
+            name: 'Turret ' + (i + 1), hp: CFG.capitalTurretHp, maxHp: CFG.capitalTurretHp,
+            voice: { type: 'square', freq: 90 + i * 15, trem: 4 },
+            parent: capital, localOffset: off, weapon: weapons[i],
+            pos: add(capital.pos, add(scale(pright, off.x), v3(0, off.y, 0))),
+            doorUp: true, alive: true
+        });
+    }
+    return turrets;
+}
+
+function capitalIntro() {
+    return 'A capital ship holds this zone, four turrets riding it. Tab finds one, T reports whether ' +
+           'its own shield door is open. A closed door refuses every hit — it opens ' + CFG.capitalDoorOpenS +
+           ' seconds before that turret fires and stays open through the shot, that is your window. ' +
+           'Clear all four to break the ship apart. F1 for help.';
+}
+
+// The door-opening telegraph — Brian's own metal-door recording lands
+// later (3.69a, unwired here); a synthesized rising creak stands in,
+// replacing that turret's usual three chirps entirely (the door IS the
+// telegraph). Once it finishes, hands off to the EXACT ordinary
+// laser/cannon attack — capitalDoor is gone by the time either of those
+// even starts, so stepThreat/endThreat need no capital-specific branch
+// of their own for the firing itself, only the door timing around it.
+function startCapitalDoorSequence(t) {
+    capitalDoor = { t: t, clock: 0, phase: 'opening' };
+    var out = SIM.audio.worldOut(t.pos, CFG.capitalDoorOpenS * 1000);
+    if (out) {
+        SIM.audio.sfxNoise({ dur: CFG.capitalDoorOpenS * 0.9, vol: 0.3, filter: 'bandpass', freq: 200, q: 3, out: out });
+        SIM.audio.sfxTone({ type: 'sawtooth', f1: 60, f2: 140, dur: CFG.capitalDoorOpenS * 0.9, vol: 0.18, out: out });
+    }
+    say(t.name + ' door opens.' + shieldCoach());
+}
+function capitalDoorCloseSound(t) {
+    var out = SIM.audio.worldOut(t.pos, CFG.capitalDoorCloseS * 1000);
+    if (out) {
+        SIM.audio.sfxNoise({ dur: CFG.capitalDoorCloseS * 0.9, vol: 0.28, filter: 'bandpass', freq: 200, q: 3, out: out });
+        SIM.audio.sfxTone({ type: 'sawtooth', f1: 140, f2: 60, dur: CFG.capitalDoorCloseS * 0.9, vol: 0.16, out: out });
+    }
+}
+function updateCapitalDoor(dt) {
+    var t = capitalDoor.t;
+    if (!t.alive) { capitalDoor = null; scheduleNextThreat(); return; }
+    capitalDoor.clock += dt;
+    if (capitalDoor.phase === 'opening') {
+        if (capitalDoor.clock >= CFG.capitalDoorOpenS) {
+            t.doorUp = false;
+            capitalDoor = null;
+            if (t.weapon === 'cannon') startEnemyCannon(t); else startEnemyLaser(t);
+        }
+        return;
+    }
+    // closing — doorUp stays false (still vulnerable) through this whole
+    // phase too: "that open-to-close window is the fight."
+    if (capitalDoor.clock >= CFG.capitalDoorCloseS) {
+        t.doorUp = true;
+        capitalDoor = null;
+        scheduleNextThreat();
+    }
+}
+
+function startCapitalMission() {
+    menuOpen = false;
+    ore = 0; hull = CFG.shipHull; missiles = CFG.missileMax; chaff = CFG.chaffMax;
+    autoTargetCharges = CFG.autoTargetCharges;
+    refillRcs(); collisionDamage = 0; repairAllSystems();
+    newGame('combat', null, false, true);
+    say(capitalIntro());
+}
+
 // ---- enemy fire -------------------------------------------------------------
 // The other half of combat. One enemy attack runs at a time so the sky stays
 // readable: a ship inside laser range paints the hull first (three rising
@@ -4104,7 +4342,12 @@ function scheduleNextThreat() {
 
 function updateEnemies(dt) {
     if (mode !== 'combat') return;
+    updateCapital(dt);   // SPEC 3.69: the parent moves before its turrets sync to it, below
     stepCombatShips(dt);
+    // SPEC 3.69: a door opening or closing is its own single in-progress
+    // "attack", same rule as `threat` — nothing else in the candidate
+    // pool gets picked while one is running.
+    if (capitalDoor) { updateCapitalDoor(dt); return; }
     if (threat) { stepThreat(dt); return; }
     threatIn -= dt;
     if (threatIn > 0) return;
@@ -4120,6 +4363,15 @@ function updateEnemies(dt) {
     var pool = alert.length ? alert : cands;
     var t = pool[Math.floor(Math.random() * pool.length)];
     t.alert = false;
+    // SPEC 3.69: a capital turret's own beam/cannon attack is wrapped in
+    // its door sequence — everything else (range gates, missile fallback)
+    // is exactly the ordinary dispatch below, just deferred behind the
+    // door opening first.
+    if (t.parent && !t.missileOnly &&
+        len(sub(t.pos, ship.pos)) <= (t.weapon === 'cannon' ? CFG.enemyCannonRange : CFG.enemyLaserRange)) {
+        startCapitalDoorSequence(t);
+        return;
+    }
     // SPEC 3.58: a `weapon: 'cannon'` ship (Raider, Scout) uses the cannon
     // in place of the beam at the same range; every other ship is unchanged.
     if (!t.missileOnly && len(sub(t.pos, ship.pos)) <= CFG.enemyCannonRange && t.weapon === 'cannon') startEnemyCannon(t);
@@ -4287,6 +4539,17 @@ function endThreat() {
                 try { th.nodes.oscs.forEach(function (o) { o.stop(); }); th.nodes.p.disconnect(); } catch (e) {}
             }, 200);
         } catch (e) {}
+    }
+    // SPEC 3.69: a capital turret's own attack ending starts its door
+    // CLOSING, in place of the ordinary attack-gap timer — a real event
+    // boundary, so the closing sound is a single clean say/cue here, not
+    // folded awkwardly into whatever the attack's own last line said. A
+    // turret that died mid-attack (destroyTarget already set `alive`
+    // false before calling this) skips straight to the normal gap.
+    if (th.t && th.t.parent && th.t.alive) {
+        capitalDoorCloseSound(th.t);
+        capitalDoor = { t: th.t, clock: 0, phase: 'closing' };
+        return;
     }
     if (th.followUp) threatIn = CFG.enemyChaffFollowUpS;   // (SPEC 1.8, Veteran/Ace)
     else scheduleNextThreat();
@@ -8490,9 +8753,14 @@ function onKeyDown(e) {
                 // call is about to null `haul`, same reasoning courseState/
                 // turretState already need on this exact line.
                 var wasHaul = mode === 'mining' && !!haul;
+                // SPEC 3.69: same reasoning as wasHaul above.
+                var wasCapital = mode === 'combat' && !!capital;
                 if (wasHaul) {
                     newGame(null, null, true);
                     say(haulIntro());
+                } else if (wasCapital) {
+                    newGame(null, null, false, true);
+                    say(capitalIntro());
                 } else {
                     newGame();
                     if (mode === 'course') {
@@ -8823,6 +9091,14 @@ window.__sim = {
                        owned: tractorLevel() },
             // SPEC 3.68
             blink: { readyIn: Math.round(Math.max(0, blinkReadyAt - Date.now()) / 100) / 10, dist: CFG.blinkDist },
+            // SPEC 3.69
+            capital: capital ? {
+                pos: capital.pos,
+                door: capitalDoor ? { turret: capitalDoor.t.name, phase: capitalDoor.phase, clock: Math.round(capitalDoor.clock * 10) / 10 } : null,
+                turrets: targets.filter(function (t) { return t.parent === capital; }).map(function (t) {
+                    return { name: t.name, alive: t.alive, hp: t.hp, doorUp: t.doorUp, weapon: t.weapon, pos: t.pos };
+                })
+            } : null,
             // SPEC 3.60
             haul: haul ? { latched: tractor.active && tractor.targetIdx === haul.targetIdx,
                            strain: Math.round(haul.strain * 1000) / 1000,
@@ -8973,6 +9249,18 @@ window.__sim = {
         // he tries numbers with, not just a test hook.
         if (o && o.blinkDist !== undefined) CFG.blinkDist = o.blinkDist;
         if (o && o.blinkReadyAt !== undefined) blinkReadyAt = o.blinkReadyAt;   // test hook: force the cooldown clear/set
+        // SPEC 3.69 test hooks: select a named target directly (Tab by
+        // name is otherwise tedious with four near-identical turrets),
+        // and force a turret's own door state without waiting out the
+        // real open/close timers.
+        if (o && o.selectByName) {
+            var byNameT = targets.filter(function (t) { return t.name === o.selectByName; })[0];
+            if (byNameT) { selected = targets.indexOf(byNameT); locked = false; stopLockTone(); }
+        }
+        if (o && o.turretDoor) {
+            var dt2 = targets.filter(function (t) { return t.parent === capital && t.name === o.turretDoor.name; })[0];
+            if (dt2) dt2.doorUp = o.turretDoor.up;
+        }
         // SPEC 3.30: move/resize the SELECTED rock directly (distance and
         // size drive every tractor refusal) and force the test-fit flag,
         // without needing to fly to a rock of the exact size by hand.
@@ -9065,6 +9353,7 @@ function clearMission() {
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
     turretDebrief.open = false;   // SPEC 3.65
     stopHaulCreak(); haul = null;   // SPEC 3.60
+    stopCapitalVoice(); capital = null; capitalDoor = null;   // SPEC 3.69
     stopWarpEngagedLoop(); warpFlight = null; warping = false;
     endThreat();
     threatIn = CFG.enemyFirstAttackS;
@@ -9079,7 +9368,7 @@ function clearMission() {
     // a whole sector run. The mission menu zeroes it when starting fresh.
 }
 
-function newGame(m, missionSpec, startHaulRun) {
+function newGame(m, missionSpec, startHaulRun, startCapitalRun) {
     if (m) mode = m;
     clearMission();
     if (missionSpec) mission = missionSpec;   // SPEC 2.17: set AFTER clearMission clears the old one
@@ -9087,6 +9376,9 @@ function newGame(m, missionSpec, startHaulRun) {
     // nulled `haul`, so a fresh one is set AFTER, only when this call is
     // actually starting (or restarting) a haul run.
     if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, strain: 0, rcsSpent: 0, lastYaw: ship.yaw, lastPitch: ship.pitch };
+    // SPEC 3.69: same reasoning again — `capital` set fresh AFTER
+    // clearMission() nulled it, only when actually (re)starting this run.
+    if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null };
     if (mode === 'sector') {
         targets = makeSectorRoster();
     } else if (mode === 'course') {
@@ -9101,6 +9393,17 @@ function newGame(m, missionSpec, startHaulRun) {
         // standard cloud — mining's own makeMiningRoster() is completely
         // untouched by this branch.
         targets = makeHaulRoster();
+    } else if (mode === 'combat' && capital) {
+        // SPEC 3.69: four turrets, no other roster at all — `capital`
+        // itself isn't a target (no lock, no Tab), just the thing they
+        // ride. Voice built and hostility set here, same shape the
+        // mission branch just below already uses.
+        targets = makeCapitalRoster();
+        targets.forEach(function (t) {
+            t.hostile = TIERS[tierIdx].alwaysHostile;
+            if (SIM.audio.ctx) buildVoice(t);
+        });
+        if (SIM.audio.ctx) capital.nodes = buildCapitalVoice();
     } else if (mode === 'mining') {
         // SPEC 3.10: sectorHome.poiName names the field this visit is
         // against (set by callPoi before this runs) — its type biases the
@@ -9229,7 +9532,12 @@ var ENCOUNTER_ITEMS = [
     // puller, the one place it does. See updateHaulTow() for the shape.
     { label: 'The haul',
       desc: 'Tractor a rock and tow it home behind your own ship. Fly smoothly — hard thrust, sharp turns, and backing into it strain the tow line, and it can part.',
-      run: function () { startHaulMission(); } }
+      run: function () { startHaulMission(); } },
+    // SPEC 3.69: four turrets on a moving capital ship, each behind its
+    // own shield door — the door opening is the telegraph.
+    { label: 'Capital ship',
+      desc: function () { return 'A moving capital ship with four turrets, each behind its own shield door — closed doors refuse every hit. A door opens ' + CFG.capitalDoorOpenS + ' seconds before that turret fires. Clear all four.'; },
+      run: function () { startCapitalMission(); } }
 ];
 var encounterIdx = 0;
 var menuSub = null;   // SPEC 3.56: the open sublist's items while one is open, else null

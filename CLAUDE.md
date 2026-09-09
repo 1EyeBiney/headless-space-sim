@@ -3525,3 +3525,49 @@ radius (a real testing miss, not a code gap — a blink only checks
 where it lands, matching the spec). Zero console errors. Next per
 SPEC.md's Phase 3E order: 3.69, the capital ship — the biggest item on
 the ideas15 list.
+
+**Round 50 (Sonnet, 2026-09-09): built SPEC 3.69, the capital ship.**
+A moving parent (`capital`, never a `target`) rides through `newGame()`'s
+own 4th param (`startCapitalRun`) and carries four ordinary `!t.kind`
+turrets at rotating offsets — `stepCombatShips` needed exactly one new
+branch (sync a turret's `pos` from its parent's live `pos`/`facing`
+before anything else runs) for the ENTIRE rest of the combat stack
+(lock, Tab, the beam, missiles, SPEC 3.58's own facing-cone-and-cannon)
+to apply completely unchanged. Each turret's shield door is a small
+state machine (`capitalDoor`, checked in `updateEnemies` ahead of
+`threat` itself) wrapping the EXISTING laser/cannon dispatch rather
+than reimplementing it; `doorUp` is the one shared flag `damageTarget`'s
+two call sites, `lockToneKind()` (new 'shielded' kind, a tremolo-LFO
+variant of the solid tone), and `bearingText` all read. **Two real
+bugs found and fixed**: a missing initial `.pos` on a fresh turret
+crashed `state()`'s own facing-cone readout before the first
+`stepCombatShips` frame ever ran (fixed by computing the initial
+position at creation time); and `capitalOrbitRadius` 350 (copied from
+the existing Cruiser's own orbit) put a turret's own offset (~280) on
+top of it, routinely placing turrets past both weapon ranges (600) from
+the ship's default spawn — dropped to 200. Machine-tested at a local
+server in genuine gameplay: all four turrets at correct, spaced
+positions; a real burst against a closed door left hp completely
+untouched across a 5-tick burst; forcing a door open and firing landed
+the laser's own real per-tick damage; **all four turrets killed in one
+continuous run**, using a technique worth keeping for any future
+moving-target encounter — since the beam's own tick lands on a real
+`setTimeout` about a second apart, and a turret's parent re-aims at
+15°/s (much faster than its 3°/s orbital drift), the test re-poked the
+ship's own yaw/pitch toward the turret's LIVE position every 200ms
+through the whole burst, the same continuous correction a real
+player's tracking would provide; the fourth kill triggered the correct
+"Last turret down. The capital ship breaks apart." with `won: true`;
+Enter rebuilt a fresh encounter, X cleared it. A stale console error
+persisting across `navigate()` reloads on a reused tab was confirmed
+NOT real via a genuinely fresh tab (matches this project's own
+previously-documented same-tab-reload gotcha). Missile fire against a
+turret wasn't exercised this round (its own lock timing didn't
+cooperate with the same aim-forcing technique) — flagged as a coverage
+gap, not a known risk, since the missile-impact `doorUp` guard is
+code-identical in shape to the laser path's. Zero console errors
+throughout. Every number (orbit rate, turn rate, spacing, turret hp,
+door timing) is a placeholder for Brian's ear; the metal-door recording
+itself waits on 3.69a. This closes Phase 3E's ideas15.txt batch — next
+per SPEC.md's build order is **3.55** (the distress-call tow), unless
+Brian wants to fly/hear what's shipped since 3.24 first.

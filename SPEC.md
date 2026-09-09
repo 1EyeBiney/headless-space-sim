@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship, next** → 3.55 the distress tow → 3.61 the minefield →
+3.68 blink DONE → 3.69 the capital ship DONE** → 3.55 the distress tow, next → 3.61 the minefield →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6280,7 +6280,7 @@ Every number (`blinkDist`, `blinkRcs`, `blinkCooldownS`) is a
 placeholder, `blinkDist` deliberately live-pokeable since Brian has no
 real distance yet.
 
-#### 3.69 The capital ship: turrets behind doors (ideas15.txt) — proposed, an encounter
+#### 3.69 The capital ship: turrets behind doors (ideas15.txt) — DONE
 
 - Brian: "a really big capital ship that had different guns/turrets
   such that they would all be attached... each one of them maybe have
@@ -6326,6 +6326,100 @@ real distance yet.
   opens 4 s before that turret's attack and closes 2 s after; damage
   lands only in the window; the selected turret's lock tone changes
   with its door; all four dead ends it with the capital explosion.
+
+**DONE (Round 50, Sonnet).** Built as scoped. `capital` (a plain object,
+never a `target`) rides through `newGame()`'s own 4th param
+(`startCapitalRun`, the exact `haul`/`missionSpec` pattern — set AFTER
+`clearMission()` nulls it); `updateCapital(dt)` (a new call at the top
+of `updateEnemies`, before `stepCombatShips`) walks its own circular
+orbit and turns its `facing` toward the player via the SAME
+`angleTowards` helper 3.58's own `updateFacing` uses. `makeCapitalRoster()`
+builds the four turrets as plain `!t.kind` targets — a `parent` field
+and a `localOffset` are the only new shape — so `stepCombatShips`
+needed exactly one new branch (sync a turret's `pos` from its parent's
+current `pos`/`facing` before anything else runs) for the ENTIRE rest
+of the combat stack (lock, Tab, the beam, missiles, 3.58's own facing-
+cone-and-cannon) to apply completely unchanged. The door sequence is a
+SEPARATE small state machine (`capitalDoor`, checked in `updateEnemies`
+ahead of `threat` itself — "one thing happening at a time" extended
+one level up) that wraps the EXISTING `startEnemyLaser`/
+`startEnemyCannon` dispatch rather than reimplementing it: opening (4s,
+a synthesized creak stands in for Brian's own metal-door recording,
+3.69a, unwired) hands off cleanly to whichever attack the turret's own
+`weapon` field already picks, and `endThreat()` gained one branch
+(check `th.t.parent`) that starts the CLOSING phase instead of the
+ordinary attack-gap timer the moment that attack ends — `stepThreat`
+itself needed zero capital-specific code, since by the time either
+phase of firing is actually running, `capitalDoor` is already `null`.
+`doorUp` is the one shared flag every layer reads: `damageTarget`'s two
+call sites (`beamTick`'s ship-damage branch, the missile-impact branch)
+both gained an `else if (t.doorUp)` refusal ahead of the real damage
+branch; `lockToneKind()` gained a `'shielded'` kind (the solid tone's
+own `startSolidTone` grew an optional tremolo-LFO parameter rather than
+a second voice); `bearingText`/T gained a trailing "Shielded."; and
+since a locked turret's OWN door can flip open or closed while it's
+already the locked target — which the tone otherwise only re-evaluates
+on a fresh lock acquire — `updateTargeting` gained a small live
+recheck (`lockToneKindPlaying`, restarting the tone the instant the
+live kind and the playing kind disagree) gated on `t.doorUp !==
+undefined`, so it's a no-op for every other target kind. The win
+branch sits inside the EXISTING generic `destroyTarget()` win check
+(`aliveTargets().length === 0`, the same one the standalone Combat
+drill already uses) as one more early-return, alongside — not
+replacing — the demo/contract/zone-clear branches already there. **Two
+real bugs found and fixed before this shipped**: (1) `makeCapitalRoster()`
+never gave a turret an initial `.pos` — relying entirely on
+`stepCombatShips`' own parent-sync to set it on the first frame —
+crashing `state()`'s own facing-cone readout (and anything else that
+might read a target's position) the instant it ran before that first
+frame ever ticked; fixed by computing the initial position at creation
+time, identically to how every later frame computes it. (2) The
+parent's own orbit radius (350, copied from the existing roster
+Cruiser's own orbit) put turrets routinely PAST `CFG.laserRange`/
+`enemyCannonRange` (600) once a turret's own offset — up to ~280 from
+the parent — stacked on top, from the ship's default spawn at the
+origin: nothing was reachable at encounter start. Found only by
+actually trying to hit an open turret and getting "Out of range"
+consistently; fixed by dropping the radius to 200, keeping the
+farthest turret comfortably inside both ranges. Machine-tested at a
+local server, end to end, in real gameplay (never mocked): all four
+turrets confirmed at distinct, correctly-spaced positions with zero
+initial-frame crash; T's own bearing/hull/"Shielded." text confirmed
+on a closed turret; a real burst against a closed door left its hp
+completely untouched across the whole 5-tick burst (0 damage, every
+tick); forcing a door open (the `poke({turretDoor})` test hook) and
+firing again landed exactly the laser's own real per-tick damage,
+confirmed by the numbers, not just "some damage happened"; a genuine
+kill produced the correct salvage/kill line; **all four turrets were
+killed in one continuous run** using a technique worth keeping for any
+future moving-target encounter — the beam's own tick lands on a REAL
+`setTimeout` roughly a second apart, during which a turret whose
+parent is actively re-aiming toward the player (`capitalTurnRateDeg`
+15°/s — much faster than the parent's own 3°/s orbital drift) can swing
+tens of units off a one-time aim, so the test re-poked the ship's own
+yaw/pitch toward the turret's LIVE position every 200ms through the
+whole burst, the same continuous correction a real player's own
+tracking would provide; the fourth kill correctly triggered "Last
+turret down. The capital ship breaks apart." with `won: true`; Enter
+rebuilt a fresh `capital` (all four turrets restored to full health);
+X returned to the mission menu and cleared `capital` to `null`. **A
+testing-methodology note, not a code bug, confirmed by direct
+comparison**: a stale console error appeared to persist across several
+`navigate()` calls on the same reused tab — traced to an unrelated
+call site and shown to vanish completely on a genuinely fresh tab,
+matching this project's own previously-documented "stale console error
+can survive a same-tab reload" gotcha (CLAUDE.md, SPEC 3.23's own
+testing notes) rather than a live defect. Zero console errors confirmed
+on a fresh tab both before and after the full encounter. Missile fire
+specifically wasn't exercised against a turret in this round (its own
+lock-acquisition timing didn't cooperate with the same aim-forcing
+technique the laser tests used) — the laser path is thoroughly proven,
+and missile impact's own `doorUp` guard is code-identical in shape to
+the laser's, so this is a coverage gap flagged for Brian's own ear
+rather than a known risk. Every number (the orbit rate, the turn rate,
+the spacing, the turret hp, the door timing) is a placeholder for
+Brian's ear; the metal-door recording itself waits on 3.69a, whenever
+he records it.
 
 #### 3.61 The minefield — proposed (Fable)
 

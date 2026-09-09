@@ -205,6 +205,18 @@ a creak warning before it parts. A parted line lets the load coast; catch
 up and re-engage. Bring it home, still latched, and the run reports the
 reaction mass it cost against a par.
 
+## Capital ship
+
+A large ship slowly orbits and turns to face you, carrying four turrets.
+Tab cycles between them; each is closed and invulnerable by default — a
+hit on a closed door just splashes off. A door opens a few seconds before
+its turret fires and stays open through the shot and a beat after — that
+whole stretch is the only time it can be hit. The lock tone itself says
+which state a turret is in: wavering means closed, steady means open, and
+it updates the instant the door changes even if you're already locked on.
+Only one door is ever open at a time. Clear all four and the ship breaks
+apart.
+
 ## Keys
 
 Right hand on the arrows, left hand on everything else.
