@@ -264,15 +264,11 @@ window.AUDIO_MANIFEST = {
   // it plays in nearly every encounter, unlike the menu track.
   space_ambient: 'audio/quadrant/deep_space/deep_space_10r.mp3',
 
-  // SPEC 3.63: nebula transit — the staged pulsar/space_loop batch
-  // (audio/stations/) finally gets a job. nebula_pulsar is the one
-  // stable bearing inside the cloud (a placeholder pick, pulsar1, of
-  // the seven on disk — pulsar4 doesn't exist); nebula_cloud is the
-  // cloud's own ambient bed (space_loop1, likewise a placeholder pick
-  // of the seven — space_loop2 doesn't exist). Both DO preload, same
-  // reasoning as the station beacons.
-  nebula_pulsar: 'audio/stations/pulsar1.mp3',
-  nebula_cloud: 'audio/stations/space_loop1.mp3',
+  // SPEC 3.78 (ideas17.txt): the nebula transit encounter this pair fed
+  // is yanked outright — Brian tested nothing flying straight at the
+  // exit. The two keys go with it; pulsar1/space_loop1 stay on disk,
+  // unwired, for whenever radioactive clouds come back (3.78's own
+  // direction note).
 
   // SPEC 3.73: the shadow's own thruster — Brian's nine recordings (three
   // sets of 10/7/4 s, 2026-09-09) are staged under audio/ships/thrusters/;

@@ -638,22 +638,6 @@ var CFG_DEFAULTS = {
     shadowTurnMinDeg: 45, shadowTurnMaxDeg: 135,
     shadowThrustFadeS: 0.3,           // the recording fades out at the tier length, whatever its real length is
 
-    // SPEC 3.63 (ideas14.txt/Fable): nebula transit — the staged pulsar/
-    // space_loop batch finally gets a job. A cloud sphere ahead of the
-    // start; inside it, the sensor reads 3.27's own "half" state (lock
-    // zone halved, tick doubled, scoped to nebulaState.inside rather
-    // than the real shipSystems.sensor — the exact reasoning 3.62's
-    // t.dark check already established) and the hull slowly ablates.
-    // A motionless pulsar sits just past the far edge — the one stable
-    // bearing — while the actual exit gate drifts slowly around that
-    // same point, never quite where the pulsar points.
-    nebulaCenterDist: 1800,     // cloud center, straight ahead of the start
-    nebulaRadius: 1000,         // inside this of the center: half sensor, hull ablates
-    nebulaHullPerS: 1.2,        // slow — minutes, not seconds, to matter
-    nebulaHullAlertPcts: [50, 25],
-    nebulaExitDrift: 5,         // u/s random walk, same shape as a mine's drift
-    nebulaExitRadius: 120,      // proximity to the exit that ends the run
-
     // SPEC 3.59 (ideas14.txt): turret defense — three fixed zones, ship
     // stationary, weapons act on whichever zone is selected. First pass is
     // the 3-zone version only; the numpad 3x3 (3.59b) is a later item.
@@ -916,8 +900,6 @@ function loadProfile() {
     if (!Array.isArray(profile.minefieldRuns)) profile.minefieldRuns = [];
     // v10 -> v11 (SPEC 3.62): the shadow's own run log.
     if (!Array.isArray(profile.shadowRuns)) profile.shadowRuns = [];
-    // v11 -> v12 (SPEC 3.63): the nebula transit's own run log.
-    if (!Array.isArray(profile.nebulaRuns)) profile.nebulaRuns = [];
     // v12 -> v13 (SPEC 3.64): the gate run's own run log.
     if (!Array.isArray(profile.gateRunRuns)) profile.gateRunRuns = [];
     // v13 -> v14 (SPEC 3.71): one `profile.boards[kind]` object replaces
@@ -939,7 +921,7 @@ function loadProfile() {
     if (!profile.boards || typeof profile.boards !== 'object') profile.boards = {};
     var OLD_BOARD_FIELDS = { runs: 'runs', contractRuns: 'contract', courseRuns: 'course',
                               turretRuns: 'turret', minefieldRuns: 'minefield', shadowRuns: 'shadow',
-                              nebulaRuns: 'nebula', gateRunRuns: 'gaterun' };
+                              gateRunRuns: 'gaterun' };
     Object.keys(OLD_BOARD_FIELDS).forEach(function (oldKey) {
         var newKey = OLD_BOARD_FIELDS[oldKey];
         if (Array.isArray(profile[oldKey]) && profile[oldKey].length) {
@@ -947,6 +929,12 @@ function loadProfile() {
         }
         delete profile[oldKey];
     });
+    // SPEC 3.78: the nebula encounter is yanked outright — nothing of its
+    // board is kept. A save from before this round may carry the old
+    // top-level `nebulaRuns` (never folded into `boards` now) or an
+    // already-migrated `boards.nebula`; both are just dropped.
+    delete profile.nebulaRuns;
+    delete profile.boards.nebula;
     BOARD_ORDER.forEach(function (k) { if (!Array.isArray(profile.boards[k])) profile.boards[k] = []; });
     // v14 -> v15 (SPEC 3.80): the background music player. A save from
     // before this round simply never had profile.music at all — a plain
@@ -1028,8 +1016,9 @@ function saveProfile() {
 // shape for every encounter's own best-10 log, replacing what had grown
 // into eight near-identical push/sort/slice/save functions (recordRun,
 // recordContractRun, recordCourseRun, recordMinefieldRun, recordShadowRun,
-// recordNebulaRun, recordGateRunRun, recordTurretRun — see git history for
-// their own original shapes). `rank` names which field of a stored entry
+// recordGateRunRun, recordTurretRun — see git history for their own
+// original shapes; recordNebulaRun existed too until SPEC 3.78 yanked the
+// whole encounter). `rank` names which field of a stored entry
 // is the ranked headline (SPEC 3.70's own debrief line 1); `dir` says
 // which way wins; `line(entry)` is what the Run log speaks for one entry
 // (runLogItems(), below). The Contested Zone and the distress call get NO
@@ -1041,7 +1030,7 @@ function saveProfile() {
 // flagged here as an apparent undercount in the spec text rather than
 // silently reconciled, since fourteen is what the table's own sixteen
 // rows minus its two "no board" rows actually adds up to.
-var BOARD_ORDER = ['runs', 'contract', 'course', 'minefield', 'shadow', 'nebula', 'gaterun',
+var BOARD_ORDER = ['runs', 'contract', 'course', 'minefield', 'shadow', 'gaterun',
                     'combat', 'mining', 'escort', 'defend', 'turret', 'haul', 'capital'];
 var BOARDS = {
     runs:      { label: 'Delivery run', rank: 'seconds', dir: 'asc',
@@ -1063,8 +1052,6 @@ var BOARDS = {
                      return t + ', ' + Math.round(e.efficiency) + ' percent contact, ' + e.timesLost +
                             (e.timesLost === 1 ? ' time lost, longest hold ' : ' times lost, longest hold ') + fmtTime(e.longestHold);
                  } },
-    nebula:    { label: 'Nebula transit', rank: 'seconds', dir: 'asc',
-                 line: function (e) { return fmtTime(e.seconds) + (typeof e.hull === 'number' ? ', hull ' + e.hull + ' percent' : ''); } },
     gaterun:   { label: 'The gate run', rank: 'seconds', dir: 'asc',
                  line: function (e) { return fmtTime(e.seconds) +
                                        (typeof e.wasted === 'number' ? ', ' + e.wasted + (e.wasted === 1 ? ' pass wasted' : ' passes wasted') : ''); } },
@@ -1848,82 +1835,15 @@ function updateShadow(dt) {
     }
 }
 
-// ---- nebula transit (SPEC 3.63, ideas14.txt/Fable) -------------------------
-// The staged pulsar/space_loop recordings finally get a job. A cloud
-// sphere sits ahead of the start; `insideNebula()` (read by zoneRad() and
-// tickBeat, right alongside their existing systemState('sensor') === 'half'
-// checks — the exact scoped-override shape 3.62's t.dark check already
-// established, so the real sensor never actually reports broken in F2/I)
-// is true whenever the ship is within CFG.nebulaRadius of the cloud's own
-// center. A motionless pulsar (kind: 'poi', poiType: 'pulsar') sits just
-// past the far edge — the one stable bearing — while the real exit
-// (poiType: 'nebulaExit') drifts slowly around that same point, the same
-// small-random-walk shape a mine's own drift already uses.
-function insideNebula() {
-    return !!(nebulaState && nebulaState.inside);
-}
-function makeNebulaRoster() {
-    var anchor = v3(0, 0, -(CFG.nebulaCenterDist + CFG.nebulaRadius + 400));
-    var pulsar = { name: 'Pulsar', poiType: 'pulsar', kind: 'poi', desc: 'a steady, fixed bearing',
-                   pos: v3(anchor.x, anchor.y, anchor.z), alive: true, resource: false,
-                   beaconAsset: 'nebula_pulsar' };
-    var ang = Math.random() * Math.PI * 2;
-    var exit = { name: 'Exit Gate', poiType: 'nebulaExit', kind: 'poi', desc: 'clear of the nebula',
-                 pos: v3(anchor.x, anchor.y, anchor.z),
-                 vel: v3(Math.cos(ang) * CFG.nebulaExitDrift, 0, Math.sin(ang) * CFG.nebulaExitDrift),
-                 alive: true, resource: false };
-    buildPoiVoice(pulsar);
-    buildPoiVoice(exit);
-    return [pulsar, exit];
-}
-function nebulaIntro() {
-    return 'Nebula transit. A cloud sits ahead — inside it the sensor runs half strength, and the hull slowly ablates. ' +
-           'A pulsar holds one steady bearing; the exit gate itself drifts, so trust the pulsar to aim, not to arrive. ' +
-           'Tab cycles between them. The clock starts the moment you thrust.';
-}
-function finishNebula() {
-    won = true;
-    var seconds = nebulaState.elapsed;
-    var prevBest = recordRun('nebula', { seconds: seconds, hull: Math.round(hull) });
-    var rankText = prevBest === undefined ? 'Your first time.'
-                 : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
-                 : fmtTime(seconds - prevBest) + ' off your best.';
-    SIM.cues.play('win_fanfare');
-    openDebrief('Clear of the nebula',
-        [ 'Time ' + fmtTime(seconds) + '.',
-          'Your hull ' + Math.round(hull) + ' percent.',
-          rankText ],
-        'Enter tries again, X for the mission menu.');
-}
-// Called every frame from simTick while mode === 'nebula'. Drifts the
-// exit, tracks the inside/outside boundary (one combined say() on each
-// crossing — never two in the same tick), ablates the hull only while
-// inside, and checks the exit's own proximity.
-function updateNebula(dt) {
-    if (!nebulaState || won || lost) return;
-    if (nebulaState.started) nebulaState.elapsed += dt;
-    var exit = targets.filter(function (t) { return t.poiType === 'nebulaExit'; })[0];
-    if (exit && exit.alive) {
-        exit.pos = add(exit.pos, scale(exit.vel, dt));
-        if (exit.nodes) SIM.audio.movePanner(exit.nodes.panner, exit.pos);
-    }
-    var wasInside = nebulaState.inside;
-    nebulaState.inside = len(sub(ship.pos, nebulaState.cloudCenter)) <= CFG.nebulaRadius;
-    if (nebulaState.inside && !wasInside) {
-        say('Entering the nebula. Sensor at half strength; the hull will slowly ablate.');
-    } else if (!nebulaState.inside && wasInside) {
-        say('Clear of the nebula cloud. Sensor restored; the hull stops ablating.');
-    }
-    if (nebulaState.inside) {
-        var before = hull;
-        hull = Math.max(0, hull - CFG.nebulaHullPerS * dt);
-        CFG.nebulaHullAlertPcts.forEach(function (p) {
-            if (before > p && hull <= p) say('Hull ' + Math.round(hull) + ' percent, ablating.');
-        });
-        if (hull <= 0) { shipDestroyed('the nebula'); return; }
-    }
-    if (exit && exit.alive && len(sub(exit.pos, ship.pos)) <= CFG.nebulaExitRadius) finishNebula();
-}
+// The nebula transit encounter (SPEC 3.63) was yanked outright by SPEC
+// 3.78 (ideas17.txt, Brian, 2026-09-09): "I just thrusted right towards
+// the beacon and it was over" — the exit sat straight ahead, so it never
+// tested anything the fixed-pulsar-versus-drifting-exit idea was meant
+// to. The sensor-degrading-space idea moves to the star's own corona
+// (3.74) and, later, radioactive clouds drifting through a quadrant.
+// insideNebula/makeNebulaRoster/nebulaIntro/finishNebula/updateNebula are
+// gone; the two manifest keys (nebula_pulsar/nebula_cloud) go with them —
+// the recordings stay on disk, unwired, for whenever clouds come back.
 
 // ---- the gate run (SPEC 3.64, ideas14.txt/Fable) ---------------------------
 // The Jump Gate's own lighthouse sweep (Phase 3L L.9 / SPEC 3.31,
@@ -2566,7 +2486,6 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
 var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mode === 'course'
 var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while mode === 'minefield'
 var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
-var nebulaState = null; // SPEC 3.63: { elapsed, started, inside, cloudCenter } while mode === 'nebula'
 var gateRunState = null; // SPEC 3.64: { elapsed, started, wasted } while mode === 'gaterun'
 // SPEC 3.71: the standalone Mining drill's own clock/started pair — null
 // for a quadrant field visit, the demo/contract's own leg, the haul, or
@@ -2712,9 +2631,7 @@ function zoneRad() {
     // SPEC 3.27: a half-broken targeting sensor narrows the LOCK zone only
     // (not the laser-aim or missile cones, which belong to their own
     // separately-breakable systems).
-    // SPEC 3.63: inside the nebula, the sensor reads the same "half" state
-    // — insideNebula() is scoped to this drill, never the real sensor.
-    var sensorMult = (systemState('sensor') === 'half' || insideNebula()) ? CFG.repairSensorPct : 1;
+    var sensorMult = systemState('sensor') === 'half' ? CFG.repairSensorPct : 1;
     return { laser: z.laser * k, lockOn: z.lockOn * k * sensorMult,
              lockOff: z.lockOff * k * sensorMult, missile: z.missile * k };
 }
@@ -2928,12 +2845,6 @@ var HELP_SECTIONS = [
         'The instant its engine cuts, the lock drops and the tick goes silent — no bearing updates at all until it thrusts again. It coasts on whatever heading it already had, but its NOSE turns while dark, so the next thrust can head somewhere new. Fly on the last bearing you had; R still reports range with closing or opening either way.',
         function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
         function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
-    ] },
-    { heading: 'Nebula transit', items: [
-        function () { return 'A cloud sits ahead. Inside it the sensor runs at half strength — the lock zone narrows and the tick slows, exactly like a damaged sensor — and the hull slowly ablates. Both stop the instant you leave it.'; },
-        'A pulsar sits just past the far side, motionless — the one steady bearing. The real exit gate is a separate target near the same spot, but it drifts slowly, so it is rarely exactly where the pulsar points. Tab cycles between them.',
-        'Trust the pulsar to aim yourself in the right direction; the exit itself still has to be found by ear once you are close.',
-        'Reach the exit and the run ends with the time and your hull remaining. Losing the whole hull inside the cloud ends the run the same way any other loss does. The Run log keeps its own separate board.'
     ] },
     { heading: 'The gate run', items: [
         'One Jump Gate sits ahead, sweeping its own lighthouse beam in a slow, steady rhythm — the same sweep the real quadrant gate has always had.',
@@ -3683,9 +3594,7 @@ function tickBeat() {
     // scoped to just t.dark rather than the real shipSystems.sensor —
     // flipping the real sensor would wrongly show it broken in F2/I.
     if (systemState('sensor') === 'off' || t.dark) { tick.timer = setTimeout(tickBeat, 400); return; }
-    // SPEC 3.63: inside the nebula, the tick doubles its interval too —
-    // same scoped insideNebula() check as zoneRad()'s own sensorMult.
-    var sensorSlow = (systemState('sensor') === 'half' || insideNebula()) ? 2 : 1;   // "tick slower"
+    var sensorSlow = systemState('sensor') === 'half' ? 2 : 1;   // "tick slower"
     var a = aim(t.pos);
     var interval;
     if (locked && lockToneKind() === 'poi') {
@@ -5546,7 +5455,7 @@ function shipDestroyed(source) {
             var deathState = turretState;
             setTimeout(function () { if (turretState === deathState) openTurretDebrief(); }, 1200);
         } else if (!tugged) {
-            var deathMode = mode, deathRef = capital || mission || minefieldState || nebulaState || null;
+            var deathMode = mode, deathRef = capital || mission || minefieldState || null;
             setTimeout(function () { openLossDebrief(source, deathMode, deathRef); }, 1200);
         }
     }, 900);
@@ -5579,10 +5488,6 @@ function openLossDebrief(source, deathMode, deathRef) {
         opener = 'Minefield over';
         lines = [ hitBy, 'Time ' + fmtTime(minefieldState.elapsed) + '.',
                   minefieldState.detonations + (minefieldState.detonations === 1 ? ' mine detonated.' : ' mines detonated.') ];
-    } else if (deathMode === 'nebula') {
-        if (nebulaState !== deathRef) return;
-        opener = 'Nebula transit over';
-        lines = [ hitBy, 'Time ' + fmtTime(nebulaState.elapsed) + '.' ];
     } else if (deathMode === 'combat') {
         opener = 'Combat training over';
         lines = [ hitBy, 'Missiles remaining ' + missiles + '.' ];
@@ -7205,7 +7110,7 @@ function statusReport() {
         len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
         line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
     }
-    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'nebula' && mode !== 'gaterun' && autoTargetFitted()) {
+    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'gaterun' && autoTargetFitted()) {
         line += autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge. ' : ' auto-target charges. ');
     }
     if (mode === 'course') {
@@ -7221,9 +7126,6 @@ function statusReport() {
         line += (shadowTarget && shadowTarget.dark ? 'Ship dark. ' : 'Ship lit. ') +
                 'Contact ' + Math.round(shadowState.contact) + ' of ' + CFG.shadowNeedS + ' seconds. ' +
                 'Clock ' + fmtTime(shadowState.elapsed) + '. ';
-    } else if (mode === 'nebula') {
-        line += 'Your hull ' + Math.round(hull) + ' percent. ' + (nebulaState.inside ? 'Inside the nebula, sensor at half. ' : 'Clear of the nebula. ') +
-                'Clock ' + fmtTime(nebulaState.elapsed) + '. ';
     } else if (mode === 'gaterun') {
         var gt = targets[0];
         line += (gt ? 'Distance to the gate ' + round10(len(sub(gt.pos, ship.pos))) + '. ' : '') +
@@ -7235,7 +7137,7 @@ function statusReport() {
               : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
               : aliveTargets().length + ' targets remain. ';
     }
-    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'nebula' && mode !== 'gaterun') {
+    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'gaterun') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
                 chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
@@ -10055,13 +9957,6 @@ function onKeyDown(e) {
                         // rather than after finding it a second time.
                         shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
                         say(shadowIntro());
-                    } else if (mode === 'nebula') {
-                        // SPEC 3.63: same shape again, built alongside from
-                        // the start this time.
-                        nebulaState = { elapsed: 0, started: false, inside: false,
-                                         cloudCenter: v3(0, 0, -CFG.nebulaCenterDist) };
-                        if (SIM.audio.ctx) SIM.audio.playMusic('nebula_cloud', { vol: CFG.stationAmbientVol, fadeS: 1.5 });
-                        say(nebulaIntro());
                     } else if (mode === 'gaterun') {
                         // SPEC 3.64: same shape again.
                         gateRunState = { elapsed: 0, started: false, wasted: 0 };
@@ -10219,8 +10114,6 @@ function simTick(dt) {
         if (mode === 'minefield' && minefieldState && !minefieldState.started) minefieldState.started = true;
         // SPEC 3.62: same rule for the shadow.
         if (mode === 'shadow' && shadowState && !shadowState.started) shadowState.started = true;
-        // SPEC 3.63: same rule for nebula transit.
-        if (mode === 'nebula' && nebulaState && !nebulaState.started) nebulaState.started = true;
         // SPEC 3.64: same rule for the gate run.
         if (mode === 'gaterun' && gateRunState && !gateRunState.started) gateRunState.started = true;
         // SPEC 3.71: same rule for the Mining and Combat drills' own clocks
@@ -10276,7 +10169,6 @@ function simTick(dt) {
     if (mode === 'course') updateCourse(dt);
     if (mode === 'minefield') updateMinefield(dt);
     if (mode === 'shadow') updateShadow(dt);
-    if (mode === 'nebula') updateNebula(dt);
     if (mode === 'gaterun') updateGateRun(dt);
     if (mode === 'mining') updateMining(dt);   // SPEC 3.71: a no-op unless miningState is set
     if (mode === 'mining' && corona) updateCorona(dt);   // SPEC 3.74
@@ -10713,7 +10605,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; nebulaState = null; gateRunState = null;
+    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; gateRunState = null;
     miningState = null; combatState = null;   // SPEC 3.71
     corona = null;   // SPEC 3.74
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
@@ -10768,8 +10660,6 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     } else if (mode === 'shadow') {
         targets = makeShadowRoster();
         targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
-    } else if (mode === 'nebula') {
-        targets = makeNebulaRoster();
     } else if (mode === 'gaterun') {
         targets = makeGateRunRoster();
         targets.forEach(function (t) { if (SIM.audio.ctx) buildPoiVoice(t); });
@@ -10928,12 +10818,6 @@ var ENCOUNTER_ITEMS = [
     { label: 'The shadow',
       desc: function () { return 'Tail a ship that cuts its engine at random. Hold within ' + CFG.shadowRange + ' for ' + CFG.shadowNeedS + ' seconds total — lit or dark — to finish. Weapons cold.'; },
       run: function () { startMission('shadow'); } },
-    // SPEC 3.63 (ideas14.txt/Fable): the sensor runs at half strength
-    // inside the cloud and the hull slowly ablates. See makeNebulaRoster/
-    // updateNebula.
-    { label: 'Nebula transit',
-      desc: function () { return 'A cloud ahead halves your sensor and ablates the hull while you are inside it. A pulsar holds one steady bearing; the exit gate itself drifts.'; },
-      run: function () { startMission('nebula'); } },
     // SPEC 3.64 (ideas14.txt/Fable): the gate's own sweep becomes a real
     // timing rule. See makeGateRunRoster/gateRunKey.
     { label: 'The gate run',
@@ -11063,16 +10947,6 @@ function startMission(m) {
         // SPEC 3.62: same reasoning again.
         shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
         say(shadowIntro());
-    } else if (m === 'nebula') {
-        // SPEC 3.63: same reasoning again. cloudCenter is fixed for the
-        // whole run (the cloud itself never moves); nebula_cloud crossfades
-        // over startSpaceAmbient()'s own space_ambient bed, which newGame()
-        // already started a moment ago — playMusic's own prev-node fade
-        // handles the overlap the same way docking's interior loop does.
-        nebulaState = { elapsed: 0, started: false, inside: false,
-                         cloudCenter: v3(0, 0, -CFG.nebulaCenterDist) };
-        if (SIM.audio.ctx) SIM.audio.playMusic('nebula_cloud', { vol: CFG.stationAmbientVol, fadeS: 1.5 });
-        say(nebulaIntro());
     } else if (m === 'gaterun') {
         // SPEC 3.64: same reasoning again.
         gateRunState = { elapsed: 0, started: false, wasted: 0 };

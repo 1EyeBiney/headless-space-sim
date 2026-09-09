@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7743,7 +7743,7 @@ biggest and touches the audio engine.
   raise `rcsMax` and F2 reads it; `runBudget('combat')` lands near the
   target above.
 
-#### 3.78 Nebula transit — REMOVED (ideas17.txt, Brian, 2026-09-09)
+#### 3.78 Nebula transit — REMOVED (ideas17.txt, Brian, 2026-09-09) — DONE
 
 - Brian: "I do not understand the purpose or play of the nebula
   encounter. I just thrusted right towards the beacon and it was over."
@@ -7774,6 +7774,39 @@ biggest and touches the audio engine.
 - Test: no `'nebula'` anywhere in `index.html`; the Encounters list
   reads 11; a save with `nebulaRuns` loads clean and its Run log shows
   no nebula board.
+
+**DONE (Round 60, Sonnet).** A pure removal, done by grep-sweeping
+every `nebula`/`Nebula` reference and clearing each one out rather
+than trusting the spec's own "out" list to be complete (it wasn't
+quite — a handful of mode-exclusion arrays, e.g. `updateTargeting`'s
+sensor-half check and the "which modes skip the standard missiles/
+decoys line" guard in `statusReport`, needed `!== 'nebula'` dropped
+too, found only by grepping the live file). Removed: the `'nebula'`
+mode itself, `insideNebula`/`makeNebulaRoster`/`nebulaIntro`/
+`finishNebula`/`updateNebula`, both `zoneRad()`/`tickBeat`
+`insideNebula()` checks, the `nebulaState` var and its five call
+sites (the Enter-retry branch, the roster dispatch, `newGame()`'s own
+dispatch, `clearMission`'s reset line, `updateTargeting`'s per-frame
+started-flag), the `shipDestroyed`/`openLossDebrief` death branch, the
+Encounters item and its F1 heading, README's own section, the CFG
+block (`nebulaCenterDist` etc.), and the two `audio_assets.js`
+manifest keys (`nebula_pulsar`/`nebula_cloud` — the recordings stay on
+disk, unwired). The board comes out too: `nebula` dropped from
+`BOARD_ORDER`/`BOARDS`, its `v11->v12` backfill line removed, and its
+entry removed from the `v13->v14` `OLD_BOARD_FIELDS` migration map —
+plus two explicit `delete` lines (`profile.nebulaRuns`,
+`profile.boards.nebula`) so a save that already has either (a
+genuinely old flat array, or an already-migrated board with a real
+run in it) gets it dropped outright rather than left as permanent
+dead weight, matching the spec's own "nothing to keep." Machine-tested
+at a local server: a fresh profile's Encounters list reads exactly 11
+with no nebula item anywhere in a full browse, F1's 16 headings
+confirmed with none named Nebula, `AUDIO_MANIFEST` confirmed missing
+both keys; a seeded v14 save carrying a real `boards.nebula` entry
+(one run, as if Brian's own "I just thrusted right towards the beacon"
+session had been recorded) migrated to v15 clean with that key gone
+from `state().boards` and no crash. Zero console errors. Next per the
+ideas17.txt build order: 3.79 (yank the gate run, lock the gates).
 
 #### 3.79 The gate run — REMOVED; gates are locked, and open by their own rule (ideas17.txt) — DECIDED (Brian, 2026-09-09)
 

@@ -4170,3 +4170,43 @@ not. Not yet heard by Brian. Next per the ideas17.txt build order:
 3.78 (yank the nebula encounter) → 3.79 (lock the gates) → 3.76 (the
 shadow third pass) → 3.75 (the minefield second pass) → 3.77 (reaction
 mass as the economy), then quadrant 2.
+
+**Round 60 (Sonnet, 2026-09-09): built SPEC 3.78, yanking the nebula
+transit encounter outright** — Brian: "I just thrusted right towards
+the beacon and it was over," and Fable's own review agreed it never
+tested what it was built to. A pure removal, done by grep-sweeping
+every `nebula`/`Nebula` reference in `index.html` rather than trusting
+the spec's own "out" list alone, which turned out slightly incomplete:
+a handful of mode-exclusion arrays (`updateTargeting`'s sensor-half
+check, `statusReport`'s "which modes skip the standard missiles/
+decoys line" guard, the auto-target-fitted announcement gate) each
+still carried a dead `mode !== 'nebula'` term that the spec's own text
+never called out individually. Gone: the `'nebula'` mode itself,
+`insideNebula`/`makeNebulaRoster`/`nebulaIntro`/`finishNebula`/
+`updateNebula`, the `nebulaState` var and every one of its five call
+sites (Enter-retry, the roster dispatch in both `newGame()` and
+`startMission()`, `clearMission`'s reset line, the per-frame
+started-flag), the `shipDestroyed`/`openLossDebrief` death branch, the
+Encounters item, the F1 help heading, README's own section, the CFG
+block, and `audio_assets.js`'s two manifest keys (`nebula_pulsar`/
+`nebula_cloud` — the recordings themselves stay on disk, unwired, for
+whenever radioactive clouds come back per 3.78's own direction note).
+The board comes out too: `nebula` dropped from `BOARD_ORDER`/`BOARDS`,
+its old backfill line removed from the migration, and its entry
+pulled from the `OLD_BOARD_FIELDS` map that used to fold a flat
+`nebulaRuns` array into `boards.nebula` — replaced with two explicit
+`delete` lines (`profile.nebulaRuns`, `profile.boards.nebula`) so
+EITHER shape of old data (a genuinely old flat array, or an
+already-migrated board with a real run recorded in it) gets dropped
+outright on load rather than lingering forever as dead weight, per the
+spec's own "nothing to keep." Machine-tested at a local server: a
+fresh profile's Encounters list read exactly 11 with no nebula item
+anywhere in a full forward browse; F1's help read 16 headings with
+none named Nebula; `AUDIO_MANIFEST` confirmed missing both retired
+keys; a seeded v14 save carrying a real `boards.nebula` entry (one
+run, as if Brian's own session had been recorded) migrated to v15
+clean with that key gone from `state().boards` and zero console
+errors. Not yet heard by Brian — nothing to hear, by design; this was
+pure removal. Next per the ideas17.txt build order: 3.79 (lock the
+gates) → 3.76 (the shadow third pass) → 3.75 (the minefield second
+pass) → 3.77 (reaction mass as the economy), then quadrant 2.
