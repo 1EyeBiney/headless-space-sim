@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete, opening the quadrant-2 track** → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.78 yank the nebula → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy → 3.80 music on the brackets** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7607,6 +7607,278 @@ batch in full (3.70–3.74, all DONE) — next per the build order is the
 quadrant-2 track (3.18 → 3.14 → 3.22), unless Brian wants to fly/hear
 what's shipped first, per the standing rule.
 
+**ideas17.txt (Brian, 2026-09-09, reviewed by Fable the same day)** —
+five notes from flying Rounds 52–57 (the minefield, the shadow as it
+thrusts, nebula transit, the gate run) plus fourteen new tracks in
+`audio/music/celestial/`, which are the music note. Written as six
+items, 3.75–3.80, with Brian's answers folded in; the few he didn't
+answer carry Fable's own proposal marked as such in Part C. Build order:
+**3.78 (yank nebula) → 3.79 (yank the gate run, lock the gates) → 3.76
+(shadow third pass) → 3.75 (minefield second pass) → 3.77 (reaction
+mass) → 3.80 (music)** — the two removals first because everything
+after them is smaller once they're gone, the shadow next because its
+fix is one number Brian is waiting on, music last because it's the
+biggest and touches the audio engine.
+
+#### 3.75 The minefield, second pass: beacons to reach, mines that sing (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+
+- Brian: "need to try a different mine sound to see if we can do better
+  with HRTF. I think we need to likely make the player fly to some
+  beacons within the minefield such that they may not be able to fly
+  directly to the beacons. I think we need to try simulated mine sounds
+  then such that they increase in volume and pitch and frequency the
+  closer the player gets to them."
+- **What exists (3.61)**: mines scattered along a straight line from
+  the start to one exit beacon; each mine is a fixed 520 Hz, 70 ms
+  sine blip (`updateMinefield`, `sfxTone` through a one-shot `worldOut`)
+  whose *rate* quickens with distance — pitch and volume never move. A
+  70 ms blip is about the hardest thing there is to localize by ear;
+  Brian's HRTF complaint is well founded.
+- **Beacons, any order.** `mineBeaconCount` by difficulty tier —
+  **[3, 4, 5]** for Rookie/Veteran/Ace (Brian: "3 for rookie"; the
+  scaling is Fable's, flagged) — placed inside the field at random,
+  each at least `mineBeaconSpacing` (600) from every other and from
+  the start, so no straight line from the start reaches them all. Each
+  is a `kind: 'poi'`, `poiType: 'mineBeacon'`, its own tone (the
+  course's gate voice, detuned by index, is the shape), Tab cycles
+  them, **any order — not a path** (Brian). Reaching one within
+  `mineExitRadius` speaks "Beacon N of M." and silences it (dropped
+  from Tab); the exit beacon only *sounds* (and only counts) once every
+  beacon is taken — it exists from the start, mute, so the map and the
+  count are honest. Time stays the board's headline; the debrief adds
+  "N beacons, M detonations."
+- **Mines sing.** The blip goes. Each mine gets a **continuous voice**,
+  `buildMineVoice(t)` — the turret's own incoming voice (3.65,
+  `buildIncomingVoice`: a triangle tone with a pulsing gain LFO) reused
+  through the mine's own panner, so it is localizable the way a ship
+  engine is. Silent beyond `mineTickRange` (700). Inside it, the same
+  distance fraction `updateMinefield` already computes drives all
+  three at once: gain from `mineVoiceGainFar` (0.05) to
+  `mineVoiceGainNear` (0.45), pitch from `mineVoiceHzFar` (220) to
+  `mineVoiceHzNear` (900), pulse rate from 1.5 to 9 a second — every
+  frame, `setTargetAtTime`, never a discrete tick. `mineTickFastMs`/
+  `SlowMs` retire. Brian's "simulated" is read as synthesized; a
+  recording later is 3.75a.
+- Test: `mineBeaconCount` beacons placed with none within
+  `mineBeaconSpacing` of another; reaching them in any order counts
+  each once; the exit is mute and refuses until all are taken; a
+  mine's voice gain/pitch/pulse measured at two distances rises
+  monotonically toward it and reads 0 gain past `mineTickRange`; the
+  board entry carries the beacon count.
+
+#### 3.76 The shadow, third pass: louder, slower than you, and gone from the start (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+
+- Brian: "the ship needs to be made louder, the thrusters are great,
+  the amount of thrust needs toned down as I lost the ship once and
+  just could not get back to it. I think adding blink forward will
+  help with this one."
+- **The finding**: `shadowThrustSpeed` is 110 and the pilot's own
+  `maxSpeed` is 100. The target outruns the pilot on every thrust leg;
+  losing it was arithmetic, not flying. **Blink forward already
+  exists** (3.68, Shift+Page Up, 300 units, 4 reaction mass) and is
+  live in the shadow — it needed no adding, only knowing.
+- **Slower than you**: `shadowThrustSpeed` 110 → **80**, under the cap,
+  so a straight chase always closes and blink is the recovery, not the
+  only way. `shadowCoastSpeed` 25 unchanged.
+- **Louder**: `shadowGain` 1.5 → **2.5** (Brian: "yes, try that"). The
+  engine loop only — the thrusters are right.
+- **Gone from the start** (Brian: "make sure the player cannot just
+  hammer W at the start of the encounter and catch the ship right
+  away... the ship needs to almost immediately go off in some
+  direction"): the shadow spawns at `shadowSpawnDist` (500, was 400)
+  with a **random opening facing** — anywhere in the horizontal circle,
+  never straight away from or toward the pilot — and its first thrust
+  fires at once (3.73's zero-length opening dark leg already does this)
+  at the **longest tier's length (10 s) regardless of difficulty**, so
+  the first leg is a real departure. From 500 out at a 20 u/s closing
+  edge that's 25 seconds of chase at best before contact; hammering W
+  from the start buys nothing.
+- Test: the shadow's opening facing measured random across runs and
+  never within 30° of the pilot's own bearing; its speed never reads
+  above 80; the engine gain reads 2.5 × `targetGain` lit; a full-W
+  chase from the start closes no faster than the 20 u/s edge allows.
+
+#### 3.77 Reaction mass is the economy: every action draws it, tanks grow it (ideas17.txt) — DECIDED (Brian, 2026-09-09: "all of them, and we need to figure out how to balance them")
+
+- Brian: "we will have to consider using reaction mass for more than
+  just thrusters and shields and use it for blink and maybe other
+  things as well, to force capacity upgrades and maybe other effects."
+- **What draws it today**: W (`rcsThrustPerS` 1/s), S (1.5/s), the
+  stabilizers (per unit shed), every repair (0.2 a point), the tractor
+  (3.52, work-based), blink (3.68, `blinkRcs` 4). Shields, missiles,
+  decoys, and auto-target do **not** — shields never have, despite the
+  note's "thrusters and shields."
+- **Now every action does.** First-draft costs, Brian's to balance by
+  ear; each is one CFG number at the action's own existing call site,
+  refused with the offline buzz ("Reaction mass too low") when the
+  tank can't cover it — never a silent nothing:
+  - `rcsShieldRaise` **5** — `shieldKey`, on the raise only; holding
+    them is free (the pool is its own cost).
+  - `rcsMissile` **3** — `fireMissile`, per launch.
+  - `rcsDecoy` **2** — `fireChaff`, per decoy.
+  - `rcsAutoTarget` **6** — `autoTargetKey`, per use, *alongside* the
+    three charges (3.38), not instead of them: the charges cap how
+    often, the mass makes each one cost something.
+  - blink stays 4, the tractor stays work-based, repairs stay 0.2.
+- **Battery power spends nothing and does nothing** for these: once on
+  battery (`rcsBattery`), shields, missiles, decoys, auto-target, and
+  blink all refuse — a dry tank is a ship that can only limp. Thrust
+  keeps its existing 0.4 factor.
+- **The tank modules** (Brian: "force capacity upgrades" — "yes, go
+  with those"): two tiered, alloy-costing, prerequisite-gated shipyard
+  entries in `MODULES`, the repair crew's own shape (3.27) —
+  `rcs_tank_1` (`rcsMax` 100 → **150**, 400 credits + 2 alloy) and
+  `rcs_tank_2` (→ **200**, 600 credits + 3 alloy, requires tier 1).
+  `rcsMax` is already read live everywhere (`rcsPct`, `refillRcs`, the
+  hail's Buy line), so this is `moduleCfgOverlay()` with no new
+  plumbing. F2's Reaction mass heading reads the tank size.
+- **Balance target** (Fable, for Brian to check by flying): a Combat
+  training run fought normally — two shield raises, four missiles, two
+  decoys, one auto-target, a minute of thrust — should end near 40% of
+  a stock tank, not on battery; the same run on `rcs_tank_2` near 70%.
+  `__sim.runBudget()` (3.32) gains a `'combat'` scenario computing this
+  from the CFG numbers so the target is checkable without flying.
+- Test: each action deducts its own number once and refuses by name at
+  a poked-low tank; on battery each refuses outright; the two modules
+  raise `rcsMax` and F2 reads it; `runBudget('combat')` lands near the
+  target above.
+
+#### 3.78 Nebula transit — REMOVED (ideas17.txt, Brian, 2026-09-09)
+
+- Brian: "I do not understand the purpose or play of the nebula
+  encounter. I just thrusted right towards the beacon and it was over."
+  And: "just yank the nebula encounter. I think we will use the star to
+  do the same effect and later we may put players in radioactive clouds
+  for added tension for fighting or mining to force them to do things
+  faster."
+- Fable's own read agrees: the exit sat straight ahead, so full W
+  crossed the cloud in about thirty seconds and the fixed-pulsar-versus-
+  drifting-exit idea never got a chance to matter. As built it tested
+  nothing.
+- **Out**: the `'nebula'` mode, `makeNebulaRoster`/`nebulaIntro`/
+  `finishNebula`/`updateNebula`, `insideNebula()` and its two callers
+  in `zoneRad()`/`tickBeat` (3.27's own `systemState('sensor')` checks
+  stay), the Encounters item, the F1 heading, README's section, the
+  `nebula` board (out of `BOARD_ORDER`/`BOARDS`; the migration deletes
+  a save's old `nebulaRuns` without folding it in — nothing to keep),
+  the CFG block, the Enter-retry branch, `state().nebula`. The
+  recordings stay on disk (pulsar1–8, space_loop1–8) and the two
+  manifest keys go — they come back with the clouds.
+- **Direction (A.10 addendum, not a build item)**: the sensor-degrading
+  space is the **star's corona** (3.74 — Brian: "I will test some of
+  this when I fly close to a star"), and later **radioactive clouds**
+  drifting through a quadrant that ablate the hull faster inside them —
+  tension for a fight or a mining run caught inside one, "to force
+  them to do things faster." Brian's nebula-description prompts and
+  the danger-variant recordings are that item's audio when it comes.
+- Test: no `'nebula'` anywhere in `index.html`; the Encounters list
+  reads 11; a save with `nebulaRuns` loads clean and its Run log shows
+  no nebula board.
+
+#### 3.79 The gate run — REMOVED; gates are locked, and open by their own rule (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+
+- Brian: "Remove The Gate Run encounter. I think we will do warp gates
+  a little different. I think the gates will be locked and when
+  something is done to unlock them, the player would approach and
+  interact with the warp gate, using a 600 radius to be within comms
+  range. Once whatever condition was met, we can play a sound like a
+  gate unlocking and then the warp gate can sound like one of the
+  vortex sounds that we have. I do not think we need to rotate the
+  gates or anything like that, the vortex sounds are pretty cool and we
+  just need to make them not be heard over a longer distance like we do
+  with the other POI in the quadrant."
+- **The gate run comes out** the way the nebula does: the `'gaterun'`
+  mode, roster/intro/finish/update, `gateRunKey` and its H intercept
+  (H is plain `startWarp()` everywhere again), the Encounters item, the
+  F1 heading, README, the `gaterun` board and its CFG, the Enter-retry
+  branch. **The sweep goes with it**: `t.gatePhase`, the cone on the
+  gate's panner (3.31/L.9's game half), `gateSweepS`/`gateCone*` —
+  the lab's own lighthouse demo (L.9) is untouched. `space_station6`
+  stays the Jump Gate's voice only until the lock below replaces it.
+- **Locked gates.** A gate's voice is a **vortex loop** (`gateVoice`
+  on the `QUADRANT` row — `vortex1` for every gate today; different
+  ones per gate later, Brian's own call, once there is more than one
+  gate to tell apart) through the ordinary `beaconAsset` path, but
+  with its own audible range: `gateAudibleDist` **3000** (Fable's
+  number, flagged) against the other POIs' 8000, applied in
+  `beaconAudible()` by `poiType`. C within `gateCommRange` (600) reads
+  the gate's own state — "Jump Gate. Locked. Needs [condition]." or
+  "Jump Gate. Open." — and, at the moment its condition is first met
+  while in range, plays `gate_unlock` (a new cue — a long descending
+  chord into the vortex's own rise; a recording later) and says
+  "Jump Gate unlocked." once, persisting `profile.quadrants[q].gates
+  [name].unlocked`. Transit itself is still 3.22's.
+- **Each gate has its own unlock rule** (Brian). The first gate's is
+  3.22's own: **Known favor at any station in the quadrant, and 30
+  hydrogen aboard** — the star (3.74) now supplies the hydrogen, so a
+  miner who won't fight can open it. `GATE_RULES[name]` holds a
+  predicate and its spoken "needs" line; other gates' rules are
+  written when their quadrants are.
+- A.13's three gates per corner, each on the outer ring in its own
+  edge's direction, stands — only the rotation is gone.
+- Test: no `'gaterun'` in `index.html`, H warps at the gate as
+  anywhere; the gate's loop is `vortex1` and reads silent past 3000;
+  C at 600 speaks Locked with the condition, then Open after favor and
+  hydrogen are poked to the rule, with `gate_unlock` and the line once
+  and `unlocked` persisted across a reload.
+
+#### 3.80 Music: Keyboard Commander's player, on brackets (ideas17.txt) — DECIDED (Brian, 2026-09-09), four defaults flagged in Part C
+
+- Brian: "review the way we did music in keyboard commander... I want
+  to be able to play music as a background if the player desires it...
+  music play/stop, next song, previous song... Use left bracket for
+  music play/stop, use right bracket for next song and right brace for
+  previous song, volume controls via menu... more music styles... a sub
+  menu of the main menu, could be in sounds."
+- **What exists**: `menu_celestial` looped at the menu (Round 44), the
+  deep-space bed under every mode (3.67), the docked interior, and a
+  Music level in the Sound menu. Fourteen new tracks in
+  `audio/music/celestial/` beside `fingerprints_of_God` — fifteen.
+- **KC's shape, copied** (`c:\nbs\kc\kc_bgm.js`, reviewed): a
+  `MUSIC_STYLES` table of named playlists (one today, **Celestial**,
+  fifteen keys `celestial_01`–`celestial_15`; the fourteen files are
+  **renamed** to that convention, `fingerprints_of_God` becomes
+  `celestial_01` — Fable's default, flagged), a **grab-bag shuffle**
+  (every track once before any repeats), a **2-second crossfade**
+  between tracks, next-on-ended, `profile.music = { on, style, idx }`
+  saved on every change. **One deliberate difference**: KC streams
+  through two `<audio>` elements; our engine decodes whole buffers.
+  Fifteen ~5 MB MP3s decoded is hundreds of megabytes of RAM, so the
+  player streams them KC's way — two `HTMLAudioElement`s each through
+  a `MediaElementAudioSourceNode` into `SIM.audio.musicBus`, so the
+  Sound menu's Music level, the mute switch, and the turret's duck all
+  still apply. `SIM.audio.playMusic` (the bed, the interior) is
+  untouched; the player is `SIM.music`, a new namespace in
+  `audio_engine.js`, KC's `KC.bgm` in this codebase's own idiom.
+- **Keys**: `[` play/stop, `]` next, **Shift+`]`** previous — read from
+  `e.code` (`BracketLeft`/`BracketRight` + `shiftKey`), never `e.key`,
+  since a shifted `]` arrives as `}` — the same trap 3.24 fixed for
+  Shift+digits. Live everywhere the sim takes keys: the menu, flight,
+  every encounter, every overlay's pass-through list (the Y precedent,
+  3.51). Each answers: "Music on. [track name]." / "Music off." /
+  "[track name]." Track names are spoken from a `MUSIC_TITLES` table,
+  not the file names.
+- **Where it plays**: everywhere the pilot has it on, encounters and
+  combat included — it is their choice (Fable's default, flagged). It
+  sits **over** the deep-space bed and the docked interior, not instead
+  of them, and **replaces** the Round 44 menu-only track behavior
+  (`startMenuMusic`/its `clearMission` stop go; the menu is just
+  another place the player plays). No ducking under speech — speech is
+  aria-live, not audio, and already wins. **Default on** for a new
+  pilot at the Sound menu's medium level (KC's own default), flagged.
+- **The Sound menu** gains a **Music** sub-line opening a submenu:
+  Play/Stop, Next, Previous, Style (one entry today, Left/Right cycles
+  when there are more — the KC `cycleStyle` shape), the existing
+  volume level. Volume is only ever there, never on a key (Brian).
+- Test: `[` toggles and speaks; `]`/Shift+`]` advance and retreat,
+  wrapping within the shuffled bag; every track plays once before any
+  repeats; a track's end crossfades into the next over ~2 s; the Sound
+  menu's Music level scales the player; `?mute=1` silences it; the
+  choice and track survive a reload; the bed and interior still play
+  underneath; a docked/undock cycle and a mission start never stop it;
+  fifteen keys resolve to renamed files and none is in
+  `AUDIO_PRELOAD`.
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -8899,3 +9171,44 @@ systems. (Subsystem damage came off this list with ideas7 — it is 3.27.)
 - localStorage blocked/absent → game still runs.
 - Commit; push; wait for the Pages deploy; re-test at the URL; close every
   browser tab and stop the local server.
+
+**Review (Fable, 2026-09-09) of Brian's `ideas17.txt`** — five notes from
+flying Rounds 52–57, plus fourteen tracks in `audio/music/celestial/`
+that ARE the music note (the file itself has no music line). Written as
+3.75–3.80.
+- **The minefield (3.75): yes.** A 70 ms blip is the worst possible
+  thing to localize; a continuous voice through the mine's own panner
+  is what HRTF needs. Beacons any order, 3/4/5 by tier.
+- **The shadow (3.76): a finding, not a tuning.** `shadowThrustSpeed`
+  110 against the pilot's `maxSpeed` 100 — the target outruns the
+  pilot by construction. Blink forward already exists (3.68). Thrust
+  80, gain 2.5, a random opening heading with a full first leg.
+- **Reaction mass (3.77): yes, all of them**, with first-draft costs
+  and a checkable balance target; two tank modules.
+- **The nebula (3.78): yanked** on Brian's call — the exit sat straight
+  ahead, so it tested nothing. The idea moves to the star and, later,
+  radioactive clouds (direction only).
+- **The gate run (3.79): yanked** with the sweep; gates are locked and
+  open by their own rule, the first on Known favor + 30 hydrogen, a
+  vortex loop as the voice.
+- **Music (3.80)**: KC's `kc_bgm.js` reviewed and copied in shape —
+  styles, grab-bag shuffle, 2 s crossfade, saved choice — streamed
+  through `<audio>` into our music bus rather than decoded (fifteen
+  tracks decoded is hundreds of MB of RAM). `[` / `]` / Shift+`]`
+  read from `e.code`.
+
+**ANSWERED (Brian, 2026-09-09, on ideas17.txt)**: minefield beacons 3 at
+Rookie, any order, not a path; the mine voice as Fable proposed; shadow
+gain 2.5, and the ship must leave immediately so W from the start can't
+catch it; reaction mass for all of it, balance to be figured out; tank
+modules yes; the nebula yanked outright (the star carries the sensor
+idea, radioactive clouds later); gates unlock per gate, the first on
+hydrogen and favor; a different vortex per gate, vortex 1 for now.
+
+**DECIDE (open, from ideas17.txt — Fable's defaults, written into the
+items above, Brian to overrule)**: (1) minefield beacons scale 3/4/5 by
+tier; (2) gate audible range 3000; (3) A.13's three gates per corner
+stands; (4) music plays everywhere the pilot has it on, encounters
+included; (5) music defaults ON for a new pilot; (6) it replaces the
+menu-only track and sits over the deep-space bed, no ducking under
+speech; (7) the fifteen files renamed `celestial_01`–`15`.

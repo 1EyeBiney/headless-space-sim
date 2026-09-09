@@ -4043,3 +4043,30 @@ by him. This closes Phase 3E's ideas16.txt batch in full (3.70 through
 3.74). Next per the build order: the quadrant-2 track (3.18 → 3.14 →
 3.22), unless Brian wants to fly or hear what's shipped first — the
 standing rule.
+
+**Round 58 (Fable, docs only, 2026-09-09)**: Brian's `ideas17.txt` (five
+notes from flying Rounds 52–57; fourteen new tracks in
+`audio/music/celestial/` are the music note — the file has no music
+line, which briefly confused the review) written into SPEC.md as
+**3.75–3.80**: **3.75** the minefield second pass (beacons in any
+order, 3/4/5 by tier; the 70 ms mine blip becomes a continuous voice —
+the turret's incoming voice reused through the mine's own panner —
+rising in gain, pitch, and pulse with proximity); **3.76** the shadow
+third pass — **the finding: `shadowThrustSpeed` 110 exceeds the pilot's
+`maxSpeed` 100**, so "could not get back to it" was arithmetic; thrust
+80, gain 2.5, a random opening heading with a full first leg, and blink
+forward already exists (3.68); **3.77** reaction mass as the economy
+(shields 5, missiles 3, decoys 2, auto-target 6, all refused on
+battery; `rcs_tank_1/2` to 150/200; a `runBudget('combat')` balance
+target); **3.78** nebula transit **REMOVED** (Brian: it tested nothing —
+"just thrusted right towards the beacon"; the star carries the sensor
+idea, radioactive clouds are later direction); **3.79** the gate run
+**REMOVED** with the sweep, gates now **locked** and opened by their
+own rule (the first on Known favor + 30 hydrogen), a vortex loop as the
+voice at a 3000 audible range; **3.80** music — KC's `kc_bgm.js`
+reviewed (styles, grab-bag shuffle, 2 s crossfade, saved choice) and
+copied in shape as `SIM.music`, streamed through `<audio>` into the
+music bus rather than decoded, `[` play/stop, `]` next, Shift+`]`
+previous, read from `e.code`. Build order 3.78 → 3.79 → 3.76 → 3.75 →
+3.77 → 3.80, then quadrant 2. Seven defaults flagged in Part C for
+Brian to overrule. Nothing built. Next: Sonnet builds 3.78.
