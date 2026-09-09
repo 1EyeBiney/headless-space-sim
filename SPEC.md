@@ -7060,41 +7060,100 @@ own note on why.
   tone's ramp target reads `CFG.turretIncomingVol` and the bed's gain
   the duck; no volley spawns across a full drill at chance 0.
 
-#### 3.73 The shadow, second pass: louder, and it thrusts (ideas16.txt) — DECIDED, one push-back
+#### 3.73 The shadow, second pass: louder, and it thrusts (ideas16.txt) — DECIDED, recordings in hand (Brian, 2026-09-09)
 
 - Brian: "I think we need to increase the sound of the ship we are
   supposed to be finding. I will go try and find some thruster rocket
   sounds to use when it is firing thrusters, otherwise we need a sound
-  to indicate when that ship's engines are thrusting."
-- **Louder**: `CFG.shadowGain` (2.0) multiplies the shadow's voice
-  gain over `targetGain` when lit — the dark ramp still goes to
-  nothing. A knob for his ear.
-- **It has to thrust for a thruster to sound.** The push-back: as built
-  the shadow flies a straight line at one constant speed (the escort
-  freighter's route code, as the spec said) — it never accelerates, so
-  there is no moment for a thruster sound to mark. So the route gains
-  what the note assumes: each lit leg opens with a **burst** —
-  `shadowBurstS` (2.5 s) at `shadowBurstSpeed` (110), then it settles
-  back to `shadowSpeed` (45) — and each dark leg is a **coast** at
-  whatever speed it had (engine off means no thrust, so the cut is
-  honest). The burst is the audible event Brian wants, and it gives
-  R's closing/opening readout something to read (a target that changes
-  speed is why 3.62 mentioned R at all). A dark leg that starts mid-
-  burst keeps the burst's speed, silently — the hard case, on purpose.
-- **The sound**: until Brian's recording lands (**3.73a**, a manifest
-  key `shadow_thruster`, the same lettered sub-stage every encounter's
-  audio uses), the burst plays the ship's OWN thruster machinery at
-  the shadow's world position — `THRUSTER_DEFS`' forward jet, through a
-  `worldOut` panner instead of the UI bus, pitched down a little
-  (`shadowThrusterRate` 0.8) so it doesn't read as the pilot's own W.
-  Positioned, so the burst is itself a bearing cue — a dark ship that
-  bursts is briefly findable again, which is the point.
+  to indicate when that ship's engines are thrusting." Then, the same
+  day, the recordings arrived and reshaped the item — see "The
+  recordings" below. The earlier stand-in plan (the pilot's own
+  `THRUSTER_DEFS` jet, positioned and pitched down) is withdrawn;
+  there is no 3.73a any more, the audio lands with the item.
+- **Louder, by half**: `CFG.shadowGain` (1.5 — Brian: "raised 50%")
+  multiplies the shadow's voice gain over `targetGain` when lit — the
+  dark ramp still goes to nothing. A knob for his ear.
+- **The thruster IS the lit leg.** The push-back stands — a thruster
+  sound needs a thrust to mark, and as built the shadow flies one
+  straight line at one speed — but the shape is simpler than the
+  burst-then-settle first drafted here. Brian: "the thruster should
+  actually fire for 10s." So a **lit leg is a thrust**, exactly as long
+  as the recording, and a **dark leg is dead air**: engine off, no
+  thrust, a coast. Concretely, `updateShadow` becomes a two-state
+  cycle:
+  - **Thrust** (`shadowThrustS`, tiered — see below): the engine loop
+    is lit (`shadowGain × targetGain`) AND the thruster recording
+    plays once, positioned at the shadow through a `worldOut` panner,
+    for the whole leg; the ship accelerates along its facing toward
+    `shadowThrustSpeed` (110) at `shadowThrustAccel` (30/s²), so speed
+    climbs through the leg and R's closing/opening readout has
+    something to read (why 3.62 mentioned R at all).
+  - **Dead air** (`shadowSilentMinS`–`MaxS`, today's 4–9 s, kept):
+    engine and thruster both silent; the ship **coasts** on the
+    velocity it had, bleeding to `shadowCoastSpeed` (25) at
+    `shadowCoastDecel` (10/s²) — engine off means no thrust, so the
+    cut is honest. And it **rotates** (Brian's own second idea): the
+    facing turns by a random `shadowTurnMinDeg`–`MaxDeg` (45–135°,
+    either way, yaw only for now) over the dark leg, so the next
+    thrust heads somewhere new and the pilot has to turn to keep it —
+    a ship that keeps its old heading through dead air is the easy
+    case, and this is the one that's meant to be hard. The coast still
+    carries the OLD velocity while the nose turns (no thrust, no
+    change of direction), so the ship's path is a bend, not a corner —
+    the bearing the pilot last heard stays roughly right through the
+    dark, and the surprise comes with the next thrust.
+- **The recordings** — `audio/ships/thrusters/` (Brian, 2026-09-09,
+  untracked until Sonnet stages the folder explicitly — never `git add
+  -A`): nine files, three sets of three, `ship_thruster_1_10s` /
+  `_2_7s` / `_3_4s`, `_4_10s`/`_5_7s`/`_6_4s`, `_7_10s`/`_8_7s`/`_9_4s`.
+  **Set one is the one wired**, three manifest keys —
+  `shadow_thruster_10` → `ship_thruster_1_10s.mp3`, `shadow_thruster_7`
+  → `_2_7s`, `shadow_thruster_4` → `_3_4s` — preloaded (they're the
+  encounter's only new audio). Sets two and three stay on disk,
+  auditionable in the sound lab like every other unwired recording.
+  **A measurement Sonnet must not skip** (Fable, `ffprobe` +
+  `silencedetect`, 2026-09-09): the file NAMES do not match the AUDIO.
+  Only `_9_4s` actually runs 4.0 s. `_1_10s` is 10.7 s, `_4_10s` 11.9 s,
+  `_7_10s` 10.5 s; every "7s" and "4s" file in sets one and two is a
+  10.0 s file with ~8.5 s of sound and ~1.5 s of trailing silence;
+  `_8_7s` is 10.5 s with no silence at all. Flagged for Brian to
+  re-export if he wants the files themselves to be 7 and 4 seconds.
+  It does NOT block the build, because of the next rule.
+- **The tier sets the length, not the clip.** `shadowThrustTiers`
+  `[10, 7, 4]` seconds, indexed by the difficulty tier (Rookie 10,
+  Veteran 7, Ace 4 — "as the difficulty on this mission grows, the
+  length of the thruster sound is shortened"); the thrust leg lasts
+  exactly that many seconds and the matching recording is started at
+  the leg's start and **faded out over `shadowThrustFadeS` (0.3) at
+  the leg's end**, whatever the file's true length — so a 10 s file
+  under a 7 s tier simply ends at 7, and the mis-lengthed files above
+  play correctly today. The engine loop's own lit ramp ends at the
+  same instant. A shorter thrust against the same dead air is a
+  longer silent fraction of every cycle — Brian's "longer dead air
+  times, so harder to track in theory" — with the dark leg's own
+  range left where it is so the two knobs stay independent.
+  **Reading flagged for Brian**: "difficulty on this mission" is read
+  as the game's existing Rookie/Veteran/Ace tier, which is the only
+  difficulty the game has. The alternative — the thrust shrinking
+  WITHIN one run as the clock advances, the turret's own pressure-ramp
+  shape (3.65) — is one extra CFG line if he'd rather have both.
+- **Tab, lock, and the tick** are unchanged from 3.62: `t.dark` is
+  true through dead air, so the lock drops the moment the thrust ends
+  and the pilot flies dead reckoning through the turn.
 - **Its metrics** are 3.71's row (contact efficiency, times lost,
   longest hold); 3.73 only makes the target worth tracking.
-- Test: the voice reads `shadowGain × targetGain` lit and ~0 dark; a
-  lit leg's first `shadowBurstS` seconds run at `shadowBurstSpeed` with
-  the thruster at the ship's position, then `shadowSpeed`; a dark leg
-  coasts at its entry speed; R reports closing/opening across a burst.
+- Test: the voice reads `shadowGain × targetGain` (1.5×) lit and ~0
+  dark; a thrust leg lasts exactly `shadowThrustTiers[tier]` seconds
+  with the recording's source node started at its start and its gain
+  at ~0 within `shadowThrustFadeS` of its end, at every tier; speed
+  climbs during a thrust and decays during dead air; the facing at
+  the end of a dark leg differs from its start by 45–135°; the
+  position's path through a dark leg follows the entry velocity, not
+  the new facing; `locked` drops on the thrust's end and the next
+  thrust's bearing differs from the last; R reports closing/opening
+  across a thrust; a fresh tab confirms the three manifest keys
+  preload with zero console errors; `audio/ships/thrusters/` is
+  staged explicitly.
 
 #### 3.74 The star: hydrogen at the corona, gravity, and heat (ideas16.txt) — DECIDED (Brian, 2026-09-09: the numbers as proposed, the corona hurts, first on the quadrant-2 track)
 
@@ -8431,6 +8490,17 @@ written into Phase 3E as 3.70–3.74. Verdicts:
   each dark leg coasts; the burst is the sound's job AND the reason R
   finally has something to report. His recording is 3.73a; the ship's
   own thruster, positioned and pitched down, stands in until then.
+  **Superseded the same day**: Brian delivered nine thruster
+  recordings (`audio/ships/thrusters/`, three sets of 10/7/4 s) and
+  reshaped the item — the thrust IS the lit leg, its length tiered
+  10/7/4 by difficulty, dead air is a coast with a random turn, the
+  ship 50% louder; 3.73a is gone, the audio lands with 3.73. One
+  finding for him: the file names don't match the audio (only
+  `_9_4s` is really 4 s; the other "7s"/"4s" files are ~10 s with
+  trailing silence) — harmless as specced, since the tier sets the
+  length and the clip is faded at it, but worth a re-export if he
+  wants the files honest. One reading flagged: "difficulty" = the
+  Rookie/Veteran/Ace tier, not a within-run ramp.
 - **The star (3.74): yes, and before quadrant 2 — first on that
   track.** Brian is right in substance: "The Star" is a beacon and
   nothing else (no pull, no collision, C says "Nothing answers").

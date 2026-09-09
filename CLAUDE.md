@@ -119,7 +119,12 @@ expands.
   warp recordings for SPEC 1.17 (`warp_start1-6`, `warp_finish1-6` at
   4.0 s each, `warp_engaged1r-6r` loops at 1.5 s, all stereo 48 kHz;
   engine 1's three clips in the manifest, the other five stay on disk
-  until a second drive exists — see "Sector" above); `audio/weapons/
+  until a second drive exists — see "Sector" above) plus
+  `audio/ships/thrusters/` = 9 `ship_thruster_N_{10s,7s,4s}` (Brian,
+  2026-09-09, for SPEC 3.73's shadow — set one, files 1–3, are the
+  ones to wire as `shadow_thruster_10/7/4`; sets two and three stay on
+  disk; NOTE the name suffixes don't match the real lengths, see 3.73);
+  `audio/weapons/
   missiles/` = the one manifest missile-firing mp3, `audio/weapons/lasers/`
   = 48 lasers (Mining ×8, Rapid-pulse ×8, all 48 in the manifest — the
   four newest families, Rugged mining/Fast fighter/Rotary cannon/Burst
@@ -3835,3 +3840,18 @@ scoop deliberately inside the heat radius — added to 3.74); the
 corona's numbers as proposed; order confirmed 3.70 → 3.72 → 3.73 →
 3.71 → 3.74, then 3.18 → 3.14 → 3.22. Part C's DECIDE block is now
 ANSWERED. Nothing open from ideas16. Next: Sonnet builds 3.70.
+**Round 56, third pass (Fable, docs only)**: Brian's thruster
+recordings landed — `audio/ships/thrusters/`, nine files in three
+sets of 10/7/4 s (untracked; Sonnet stages the folder explicitly) —
+and 3.73 was rewritten around them: the thrust IS the lit leg
+(`shadowThrustTiers` [10, 7, 4] s by Rookie/Veteran/Ace — Fable's
+reading of "as the difficulty grows", flagged; a within-run ramp is
+the alternative), the recording (set one: `shadow_thruster_10/7/4`,
+preloaded) plays positioned for the leg and is FADED at the tier's
+length, dead air is a coast on the old velocity with a random 45–135°
+yaw turn so the next thrust heads somewhere new, `shadowGain` 1.5
+("raised 50%"). 3.73a and the pilot's-own-jet stand-in are withdrawn.
+**Measured, not assumed**: the file names lie — only `_9_4s` is 4 s;
+the other "7s"/"4s" files are 10 s with ~1.5 s trailing silence,
+the "10s" files 10.5–11.9 s — harmless under the fade rule, flagged
+for Brian to re-export if he wants. Next: Sonnet builds 3.70.
