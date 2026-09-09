@@ -3469,3 +3469,8 @@ Part C for him to swap. `blinkDist` is a 300 placeholder, live via
 numbers. Sonnet: the Ctrl+Shift chord check goes in `onKeyDown` BEFORE
 the existing Shift-chord block, or Ctrl+Shift+S reads as auto-reverse.
 Next: Sonnet builds 3.67 → 3.66 → 3.68 → 3.69.
+**Round 47, third pass**: blink keys settled — **Shift+arrows**
+(Left/Right sidestep, Up/Down world-vertical) and **Shift+Page Up/Page
+Down** (forward/back). No Ctrl, no W/S, no reserved chords; Ctrl+Shift+A
+is gone. Sonnet: the check goes BEFORE the HELD branch (a Shift+arrow is
+otherwise a held turn) and ignores `e.repeat`. 3.68 and Part C updated.

@@ -6094,21 +6094,21 @@ it, for 3.67.
   to re-target... I'm thinking actually now of using Control for this
   as there would be times to jump forward/back too, like as an escape
   move or a chase down move, so Control + W/S and arrow keys."
-- **Decided (Brian, 2026-09-08): Ctrl+Shift + the normal movement
-  keys.** Six blinks, one per movement key, the chord meaning "the
-  same direction, instantly": **Ctrl+Shift+Left/Right** sidestep,
-  **Ctrl+Shift+Up/Down** blink up/down in the world, **Ctrl+Shift+S**
-  back. **Forward is the one exception**: Ctrl+Shift+W closes the
-  browser WINDOW (Chrome, Edge, Firefox all reserve it, exactly as
-  Ctrl+W closes the tab — unpreventable, and `isBrowserKey`'s
-  `ctrlKey && 'w'` already lets it through so the game never eats
-  it), so forward is **Ctrl+Shift+A** — the one unbound letter under
-  the same hand, beside W and S. Flagged in Part C for Brian to swap if
-  he'd rather another key; the mechanic doesn't care which. (Firefox
-  uses Ctrl+Shift+S for a screenshot, but it isn't reserved — the page
-  keeps it.) Every chord is checked in `onKeyDown` BEFORE the existing
-  Shift chords, since Ctrl+Shift+S would otherwise read as Shift+S
-  (auto-reverse) and Ctrl+Shift+arrows as held arrows.
+- **Decided (Brian, 2026-09-08, third pass): Shift + arrows, and
+  Shift + Page Up/Down for forward/back.** Six blinks, the chord
+  meaning "the same direction, instantly": **Shift+Left/Right**
+  sidestep, **Shift+Up/Down** blink up/down in the world,
+  **Shift+Page Up** forward (the chase-down), **Shift+Page Down** back
+  (the escape). No Ctrl at all — which retires the whole Ctrl+W /
+  Ctrl+Shift+W problem (both close the tab/window, unpreventable) that
+  the first two drafts fought. Every one of these is free: nothing in
+  the game uses Shift+arrows or Page Up/Down, no browser reserves them,
+  and NVDA has no global command on them. Build note: a Shift+arrow
+  arrives as `lname` 'arrowleft' etc. with `shiftKey` set — exactly
+  what the HELD branch would take as a held turn — so the blink check
+  sits in `onKeyDown` BEFORE the HELD branch (beside the existing
+  Shift+W/S/T/Tab/R chord block) and ignores `e.repeat`, so a held
+  Shift+arrow blinks once, never a burst of them.
 - **What a blink is**: an instant displacement of `blinkDist` along
   the ship's own axis — right/left and forward/back in the ship's yaw
   frame, up/down world-vertical (the ship doesn't roll) — **facing and
@@ -6142,16 +6142,18 @@ it, for 3.67.
 - Enemies don't react to a blink in v1 beyond what 3.58 already does
   (their facing chases the ship's new position at the turn rate) —
   which IS the reaction.
-- Test: Ctrl+Shift+Right moves the ship exactly `blinkDist` along its
-  right axis with yaw, pitch, and velocity unchanged; Ctrl+Shift+A
-  forward, Ctrl+Shift+S back, Ctrl+Shift+Up/Down world-vertical;
+- Test: Shift+Right moves the ship exactly `blinkDist` along its
+  right axis with yaw, pitch, and velocity unchanged; Shift+Page Up
+  forward, Shift+Page Down back, Shift+Up/Down world-vertical;
   reaction mass drops by 4; a second blink inside 3 s refuses with the
-  wait; a blink toward a station from 200 out stops at the hull radius;
-  the lock drops and Shift+T reacquires; plain Shift+S still toggles
-  auto-reverse and plain arrows still turn (the chord check doesn't
-  steal them); Ctrl+Shift+W is never seen by the game; `poke({blinkDist:
-  600})` changes the next blink; a cannon ship's cone angle to the
-  pilot jumps on a sidestep and closes again at `enemyFacingTurnRateDeg`.
+  wait; a held Shift+Right (auto-repeat) blinks exactly once; a blink
+  toward a station from 200 out stops at the hull radius; the lock
+  drops and Shift+T reacquires; plain arrows still turn, plain Shift+S
+  still toggles auto-reverse, and plain Page Up/Down still answer
+  "does nothing here" (the chord check steals none of them);
+  `poke({blinkDist: 600})` changes the next blink; a cannon ship's cone
+  angle to the pilot jumps on a sidestep and closes again at
+  `enemyFacingTurnRateDeg`.
 
 #### 3.69 The capital ship: turrets behind doors (ideas15.txt) — proposed, an encounter
 
@@ -7441,16 +7443,17 @@ written into Phase 3E as 3.66–3.69. Verdicts:
   queued (3.55, 3.61–3.64, 3.59b) — Brian's notes are play feedback on
   what's built, and 3.69 is the biggest encounter on the list.
 
-**Decided (Brian, 2026-09-08)**: blink is **Ctrl+Shift + the normal
-movement keys** — all six directions; no distance known yet, so
-`blinkDist` is a live-pokeable placeholder and the blink line speaks
-it.
+**Decided (Brian, 2026-09-08)**: blink is **Shift+arrows** (sidestep
+left/right, blink up/down) and **Shift+Page Up/Page Down** (forward/
+back) — his third pass, after Ctrl+W/S and then Ctrl+Shift+W/S both
+ran into the browser's own reserved close-tab/close-window chords.
+All six free, nothing swapped. No distance known yet, so `blinkDist`
+is a live-pokeable placeholder and the blink line speaks it.
 
-**DECIDE (open, from ideas15.txt)**: 1. Forward can't be Ctrl+Shift+W
-(closes the browser window) — Fable put it on **Ctrl+Shift+A**; swap it
-if you'd rather. 2. Blink on the flight course: refused like weapons
-(Fable), or allowed? 3. `blinkDist` (300 placeholder, poke it live) /
-`blinkRcs` 4 / 3 s cooldown. 4. Field cap 80, −10 a
+**DECIDE (open, from ideas15.txt)**: 1. (keys — settled above.) 2.
+Blink on the flight course: refused like weapons (Fable), or allowed?
+3. `blinkDist` (300 placeholder, poke it live) / `blinkRcs` 4 / 3 s
+cooldown. 4. Field cap 80, −10 a
 repeat, floor 50 — placeholders. 5. Z's chain window (4 s) and the
 category order. 6. The capital ship: cannon turrets, beam turrets, or
 mixed; a parent hull of its own (v1: no); how many turrets (4).
