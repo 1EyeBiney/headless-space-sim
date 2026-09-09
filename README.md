@@ -225,7 +225,7 @@ Right hand on the arrows, left hand on everything else.
 | Shift+T | Auto-target: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. A limited pool, not something you start with |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
-| Z | Unbound — the tractor beam moved to B |
+| Z | Quick status: one line a press — hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, any broken systems, auto-target charges if fitted — skipping anything at full health. Press again within a few seconds to continue, or it restarts at hull |
 | Shift+Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |
 | I | Status: speed, target, hull, missiles, laser slot, shields, warp charge, mission clock |

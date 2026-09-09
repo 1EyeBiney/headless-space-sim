@@ -3474,3 +3474,33 @@ Next: Sonnet builds 3.67 → 3.66 → 3.68 → 3.69.
 Down** (forward/back). No Ctrl, no W/S, no reserved chords; Ctrl+Shift+A
 is gone. Sonnet: the check goes BEFORE the HELD branch (a Shift+arrow is
 otherwise a held turn) and ignores `e.repeat`. 3.68 and Part C updated.
+
+**Round 48 (Sonnet, 2026-09-08): built SPEC 3.67 and 3.66.** 3.67 (the
+deep space ambient bed): one manifest key (`space_ambient`, IN
+`AUDIO_PRELOAD`), `startSpaceAmbient()` called at the tail of
+`newGame()` (every mode reaches it there) and from `undock()`; docking's
+existing `station_interior1` crossfade and `exitToMenu()`'s existing
+menu music both needed zero changes, since `playMusic`'s own prev-node
+fade already generalizes. Confirmed via real gameplay (a real dock at
+Station Meridian, not a shortcut): menu track → combat/turret's 20s
+loop → the 111s interior loop on docking → the 20s loop again on
+undock. 3.66 (Z status cycle + field repair caps): `Z_STATUS_SLOTS`
+(9-stop fixed order) + `zStatusSkip()`/`zStatusKey()`; a parallel
+`systemCaps` map (not folded into `shipSystems`) with a shared
+`registerKnockout()` used by both the real knockout path and the
+`poke({knockout})` test hook, so tests exercise the real cap math.
+`updateRepairCrew()` gained `fieldFixableSystemIds()` (broken AND below
+its own cap) as its actual target pool — a capped system stays reported
+as broken (F2/I/Z) but stops being repaired, and the per-tick `amount`
+is now clamped to what the cap allows, fixing a real risk: the old code
+would have kept billing reaction mass at the full rate for a system
+that could no longer progress. One documentation note: the spec's own
+earlier prose ("three knockouts... at 50") doesn't match the Test
+section's precise sequence (80→70→60→50, four knockouts to reach the
+floor) — built to the Test section's numbers, the more precise source.
+Machine-tested at a local server in live gameplay (a real knockout, a
+real second knockout, a real crew repair with shields raised to keep
+the measurement clean of the drill's own ongoing combat, a real
+mission restart clearing caps), zero console errors both rounds. Next
+per SPEC.md's Phase 3E order: 3.68 (blink on Shift+arrows/Shift+Page
+Up/Down), then 3.69 (the capital ship).

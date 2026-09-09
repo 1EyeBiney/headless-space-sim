@@ -477,6 +477,19 @@ var CFG_DEFAULTS = {
     repairRcsFloor: 10,        // the crew won't spend mass below this
     repairPoolPct: 0.5,      // shields-broken: pool max multiplier at half health
     repairThrustPct: 0.5,    // thrust-broken: thrust multiplier at half health
+
+    // SPEC 3.66 (ideas15.txt): field repairs stop short of whole — Brian:
+    // "it should not go all the way back to 100%... degraded somehow
+    // until full ship repairs can be made at a station." A system's own
+    // field-repair ceiling starts at repairFieldCap the first time it's
+    // knocked out, then steps down by repairCapLossPerHit on every
+    // knockout after that (once it's been field-repaired and hit again),
+    // floored at repairCapFloor — cleared entirely by docking. The hull's
+    // own field cap is flat, no variance (damage to it isn't a discrete
+    // "knockout" the way a system's is).
+    repairFieldCap: 80, repairHullFieldCap: 80,
+    repairCapLossPerHit: 10, repairCapFloor: 50,
+    zStatusChainS: 4,   // Z: a press within this of the last continues the cycle; after, it restarts at Hull
     repairWarpRangePct: 0.5, // warp-broken: jump range multiplier at half health
     repairLaserDmgPct: 0.5,  // laser-broken: damage multiplier at half health
     repairMissileSpeedPct: 0.5, // missiles-broken: launch speed multiplier at half health
@@ -2089,6 +2102,7 @@ var HELP_SECTIONS = [
         'A solid tone means locked on.',
         'Targets behind you sound muffled, as if behind the hull.',
         'Shift Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.',
+        'Z is a quick status cycle: one line a press — hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, any broken systems, and auto-target charges if fitted — skipping anything already at full health. Press again within a few seconds to move to the next one; wait longer and it starts back at hull.',
         function () { return 'Shift T hands the stabilizers your selected target — they aim the ship at it for you, worst case ' + CFG.autoTargetWorstTiers[CFG.autoTargetWorstTiers.length - 1] + ' seconds at the fastest tier, then hold on it ' + CFG.autoTargetHoldS + ' seconds, tracking a moving target so the lock actually lands. Never fires, never damages. Any arrow key mid-slew cancels it — you always win. Not standard gear, and from a limited pool of ' + CFG.autoTargetCharges + ' a sortie.'; }
     ] },
     { heading: 'Weapons', items: [
@@ -2123,7 +2137,8 @@ var HELP_SECTIONS = [
         function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It goes ballistic at once and coasts, no shield needed, so your weapons stay live — a moment later you hear it pop clear. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
-        function () { return 'A missile that actually lands on your hull — never a beam, never one your shields caught — can knock a subsystem offline: a laser slot, missiles, decoys, shields, the warp engine, thrust, the targeting sensor, or the cargo hold. A repair crew works the worst one automatically, one at a time, and I and F2 both name what is broken and how far along the fix is; docking always finishes the job.'; },
+        function () { return 'A missile that actually lands on your hull — never a beam, never one your shields caught — can knock a subsystem offline: a laser slot, missiles, decoys, shields, the warp engine, thrust, the targeting sensor, or the cargo hold. A repair crew works the worst one automatically, one at a time, and I, F2, and Z all name what is broken and how far along the fix is.'; },
+        function () { return 'A field repair stops at ' + CFG.repairFieldCap + ' percent, not 100 — good enough to use again, not brand new. Get hit and field-repaired on the same system enough times in one sortie and that ceiling drops further, floored at ' + CFG.repairCapFloor + '. Docking is still the only way back to full, and clears every ceiling with it.'; },
         'If your hull reaches zero the encounter is lost. In a standalone training drill, Enter tries again. In the sector campaign or the delivery run, a tug is dispatched instead — a wait on the clock, not a restart; Enter there pays credits to halve whatever is left, and pays again for another halving as long as credits allow.',
         function () { return 'A repair crew also mends your hull once every broken system is whole, at half the system rate, spending reaction mass as it goes — it pauses rather than ever leave you unable to turn.'; }
     ] },
@@ -2291,7 +2306,7 @@ var KEY_DESCRIPTIONS = {
     r: 'Range to the selected target, and whether it is closing or opening. Shift R is the radar ping: each surviving target at its true position, nearest first.',
     i: function () { return mode === 'turret' ? 'Status: hull, the selected zone and what is in it, time left, and the running tally.' : 'Status. Speaks speed, the selected target bearing, and targets remaining.'; },
     y: 'Speaks your resource totals: credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys. Works anywhere, including inside the station and its submenus.',
-    z: 'Z does nothing on its own any more — the tractor beam moved to B. Shift Z still cycles the target zone size: wide, standard, or narrow.',
+    z: 'Quick status: one line a press, cycling hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, broken systems, and auto-target charges — a category at full health is skipped. Press again within a few seconds to continue the cycle; after that it restarts at hull. Shift Z still cycles the target zone size: wide, standard, or narrow.',
     v: 'The space vacuum. Filters up all the loose mining dust near your ship. No aiming needed.',
     x: 'Leave the current mission. From an encounter entered via the sector, returns to open space; otherwise, to the mission menu.',
     q: 'Open the quadrant map. Works in open sector space, from a mining encounter any time, and from a combat zone once it is cleared.',
@@ -4589,9 +4604,12 @@ function shieldReset() {
 // (usable, degraded) to 100 (fully back). Docking still repairs everything
 // instantly, unchanged — see repairAllSystems().
 var shipSystems = {};      // id -> health 0-100; absent (or 100) = fully OK
+var systemCaps = {};       // SPEC 3.66: id -> field-repair ceiling; absent (or 100) = never knocked out this sortie
 var activeRepairId = null; // which system (or 'hull') the crew is currently working
 var repairRcsPaused = false; // SPEC 3.36: true while parked at the reaction-mass floor
 var repairRcsSpentSortie = 0; // SPEC 3.36: total reaction mass the crew has spent, this sortie — F2
+
+function systemCap(id) { return systemCaps[id] === undefined ? 100 : systemCaps[id]; }
 
 // Fixed knockout weights (Brian's list) for everything except laser slots,
 // which are added dynamically below — one entry per FITTED slot, weight 3
@@ -4657,6 +4675,18 @@ function applyKnockoutEffects(id) {
     if (id === 'shields' && shield.up) shieldDrop(true, 'systemFailure');
 }
 
+// SPEC 3.66: shared by the real knockout path and the poke() test hook —
+// sets the system's health to 0 and steps its field-repair cap down
+// (repairFieldCap the first time, repairCapLossPerHit further each time
+// after, floored at repairCapFloor), so a test can exercise the exact
+// same cap math a real hit does.
+function registerKnockout(id) {
+    shipSystems[id] = 0;
+    var curCap = systemCap(id);
+    systemCaps[id] = curCap >= 100 ? CFG.repairFieldCap : Math.max(CFG.repairCapFloor, curCap - CFG.repairCapLossPerHit);
+    applyKnockoutEffects(id);
+}
+
 // The real random path — called only from hullHit() when an enemy missile
 // (never a beam, never one a raised shield absorbed) lands. Returns a
 // spoken fragment ending in a period, or '' — folded into hullHit's own
@@ -4671,8 +4701,7 @@ function knockoutSystem() {
         r -= systemWeight(candidates[i]);
         if (r <= 0) { id = candidates[i]; break; }
     }
-    shipSystems[id] = 0;
-    applyKnockoutEffects(id);
+    registerKnockout(id);
     return ' ' + systemName(id) + ' offline.';
 }
 
@@ -4691,23 +4720,36 @@ function knockoutSystem() {
 function brokenSystemIds() {
     return Object.keys(shipSystems).filter(function (id) { return shipSystems[id] < 100; });
 }
+// SPEC 3.66: which broken systems the crew can still make progress on in
+// the FIELD — below their own cap, not just below 100. A system sitting
+// at its cap stays "broken" (F2/I/Z all keep reporting it) but stops
+// being the crew's active target; only docking finishes it.
+function fieldFixableSystemIds() {
+    return brokenSystemIds().filter(function (id) { return shipSystems[id] < systemCap(id); });
+}
 function updateRepairCrew(dt) {
-    var broken = brokenSystemIds();
+    var fixable = fieldFixableSystemIds();
     var targetId = null;
-    if (broken.length) {
-        broken.sort(function (a, b) {
+    if (fixable.length) {
+        fixable.sort(function (a, b) {
             var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
             return pa !== pb ? pa - pb : (a < b ? -1 : 1);
         });
-        targetId = broken[0];
-    } else if (hull < CFG.shipHull) {
+        targetId = fixable[0];
+    } else if (hull < CFG.repairHullFieldCap) {
         targetId = 'hull';
     }
     if (!targetId) { activeRepairId = null; repairRcsPaused = false; return; }
 
+    var cap = targetId === 'hull' ? CFG.repairHullFieldCap : systemCap(targetId);
+    var before = targetId === 'hull' ? hull : shipSystems[targetId];
     var basePerSecond = 100 / (CFG.repairHalfS * 2);
     var perSecond = targetId === 'hull' ? basePerSecond * CFG.repairHullFactor : basePerSecond;
-    var amount = perSecond * dt;
+    // SPEC 3.66: never compute (and never bill reaction mass for) more
+    // healing than the cap allows — a system already parked at its own
+    // cap costing mass for zero gain was the real risk here.
+    var amount = Math.min(perSecond * dt, Math.max(0, cap - before));
+    if (amount <= 0) { activeRepairId = null; repairRcsPaused = false; return; }
     var rcsCost = amount * CFG.repairRcsPerPoint;
     if (rcs - rcsCost < CFG.repairRcsFloor) {
         if (!repairRcsPaused) { repairRcsPaused = true; say('Damage control paused: reaction mass low.'); }
@@ -4725,20 +4767,22 @@ function updateRepairCrew(dt) {
 
     if (targetId === 'hull') {
         var beforeHull = hull;
-        hull = Math.min(CFG.shipHull, hull + amount);
-        if (beforeHull < CFG.shipHull && hull >= CFG.shipHull) say('Hull repaired.');
+        hull = Math.min(cap, hull + amount);
+        if (beforeHull < cap && hull >= cap) {
+            activeRepairId = null;
+            say(cap >= CFG.shipHull ? 'Hull repaired.' : 'Hull at ' + cap + ', field repair. Dock for full.');
+        }
         return;
     }
-    var before = shipSystems[targetId];
-    var after = Math.min(100, before + amount);
+    var after = Math.min(cap, before + amount);
     shipSystems[targetId] = after;
     if (before < 50 && after >= 50) {
         SIM.cues.play('repair_half');
         say(systemName(targetId) + ' at 50 percent, usable.');
-    } else if (after >= 100) {
-        delete shipSystems[targetId];
+    } else if (after >= cap) {
         activeRepairId = null;
-        say(systemName(targetId) + ' repaired.');
+        if (cap >= 100) { delete shipSystems[targetId]; say(systemName(targetId) + ' repaired.'); }
+        else say(systemName(targetId) + ' at ' + cap + ', field repair. Dock for full.');
     }
 }
 
@@ -4746,6 +4790,7 @@ function updateRepairCrew(dt) {
 // existed): every broken system clears at once, no partial credit.
 function repairAllSystems() {
     shipSystems = {};
+    systemCaps = {};   // SPEC 3.66: docking clears every field-repair cap
     activeRepairId = null;
     repairRcsPaused = false;
     repairRcsSpentSortie = 0;
@@ -5798,9 +5843,94 @@ function statusReport() {
             var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
             return pa !== pb ? pa - pb : (a < b ? -1 : 1);
         });
-        line += broken.map(function (id) { return systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent'; }).join('; ') + '. ';
+        line += broken.map(function (id) {
+            var cap = systemCap(id);
+            return systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent' + (cap < 100 ? ', field cap ' + cap : '');
+        }).join('; ') + '. ';
     }
     say(line);
+}
+
+// ---- Z: the quick status cycle (SPEC 3.66, ideas15.txt) --------------------
+// Brian: "pressing Z and it says 'hull 80%', press Z and it says '7
+// missiles left' and so on... instead of having to pull up the Ship
+// Status screen with F2." One line a press, cycling a FIXED order of
+// stops; a category at full health is skipped (never a COUNT category —
+// a full magazine is a number, not a percent, and "how many do I have"
+// is always worth answering) so the pilot never sits through good news.
+// A press within zStatusChainS of the last continues the cycle from
+// where it left off; after that gap it restarts at Hull, so a single Z
+// always means "hull" — the number reached for most.
+var Z_STATUS_SLOTS = ['hull', 'shields', 'laser', 'missiles', 'decoys', 'rcs', 'warp', 'systems', 'autotarget'];
+var zStatusIdx = 0;
+var zStatusLastAt = 0;
+
+// True for a HEALTH category sitting at full (or, for the laser, also
+// true when the selected slot is simply empty — nothing to report either
+// way) — never true for missiles/decoys (hull never even asks).
+function zStatusSkip(id) {
+    if (id === 'shields') return shield.pool >= shieldPoolMax() && !shield.repairing;
+    if (id === 'laser') {
+        var L = currentLaser();
+        return !L || profile.laserHealth[LASER_FAMILIES_BY_ID[L.family].id] >= 100;
+    }
+    if (id === 'rcs') return rcsPct() >= 100 && !rcsBattery;
+    if (id === 'warp') return warpCharge >= CFG.warpTankMax;
+    if (id === 'systems') return brokenSystemIds().length === 0;
+    if (id === 'autotarget') return !autoTargetFitted();   // excluded from the cycle entirely, not just this once
+    return false;   // hull, missiles, decoys: never skipped
+}
+function zStatusAllWhole() {
+    return zStatusSkip('shields') && zStatusSkip('laser') && zStatusSkip('rcs') &&
+           zStatusSkip('warp') && zStatusSkip('systems');
+}
+function zStatusLine(id) {
+    if (id === 'hull') {
+        return 'Hull ' + hull + ' percent.' + (zStatusAllWhole() ? ' All systems whole.' : '');
+    }
+    if (id === 'shields') {
+        return 'Shields ' + (shield.up ? 'up' : 'down') + ', ' + Math.round(shield.pool) + ' of ' +
+               Math.round(shieldPoolMax()) + (shield.repairing ? ', repairing' : '') + '.';
+    }
+    if (id === 'laser') {
+        var L = currentLaser();
+        if (!L) return laserSlotText(laserSlot) + '.';
+        var fam = LASER_FAMILIES_BY_ID[L.family];
+        return laserSlotText(laserSlot) + ' level ' + L.version + ', health ' + Math.round(profile.laserHealth[fam.id]) + '.';
+    }
+    if (id === 'missiles') return missiles + (missiles === 1 ? ' missile.' : ' missiles.');
+    if (id === 'decoys') return chaff + (chaff === 1 ? ' decoy.' : ' decoys.');
+    if (id === 'rcs') return 'Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery' : '') + '.';
+    if (id === 'warp') return 'Warp charge ' + warpPct() + ' percent.';
+    if (id === 'systems') {
+        var broken = brokenSystemIds();
+        broken.sort(function (a, b) {
+            var pa = REPAIR_PRIORITY.indexOf(systemPriorityKey(a)), pb = REPAIR_PRIORITY.indexOf(systemPriorityKey(b));
+            return pa !== pb ? pa - pb : (a < b ? -1 : 1);
+        });
+        return broken.map(function (sid) {
+            var cap = systemCap(sid);
+            return systemName(sid) + ' ' + Math.round(systemHealth(sid)) + ' percent' + (cap < 100 ? ', field cap ' + cap : '');
+        }).join(', ') + '.';
+    }
+    // autotarget
+    return autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge.' : ' auto-target charges.');
+}
+function zStatusKey() {
+    var now = Date.now();
+    var fresh = (now - zStatusLastAt) > CFG.zStatusChainS * 1000;
+    zStatusLastAt = now;
+    var startIdx = fresh ? 0 : zStatusIdx + 1;
+    for (var i = 0; i < Z_STATUS_SLOTS.length; i++) {
+        var idx = (startIdx + i) % Z_STATUS_SLOTS.length;
+        var id = Z_STATUS_SLOTS[idx];
+        if (idx !== 0 && zStatusSkip(id)) continue;   // Hull (idx 0) never skips
+        zStatusIdx = idx;
+        say(zStatusLine(id));
+        return;
+    }
+    zStatusIdx = 0;
+    say(zStatusLine('hull'));   // defensive fallback — Hull always qualifies above
 }
 
 // ---- run log --------------------------------------------------------------------
@@ -6122,6 +6252,9 @@ function buildShipLines() {
     line('Once every system is whole, the hull too, at half that rate. ' +
          'Every repair costs ' + CFG.repairRcsPerPoint + ' reaction mass a point, ' +
          'pausing below ' + CFG.repairRcsFloor + '.');
+    line('A field repair stops at ' + CFG.repairFieldCap + ' percent — ' + CFG.repairHullFieldCap +
+         ' for the hull — falling to as low as ' + CFG.repairCapFloor +
+         ' after repeat knockouts of the same system. Docking clears every ceiling.');
 
     heading('Systems');
     var broken = brokenSystemIds();
@@ -6131,7 +6264,9 @@ function buildShipLines() {
             return pa !== pb ? pa - pb : (a < b ? -1 : 1);
         });
         broken.forEach(function (id) {
+            var cap = systemCap(id);
             line(systemName(id) + ' ' + Math.round(systemHealth(id)) + ' percent' +
+                 (cap < 100 ? ', field cap ' + cap : '') +
                  (id === activeRepairId ? ', crew working' : '') + '.');
         });
     } else {
@@ -8200,6 +8335,7 @@ function onKeyDown(e) {
         case 'r':      rangeReport(); break;
         case 'e':      if (!over()) startExtract(); break;
         case 'v':      if (!over()) startDustVac(); break;
+        case 'z':      zStatusKey(); break;   // SPEC 3.66
         case 'q':      openMap(); break;
         case 'h':      startWarp(); break;
         case 'c':
@@ -8638,8 +8774,10 @@ window.__sim = {
             systems: Object.keys(shipSystems).reduce(function (o, id) {
                 o[id] = Math.round(shipSystems[id] * 10) / 10; return o;
             }, {}),
+            systemCaps: Object.assign({}, systemCaps),   // SPEC 3.66
             activeRepair: activeRepairId,
             repairHalfS: CFG.repairHalfS,
+            zStatus: { idx: zStatusIdx, slot: Z_STATUS_SLOTS[zStatusIdx], lastAt: zStatusLastAt },
             shieldPoolMax: Math.round(shieldPoolMax() * 10) / 10,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
@@ -8739,8 +8877,9 @@ window.__sim = {
         // the chance roll and weight draw — the exact test hook the spec
         // itself asks for), or set a system's health directly, or clear
         // everything at once (the same effect docking has).
-        if (o && o.knockout) { shipSystems[o.knockout] = 0; applyKnockoutEffects(o.knockout); }
+        if (o && o.knockout) registerKnockout(o.knockout);   // SPEC 3.66: the real cap math, not a bare health set
         if (o && o.systemHealth) Object.assign(shipSystems, o.systemHealth);
+        if (o && o.systemCap) Object.assign(systemCaps, o.systemCap);   // SPEC 3.66 test hook
         // SPEC 3.30: move/resize the SELECTED rock directly (distance and
         // size drive every tractor refusal) and force the test-fit flag,
         // without needing to fly to a rock of the exact size by hand.

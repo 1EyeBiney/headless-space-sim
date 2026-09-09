@@ -6008,7 +6008,7 @@ deep_space_10r.mp3` (20 s stereo loop, 480 KB — the `r` is Brian's own
 loop marker, and "10" suggests siblings not dropped yet) arrived with
 it, for 3.67.
 
-#### 3.66 Z reads the ship, one system a press — and field repairs stop short of whole (ideas15.txt) — DECIDED
+#### 3.66 Z reads the ship, one system a press — and field repairs stop short of whole (ideas15.txt) — DONE
 
 - Brian: "using Z (I think it is unbound now) to cycle through ship
   component status, like pressing Z and it says 'hull 80%', press Z and
@@ -6060,6 +6060,68 @@ it, for 3.67.
   Missiles, Decoys; a knocked-out sensor repaired in the field stops at
   exactly 80 with the field-repair line; a second knockout of the same
   system caps it at 70; docking restores 100 and clears every cap.
+
+**DONE (Round 48, Sonnet).** Built as scoped. `Z_STATUS_SLOTS` is the
+fixed nine-stop order; `zStatusSkip(id)` decides per press whether a
+HEALTH category is whole (shields: pool full and not repairing; laser:
+health 100 **or the slot is simply empty** — nothing to report either
+way, a judgment call folded into "skip" rather than a tenth always-on
+"empty slot" stop; rcs/warp: at max; systems: none broken;
+auto-target: excluded outright when unfitted, not just skipped once);
+missiles/decoys/hull never skip. `zStatusKey()` walks the fixed order
+from the last stop (or from Hull, on a fresh press past
+`CFG.zStatusChainS`), landing on the first that doesn't skip — the
+same loop naturally produces the spec's own "collapses to Hull →
+Missiles → Decoys" shape with no special-casing, since Missiles/
+Decoys are the two count stops between the skippable ones. Field
+repair caps: a new parallel `systemCaps` map (not folded into
+`shipSystems`'s own shape, to touch as little existing code as
+possible) with a `systemCap(id)` reader defaulting to 100; a shared
+`registerKnockout(id)` (used by both the real `knockoutSystem()` path
+and the `poke({knockout})` test hook, so a test exercises the exact
+same cap math a real hit does) sets health to 0 and steps the cap from
+its CURRENT value — `100 → 80` on the first knockout, `80 → 70` on the
+next, `70 → 60`, `60 → 50` (floored) — which is the precise sequence
+the Test section above asks for; the prose earlier in this item ("three
+times... at 50") was Fable's own looser illustration and doesn't match
+that precise sequence (three knockouts land at 60, not 50) — the Test
+section's exact numbers are what got built. `updateRepairCrew()` grew
+a `fieldFixableSystemIds()` (broken AND still below its own cap) as the
+crew's real target pool, separate from `brokenSystemIds()` (broken at
+all — what F2/I/Z still report); a system parked at its cap keeps
+reading as broken forever, correctly, but stops being the crew's
+active job, so it never steals reaction mass for zero gain and never
+blocks the crew from moving on to something it CAN still fix. The
+`amount` computed each tick is now clamped to what the cap actually
+allows (`Math.min(perSecond*dt, cap-before)`) — the real bug this
+guarded against: the old code always spent reaction mass for the full
+uncapped `amount` even once a system could progress no further, which
+a capped system sitting at the front of the priority queue forever
+would have bled dry for nothing. The hull's own field cap
+(`repairHullFieldCap`, flat 80, no variance — hull damage isn't a
+discrete "knockout" the way a system's is) uses the identical
+clamp-and-message shape. `repairAllSystems()` (docking, and every
+fresh-mission start) clears `systemCaps` alongside `shipSystems`.
+Machine-tested at a local server, entirely in real gameplay conditions
+(a live Combat training drill, not a synthetic harness): a fresh
+cycle's exact stops confirmed (Hull → Missiles → Decoys → Warp, since
+warp charge is genuinely 0% outside sector and everything else starts
+whole — the skip logic proven against REAL state, not assumed); the
+5th press wrapping back to Hull; a 4+ second gap restarting the chain
+at Hull mid-cycle; a sensor knockout capping at exactly 80 and the
+crew's own repair (with shields raised to block further hull damage so
+the measurement wasn't contaminated by the drill's own live combat)
+stopping dead at 80, not 100; a second knockout of the same system
+dropping the cap to 70, confirmed both via `state().systemCaps` and via
+Z's own "Targeting sensor 0 percent, field cap 70." line; a fresh
+mission restart confirmed clearing every cap back to none. Zero
+console errors. One pre-existing cosmetic note, not a new bug: hull
+displays as a raw unrounded number everywhere in this codebase
+(matches F2/I's own existing convention, unchanged since 3.36 made hull
+repair fractional) — Z's own Hull line inherits the same non-integer
+display; left as-is for consistency, flagged for Brian's ear rather
+than silently rounded only here. Every number (the field caps, the
+loss-per-hit, the chain window) is a placeholder for Brian's ear.
 
 #### 3.67 Deep space, the ambient bed (ideas15.txt) — DONE
 
