@@ -3504,3 +3504,24 @@ the measurement clean of the drill's own ongoing combat, a real
 mission restart clearing caps), zero console errors both rounds. Next
 per SPEC.md's Phase 3E order: 3.68 (blink on Shift+arrows/Shift+Page
 Up/Down), then 3.69 (the capital ship).
+
+**Round 49 (Sonnet, 2026-09-08): built SPEC 3.68, blink.** Shift+arrows
+(sidestep/world-vertical) and Shift+Page Up/Down (forward/back) — the
+chord check sits in `onKeyDown` right before the existing Shift+W/S/T/
+Tab/R block, mirroring its tug/mission/over() guards. `blinkKey()`/
+`blinkOffset()` live near `updateCollisions()`, reusing its exact
+clamp-to-the-hull-radius geometry for stations/planets. No explicit
+docked/warping/menuOpen handling needed (the chord sits far enough down
+onKeyDown that those states already returned earlier) and turret's own
+Left/Right zone-switch claims a Shift+arrow before blink ever sees it
+— confirmed live, not assumed. Only the course needed an explicit
+refusal. `blinkDist` is genuinely live via `poke({blinkDist})` since
+Brian has no real number yet. Machine-tested at a local server with
+forced yaw/pitch/velocity so the trig was checkable exactly (a 40°
+sidestep landed at the precise predicted point, velocity and facing
+both completely unchanged); the hull-radius clamp needed a rebuilt test
+after an early attempt blinked THROUGH a station rather than INTO its
+radius (a real testing miss, not a code gap — a blink only checks
+where it lands, matching the spec). Zero console errors. Next per
+SPEC.md's Phase 3E order: 3.69, the capital ship — the biggest item on
+the ideas15 list.

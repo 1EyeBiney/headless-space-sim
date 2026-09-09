@@ -187,6 +187,19 @@ SIM.cues = (function () {
                   recipe: 'tone', args: { type: 'sawtooth', f1: 120, f2: 1400, dur: 2, vol: 0.15 } },
                 { id: 'dock_clunk', name: 'Docking Clunk', source: 'v12-docking',
                   recipe: 'noise', args: { dur: 0.18, vol: 0.35, filter: 'lowpass', freq: 300 } },
+                { id: 'blink', name: 'Blink', source: 'spec-3.68',
+                  // SPEC 3.68 (ideas15.txt): "a short cockpit thump at the
+                  // origin and a softer arrival, the same instant" — two
+                  // world-positioned sounds, {fromPos, toPos} in opts, so
+                  // the ear hears "here" then "there" as one gesture rather
+                  // than a single ambiguous blip.
+                  fn: function (opts) {
+                      var A = SIM.audio;
+                      var out1 = A.worldOut(opts.fromPos, 250);
+                      if (out1) A.sfxTone({ type: 'square', f1: 700, f2: 150, dur: 0.1, vol: 0.3, out: out1 });
+                      var out2 = A.worldOut(opts.toPos, 300);
+                      if (out2) A.sfxTone({ type: 'sine', f1: 500, f2: 720, dur: 0.15, vol: 0.22, at: 0.03, out: out2 });
+                  } },
                 { id: 'warp_dry', name: 'Warp Tank Runs Dry', source: 'v12-warp',
                   // The drive gives out short of the target: a sagging sweep
                   // under the usual arrival noise. Placeholder until Brian hears it.

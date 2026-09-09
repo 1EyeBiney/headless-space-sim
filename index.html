@@ -108,6 +108,16 @@ var CFG_DEFAULTS = {
     repairCreditPerPoint: 5,
     dockMaxSpeed: 2,   // SPEC 3.34: C inside dock range above this speed refuses — come to a full stop first
 
+    // Blink (SPEC 3.68, ideas15.txt): an instant displacement, facing and
+    // velocity untouched — the point being it works AGAINST 3.58's facing
+    // cone (the enemy is still turned toward where you WERE). Brian: "I do
+    // not have a distance to blink known yet" — blinkDist is a pure
+    // placeholder, changeable live via poke({blinkDist}) so he can try
+    // numbers without a rebuild; the spoken line always reads it back.
+    blinkDist: 300,
+    blinkRcs: 4,
+    blinkCooldownS: 3,
+
     // Death by tug (SPEC 2.16): a lost ship in the sector campaign or the
     // delivery run waits for pickup instead of Enter-restarting in place.
     // SPEC 3.23: the influence-halving is gone — the tug now goes to the
@@ -2070,7 +2080,7 @@ function say(text) {
 function prettyKey(name) {
     var map = { ' ': 'Space', arrowleft: 'Left arrow', arrowright: 'Right arrow',
                 arrowup: 'Up arrow', arrowdown: 'Down arrow', enter: 'Enter',
-                escape: 'Escape' };
+                escape: 'Escape', pageup: 'Page Up', pagedown: 'Page Down' };
     var k = String(name).toLowerCase();
     if (map[k]) return map[k];
     return name.length === 1 ? name.toUpperCase() : name;
@@ -2090,7 +2100,8 @@ var HELP_SECTIONS = [
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
         'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
         'I speaks your speed, the selected target, and how many targets remain.',
-        'Y speaks your resource totals — credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys — and works everywhere, including inside the station menu and its submenus.'
+        'Y speaks your resource totals — credits, ore, salvage, alloy, reaction mass, warp charge, missiles, and decoys — and works everywhere, including inside the station menu and its submenus.',
+        function () { return 'Shift with an arrow, or Shift Page Up or Page Down, blinks — an instant jump ' + CFG.blinkDist + ' units in that direction, facing and speed completely unchanged. Left and right sidestep, up and down are straight world-vertical, Page Up is forward, Page Down is back. Costs ' + CFG.blinkRcs + ' reaction mass and recharges over ' + CFG.blinkCooldownS + ' seconds. A blink toward a station or planet stops short of its hull instead of landing inside it. Cold on the flight course; the turret drill has no flying to blink through in the first place.'; }
     ] },
     { heading: 'Targeting', items: [
         'Tab cycles through the targets, nearest first, and speaks a bearing. Shift Tab cycles back the other way.',
@@ -2283,10 +2294,12 @@ function helpKey(lname, shift) {
 }
 
 var KEY_DESCRIPTIONS = {
-    arrowleft: function () { return mode === 'turret' ? 'Switch to the previous turret zone.' : 'Yaw left. Hold to keep turning.'; },
-    arrowright: function () { return mode === 'turret' ? 'Switch to the next turret zone.' : 'Yaw right. Hold to keep turning.'; },
-    arrowup: 'Pitch the nose up. Hold to keep turning.',
-    arrowdown: 'Pitch the nose down. Hold to keep turning.',
+    arrowleft: function () { return mode === 'turret' ? 'Switch to the previous turret zone.' : 'Yaw left. Hold to keep turning. Shift Left blinks — an instant sidestep, facing and speed unchanged.'; },
+    arrowright: function () { return mode === 'turret' ? 'Switch to the next turret zone.' : 'Yaw right. Hold to keep turning. Shift Right blinks the other way.'; },
+    arrowup: 'Pitch the nose up. Hold to keep turning. Shift Up blinks straight up, world-vertical.',
+    arrowdown: 'Pitch the nose down. Hold to keep turning. Shift Down blinks straight down.',
+    pageup: function () { return 'Shift Page Up blinks forward, ' + CFG.blinkDist + ' units — facing and speed unchanged, ' + CFG.blinkRcs + ' reaction mass, ' + CFG.blinkCooldownS + ' second cooldown.'; },
+    pagedown: 'Shift Page Down blinks backward, the same distance.',
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
     s: 'Reverse thruster: hold to actively slow down, about half the push of W. Shift S toggles auto-reverse, which keeps backing up until you press W, S, or shift S again; shift W flips it forward. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': function () { return mode === 'turret' ? 'Fire the laser in the selected turret zone.' : 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.'; },
@@ -7856,6 +7869,59 @@ function updateCollisions(spd) {
     }
 }
 
+// ---- blink (SPEC 3.68, ideas15.txt) -----------------------------------------
+// An instant displacement, facing and velocity untouched — Brian's own
+// instinct, and the reason it works against 3.58's facing cone: the enemy
+// is still turned toward where the ship WAS, and its own turn rate is the
+// window this buys. No auto-retarget (Shift+T, 3.38, does that at a
+// charge) — the lock simply drops next frame if the bearing left the
+// zone, same as any other sudden reposition would.
+var blinkReadyAt = 0;
+function blinkOffset(dir) {
+    if (dir === 'up') return v3(0, 1, 0);
+    if (dir === 'down') return v3(0, -1, 0);
+    if (dir === 'left') return scale(shipRight(), -1);
+    if (dir === 'right') return shipRight();
+    if (dir === 'forward') return shipForward();
+    return scale(shipForward(), -1);   // 'back'
+}
+function blinkKey(dir) {
+    // SPEC 3.68 Part C: refused on the course, same as weapons — docked/
+    // warping/turret never reach this far into onKeyDown at all (their
+    // own earlier gates already returned or turret's own zone-switch
+    // claimed the chord first), so the course is the one case that needs
+    // an explicit check here.
+    if (mode === 'course') {
+        SIM.cues.play('refusal_offline');
+        say('Weapons are cold in open space. C calls a point of interest.');   // reuses weaponsCold()'s own line
+        return;
+    }
+    if (Date.now() < blinkReadyAt) {
+        SIM.cues.play('refusal_wait');
+        say('Blink recharging, ' + Math.ceil((blinkReadyAt - Date.now()) / 1000) + ' seconds.');
+        return;
+    }
+    var fromPos = v3(ship.pos.x, ship.pos.y, ship.pos.z);
+    var toPos = add(ship.pos, scale(blinkOffset(dir), CFG.blinkDist));
+    // Never a free hull hit: a blink that would land inside a station's or
+    // planet's hull radius stops short, reusing updateCollisions' own
+    // clamp-to-the-radius geometry rather than landing inside it.
+    var clampedName = null;
+    targets.forEach(function (t) {
+        if (!t.alive || t.kind !== 'poi' || (t.poiType !== 'station' && t.poiType !== 'planet')) return;
+        var rel = sub(toPos, t.pos), d = len(rel);
+        if (d < CFG.stationHullRadius) {
+            toPos = add(t.pos, scale(d > 1e-6 ? norm(rel) : v3(0, 0, 1), CFG.stationHullRadius));
+            clampedName = t.name;
+        }
+    });
+    ship.pos = toPos;
+    spendRcs(CFG.blinkRcs);
+    blinkReadyAt = Date.now() + CFG.blinkCooldownS * 1000;
+    SIM.cues.play('blink', { fromPos: fromPos, toPos: toPos });
+    say(clampedName ? 'Blink short. Hull.' : 'Blink ' + dir + ', ' + CFG.blinkDist + '.');
+}
+
 function nearbyPoi() {
     var best = null, bestD = CFG.warpInhibitDist;
     targets.forEach(function (p) {
@@ -8274,6 +8340,27 @@ function onKeyDown(e) {
     // Shift+B needs no special handling at all: it simply falls through to
     // plain B's own case below (lname is 'b' regardless of shift), which is
     // harmless — engage/release doesn't care how the key arrived.
+    // Blink (SPEC 3.68, ideas15.txt): Shift+arrows sidestep/world-vertical,
+    // Shift+Page Up/Down forward/back — checked here, before the HELD
+    // branch, for the same reason every other Shift chord is: a
+    // Shift+arrow would otherwise just be a held turn. e.repeat is
+    // ignored so a held chord blinks once, never a burst. docked/warping/
+    // menuOpen/hailMenu never reach this far down onKeyDown at all (their
+    // own gates above already returned), and turret mode's own Left/Right
+    // zone-switch claims plain-or-shifted arrows before this — the course
+    // is the one mode that still needs an explicit refusal, inside
+    // blinkKey() itself.
+    if (e.shiftKey && (lname === 'arrowleft' || lname === 'arrowright' || lname === 'arrowup' ||
+                        lname === 'arrowdown' || lname === 'pageup' || lname === 'pagedown')) {
+        if (e.repeat) return;
+        if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
+        if (mission && over()) { say('X returns to the sector.'); return; }
+        if (over()) { say('Enter restarts.'); return; }
+        blinkKey(lname === 'arrowleft' ? 'left' : lname === 'arrowright' ? 'right'
+               : lname === 'arrowup' ? 'up' : lname === 'arrowdown' ? 'down'
+               : lname === 'pageup' ? 'forward' : 'back');
+        return;
+    }
     // Shift chords (SPEC 1.15), before the HELD branch — Shift+W arrives as
     // 'w' and would otherwise just be a held thrust key. SPEC 3.38 rebinds
     // Shift+T specifically from cycle-back to auto-target; Shift+Tab keeps
@@ -8734,6 +8821,8 @@ window.__sim = {
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
                        dist: (tractor.active && targets[tractor.targetIdx]) ? Math.round(len(sub(targets[tractor.targetIdx].pos, ship.pos))) : null,
                        owned: tractorLevel() },
+            // SPEC 3.68
+            blink: { readyIn: Math.round(Math.max(0, blinkReadyAt - Date.now()) / 100) / 10, dist: CFG.blinkDist },
             // SPEC 3.60
             haul: haul ? { latched: tractor.active && tractor.targetIdx === haul.targetIdx,
                            strain: Math.round(haul.strain * 1000) / 1000,
@@ -8880,6 +8969,10 @@ window.__sim = {
         if (o && o.knockout) registerKnockout(o.knockout);   // SPEC 3.66: the real cap math, not a bare health set
         if (o && o.systemHealth) Object.assign(shipSystems, o.systemHealth);
         if (o && o.systemCap) Object.assign(systemCaps, o.systemCap);   // SPEC 3.66 test hook
+        // SPEC 3.68: Brian has no real distance yet — this is the live knob
+        // he tries numbers with, not just a test hook.
+        if (o && o.blinkDist !== undefined) CFG.blinkDist = o.blinkDist;
+        if (o && o.blinkReadyAt !== undefined) blinkReadyAt = o.blinkReadyAt;   // test hook: force the cooldown clear/set
         // SPEC 3.30: move/resize the SELECTED rock directly (distance and
         // size drive every tractor refusal) and force the test-fit flag,
         // without needing to fly to a rock of the exact size by hand.

@@ -2111,8 +2111,8 @@ C's cost-shape question is answered — see 3.52's own evaluation) →
 Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
-space bed → 3.66 Z reads the ship + field repair caps → 3.68 blink →
-3.69 the capital ship** → 3.55 the distress tow → 3.61 the minefield →
+space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
+3.68 blink DONE → 3.69 the capital ship, next** → 3.55 the distress tow → 3.61 the minefield →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6168,7 +6168,7 @@ errors. `blinkDist`-style live volume: `CFG.spaceAmbientVol` (0.25),
 same Sound-menu Music line as every other track. Not yet heard by
 Brian.
 
-#### 3.68 Blink: Ctrl+arrows jump the ship a fixed distance, facing kept (ideas15.txt) — DECIDED, one key question open
+#### 3.68 Blink: Shift+arrows/Shift+Page Up/Down jump the ship a fixed distance, facing kept (ideas15.txt) — DONE
 
 - Brian: "something like Shift + arrow keys to 'teleport' a certain
   distance in that direction, immediately... whether this keeps the
@@ -6236,6 +6236,49 @@ Brian.
   `poke({blinkDist: 600})` changes the next blink; a cannon ship's cone
   angle to the pilot jumps on a sidestep and closes again at
   `enemyFacingTurnRateDeg`.
+
+**DONE (Round 49, Sonnet).** Built as scoped. The chord check
+(`e.shiftKey` with any arrow or Page Up/Down) sits in `onKeyDown`
+immediately before the existing Shift+W/S/T/Tab/R block, mirroring its
+own tug/mission/`over()` guards verbatim; `blinkKey(dir)` and
+`blinkOffset(dir)` live near `updateCollisions()`, whose exact
+clamp-to-the-radius geometry the station/planet check reuses line for
+line. `docked`/`hailMenu`/`menuOpen`/`warping` never needed explicit
+handling — the chord sits far enough down `onKeyDown` that any of
+those states already returned before reaching it — and turret mode's
+own Left/Right zone-switch claims a Shift+arrow before this code ever
+sees it (confirmed live: Shift+Right in the turret drill zone-switches,
+exactly as plain Right does, never touching blink). Only the flight
+course needed an explicit refusal, since nothing else there intercepts
+arrows first. A `blink` cue (`audio_cues.js`) plays two world-positioned
+tones — a thump at the departure point, a softer arrival tone 30ms
+later at the new one — from `{fromPos, toPos}`, so the gesture reads as
+"here, then there" rather than one ambiguous blip. Machine-tested at a
+local server, entirely with forced yaw/pitch/velocity so the geometry
+was checkable exactly, not just plausible: a sidestep at a forced 40°
+yaw landed at precisely `(230, 0, 193)` — the exact `blinkDist ×
+shipRight()` the trig predicts — with velocity and the auto-target
+readout's own yaw/pitch (40°/10°, forced beforehand) both completely
+unchanged; all four other directions (up/down/forward/back) confirmed
+along their own axes; reaction mass dropped exactly 4; a same-tick
+second blink attempt refused with "Blink recharging, 3 seconds." while
+the first blink's landing position held; `poke({blinkDist: 600})`
+changed the very next blink; the station-hull clamp was confirmed by
+placing a station (via the existing `targetPos` test hook) so the
+blink's own LANDING point — not merely its path — fell inside the 60-
+unit radius, landing at exactly 60 units out with "Blink short. Hull.";
+the course refused cleanly with no position change; turret's own
+zone-switch was confirmed intercepting the identical chord first, never
+reaching blink at all. One real testing miss along the way, not a code
+bug: an early clamp test placed a station at 500 and blinked 700 clean
+through it, landing 200 units past — outside the 60-unit sphere
+entirely, since a blink only checks where it LANDS, never what it
+passes near en route (which is exactly what the spec asks for, not a
+gap); the test was rebuilt to land inside the radius instead of merely
+crossing near it, and passed cleanly. Zero console errors throughout.
+Every number (`blinkDist`, `blinkRcs`, `blinkCooldownS`) is a
+placeholder, `blinkDist` deliberately live-pokeable since Brian has no
+real distance yet.
 
 #### 3.69 The capital ship: turrets behind doors (ideas15.txt) — proposed, an encounter
 
@@ -7533,9 +7576,9 @@ All six free, nothing swapped. No distance known yet, so `blinkDist`
 is a live-pokeable placeholder and the blink line speaks it.
 
 **DECIDE (open, from ideas15.txt)**: 1. (keys — settled above.) 2.
-Blink on the flight course: refused like weapons (Fable), or allowed?
-3. `blinkDist` (300 placeholder, poke it live) / `blinkRcs` 4 / 3 s
-cooldown. 4. Field cap 80, −10 a
+(Built refused, Fable's own lean — 3.68's own DONE note. Say if it
+should allow it instead.) 3. `blinkDist` (300 placeholder, poke it
+live) / `blinkRcs` 4 / 3 s cooldown. 4. Field cap 80, −10 a
 repeat, floor 50 — placeholders. 5. Z's chain window (4 s) and the
 category order. 6. The capital ship: cannon turrets, beam turrets, or
 mixed; a parent hull of its own (v1: no); how many turrets (4).
