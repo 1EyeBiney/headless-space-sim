@@ -7277,6 +7277,81 @@ shadow thrusts).
   preload with zero console errors; `audio/ships/thrusters/` is
   staged explicitly.
 
+**DONE (Round 57, Sonnet).** `CFG.shadowSpeed`/`shadowLitMinS`/
+`shadowLitMaxS` are retired outright, replaced by `shadowGain` (1.5),
+`shadowThrustTiers` ([10, 7, 4], indexed by `tierIdx` — Rookie/Veteran/
+Ace), `shadowThrustSpeed`/`Accel` (110/30), `shadowCoastSpeed`/`Decel`
+(25/10), `shadowTurnMinDeg`/`MaxDeg` (45/135), and `shadowThrustFadeS`
+(0.3). The shadow target gained real physics state — `facing` (yaw,
+radians), `vel` (a genuine vector, not the old fixed `v3(0,0,1)*speed`),
+`phase`/`phaseElapsed`/`phaseLen`/`turnRate`/`thrustNodes` — replacing
+the old single `dark` boolean and `phaseUntil` countdown; `t.dark` is
+still written every transition, since `updateTargeting`/`tickBeat`'s own
+3.62 checks read it unchanged. `updateShadow(dt)` is a two-branch model:
+during **thrust**, velocity steps toward `forward(facing) ×
+shadowThrustSpeed` at up to `shadowThrustAccel` per second (a vector
+approach, not a scalar one — this is what lets a THRUST re-aim the
+ship's actual heading toward whatever the prior dark leg turned the nose
+to); during **dark**, velocity's MAGNITUDE alone decays toward
+`shadowCoastSpeed` (direction frozen — no thrust, no steering) while
+`facing` alone rotates at a fixed `turnRate` (computed once, at the
+dark leg's own start, as `turnDeg/phaseLen` so the full random 45–135°
+lands exactly at the leg's end) — position always advances by the
+CURRENT `vel`, so a dark leg's own path is dictated by whatever
+direction was frozen in at its start, never the rotating nose. The
+roster starts in a **zero-length dark phase** (`phase:'dark',
+phaseLen:0`) purely so the very first `updateShadow()` call — by which
+time `buildVoice()` has already run, per `newGame()`'s own ordering —
+transitions into a real thrust and starts its audio the normal way,
+with no separate "first thrust" special case anywhere. **The audio**:
+`startShadowThrust(t, durS)`/`stopShadowThrust(t)` play the tier's own
+recording (`shadowThrustKey()` → `shadow_thruster_10/7/4`) through a
+NEW buffer source + gain feeding the shadow's EXISTING engine panner
+(`t.nodes.panner`) — riding the same node `updateShadow` already moves
+every frame means the thrust is positioned with zero extra tracking
+code. Faded via a `setTimeout` scheduling `SIM.audio.ramp(...,
+shadowThrustFadeS)` at `durS − shadowThrustFadeS` seconds and hard-
+stopped just after — a REAL-time schedule (Web Audio has no simulated
+clock), independent of whatever rate `updateShadow`'s own dt-driven
+leg timer is advancing at; `stopVoice(t)` (called from every teardown
+path via `clearMission`) now also calls `stopShadowThrust` first, so a
+retry or leave before either timer fires cancels both rather than
+leaving them to fire later against a disconnected node. `state()`
+gained a `shadow` block (phase/dark/phaseElapsed/phaseLen/facingDeg/
+speed/pos/thrusting/gain) — none of this was testable at all before
+this round. `shadowIntro()`, F1's "The shadow" heading, and README's
+own section all dropped "flying a straight route" for language that
+matches the new thrust-and-turn shape. Machine-tested at a local
+server, mostly in real time rather than `__sim.step()` (Web Audio's
+own clock is real, so this encounter's audio/physics interplay is
+best proven the way it's actually heard): the engine gain measured
+exactly 0.375 (`shadowGain × targetGain`) the instant a fresh thrust
+began, ramping visibly toward it, and ~0.03 mid-ramp; a full thrust
+leg measured `phaseLen: 10` at the default Rookie tier and transitioned
+to `dark` with a `phaseLen` of 7.3 (inside the 4–9 s range) the instant
+`phaseElapsed` reached it; speed at two points during that dark leg
+matched `110 − shadowCoastDecel × elapsed` exactly (78.4 at 3.15 s,
+67.8 at 4.22 s); facing advanced at a constant measured rate across
+five samples in that same leg (~12.6°/s, confirming the linear turn);
+the ship's own MOVEMENT direction, computed from consecutive position
+deltas at the start and end of that leg, measured identically (~−75°)
+at both ends even as `facingDeg` rotated from −35° to −21.5° in
+between — direct confirmation the coast follows the frozen entry
+velocity, not the turning nose; the following thrust leg's own facing
+(−180.6°) differed from the leg before it (−102.2°) by 78.4°, inside
+the specified range; T and R both continued to report bearing/range
+correctly throughout the cycle. All three `shadow_thruster_10/7/4`
+manifest keys confirmed decoded (`SIM.audio.assetBufs`); zero console
+errors throughout. Not exercised this round: the exact fade-at-tier-
+end audio timing (Web Audio's own real clock vs. this project's usual
+`__sim.step()` test harness don't mix without a real wait spanning the
+whole leg, which the physics tests above already covered indirectly by
+running in real time) — flagged rather than assumed, though nothing in
+the implementation suggests it wouldn't. `audio/ships/thrusters/
+ship_thruster_1_10s.mp3`/`_2_7s.mp3`/`_3_4s.mp3` are staged explicitly;
+files 4–9 (sets two and three) stay untracked, on disk for the sound
+lab. Not yet heard by Brian. Next per the build order: 3.71 (scoring).
+
 #### 3.74 The star: hydrogen at the corona, gravity, and heat (ideas16.txt) — DECIDED (Brian, 2026-09-09: the numbers as proposed, the corona hurts, first on the quadrant-2 track)
 
 - Brian: "we do not have any stars/sun in the quadrants now and I

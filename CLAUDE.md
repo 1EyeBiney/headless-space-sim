@@ -3930,3 +3930,36 @@ produced a `'volley'` kind; the resulting loss debrief (through 3.70's
 shared shell) confirmed the Volleys line gone, everything else intact.
 Zero console errors. Not yet heard by Brian. Next per the build order:
 3.73 (the shadow thrusts).
+
+**Round 57, continued (Sonnet, 2026-09-09): built SPEC 3.73, the
+shadow thrusts.** See SPEC.md's own DONE paragraph for the full shape.
+In brief: `shadowSpeed`/`shadowLitMinS`/`MaxS` are retired outright,
+replaced by a real physics model — the shadow target gained `facing`
+(yaw) and a genuine `vel` vector; a **thrust** leg (length =
+`CFG.shadowThrustTiers[tierIdx]`, 10/7/4 by Rookie/Veteran/Ace)
+accelerates velocity toward `shadowThrustSpeed` along the current
+facing while the tier's own recording plays through the shadow's
+EXISTING engine panner (so it's positioned with zero extra tracking
+code); a **dark** leg decays speed toward `shadowCoastSpeed` with the
+DIRECTION frozen, while facing alone rotates at a constant rate toward
+a fresh random 45–135° turn, timed to land exactly at the leg's own
+end — the coast follows the OLD direction, the surprise lands with the
+NEXT thrust. The recording fades via a real `setTimeout` (Web Audio's
+clock, not the simulated one) at the tier length minus
+`shadowThrustFadeS`, then hard-stops; `stopVoice()` now cancels those
+timers too, so a retry/leave never leaves one to fire later. `state()`
+gained a `shadow` block — none of this was testable before. Machine-
+tested at a local server mostly in REAL time (this encounter's audio
+and physics genuinely interact, so real time was the more honest test
+than `__sim.step()`): the engine gain measured exactly 0.375
+(`shadowGain × targetGain`) at a fresh thrust; a thrust leg measured
+`phaseLen: 10` at Rookie and handed off to a dark leg measured
+`phaseLen: 7.3`; speed at two points in that dark leg matched
+`110 − shadowCoastDecel × elapsed` exactly; facing advanced at a
+constant rate across five samples; the ship's own movement direction
+(from consecutive position deltas) measured IDENTICAL at both ends of
+that dark leg even as facing rotated 13.5° in between — direct proof
+the coast ignores the turning nose; the following thrust's own facing
+differed from the one before it by 78.4°, inside the specified range.
+All three manifest keys confirmed decoded, zero console errors. Not
+yet heard by Brian. Next per the build order: 3.71 (scoring).

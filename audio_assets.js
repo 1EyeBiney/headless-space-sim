@@ -252,7 +252,17 @@ window.AUDIO_MANIFEST = {
   // of the seven — space_loop2 doesn't exist). Both DO preload, same
   // reasoning as the station beacons.
   nebula_pulsar: 'audio/stations/pulsar1.mp3',
-  nebula_cloud: 'audio/stations/space_loop1.mp3'
+  nebula_cloud: 'audio/stations/space_loop1.mp3',
+
+  // SPEC 3.73: the shadow's own thruster — Brian's nine recordings (three
+  // sets of 10/7/4 s, 2026-09-09) are staged under audio/ships/thrusters/;
+  // only set one is wired (files 1-3), keyed by the tier length it plays
+  // for (Rookie 10s, Veteran 7s, Ace 4s — CFG.shadowThrustTiers). Sets two
+  // and three stay on disk and untracked, auditionable in soundlab.html.
+  // DOES preload — it's this encounter's only new audio.
+  shadow_thruster_10: 'audio/ships/thrusters/ship_thruster_1_10s.mp3',
+  shadow_thruster_7: 'audio/ships/thrusters/ship_thruster_2_7s.mp3',
+  shadow_thruster_4: 'audio/ships/thrusters/ship_thruster_3_4s.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything

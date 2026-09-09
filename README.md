@@ -225,15 +225,17 @@ many mines went off, and how that compares to your best.
 
 ## The shadow
 
-Tail one ship flying a straight route ahead of you — it cuts its own
-engine at random. While it's lit, Tab, T, the lock tone, and the tick
-all work on it normally; the instant it goes dark, the lock drops and
-the tick goes silent, no bearing updates until it lights back up. Fly
-on the last bearing you had; R still reports range with closing or
-opening either way. Contact time counts whenever you're close enough,
-lit or dark — staying with it through a dark leg by dead reckoning
-still counts. Reach the total needed and the run reports how long it
-took. Weapons, shields, and auto-target are all off.
+Tail one ship ahead of you as it thrusts in bursts. While it's
+thrusting, Tab, T, the lock tone, and the tick all work on it
+normally; the instant its engine cuts, the lock drops and the tick
+goes silent, no bearing updates until it thrusts again. It coasts on
+its old heading while dark, but its nose turns, so the next burst can
+head somewhere new — fly on the last bearing you had; R still reports
+range with closing or opening either way. Contact time counts
+whenever you're close enough, lit or dark — staying with it through a
+dark leg by dead reckoning still counts. Reach the total needed and
+the run reports how long it took. Weapons, shields, and auto-target
+are all off.
 
 ## Nebula transit
 
