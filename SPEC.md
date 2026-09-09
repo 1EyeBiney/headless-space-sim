@@ -6941,6 +6941,84 @@ own note on why.
   debrief is byte-for-byte what it was, through the shared shell, plus
   the hint line.
 
+**DONE (Round 57, Sonnet).** One module-level `debrief = { open, idx,
+title, lines, options }` replaces SPEC 3.65's turret-only `turretDebrief`;
+`openDebrief(opener, lines, options)` builds `debrief.lines` as
+`lines.concat([options])` — the hint is literally the last array entry,
+never a separate reminder — and speaks the one opener line ("[opener].
+[lines[0]] Down arrow reads the results."); `debriefKey(lname)` claims
+arrowup/arrowdown/home/end/escape/y and returns false for everything else
+(Enter/X/F1/F2/F3/F12 included), so each mode's own already-distinct
+Enter-retry/X-leave branch reaches the generic switch completely
+untouched. The single dispatch point lives in `onKeyDown`, right before
+the existing turret-mode intercept: `if (debrief.open) { if
+(debriefKey(lname)) return; }` — mode-agnostic, so every encounter shares
+it for free; `turretKey()` itself now just returns `false` when
+`debrief.open` (the shared check already tried and failed to claim
+Left/Right/Space/F/G/I), reproducing its old "debrief swallows everything
+except what it wants" behavior exactly. Every existing finish function's
+final `say()` became an `openDebrief()` call, its blurb split into
+one-fact lines per the spec's own course example, with `prefix`/`extra`
+lead-ins (the course's own last-gate miss text, a kill's salvage/rcs line)
+folded into the HEADLINE line rather than the opener, so the whole thing
+stays the one `say()` a finish ever produces (SPEC 2.15): `finishCourse`,
+`finishMinefield`, `finishShadow`, `finishNebula`, `finishGateRun`,
+`checkMiningEnd`, `finishHaul`, `destroyTarget`'s three win branches
+(capital, demo/contract zone-clear, the generic Contested-Zone/standalone-
+drill victory), and `missionEnd`'s both outcomes (escort/defend, drill and
+station-offered alike — options text is the one thing that still differs
+by `mission.poiName`). **Loss debriefs are new** (SPEC 3.65 only ever
+built one, the turret's): a generic `openLossDebrief(source, deathMode,
+deathRef)`, called from `shipDestroyed`'s own delayed line whenever
+`!tugged` (a tug death still never debriefs — SPEC 2.16's own countdown is
+that state's own voice), switches on `mode` to build "Ship lost, hit by
+X." plus whatever that mode already tracks — capital (turrets still up),
+mission (the drill's own friendly, alive or not), minefield (time,
+detonations), nebula (time) — falling back to a bare `lost` check for the
+plain combat drill, which has no per-run identity object of its own;
+`deathRef` (whichever of `capital`/`mission`/`minefieldState`/
+`nebulaState` applies) reproduces SPEC 3.65's own stale-timer guard for
+every mode, not just the turret's. Course/shadow/gaterun/mining never
+reach `shipDestroyed` in the current build (no hazard exists for any of
+them), so `openLossDebrief`'s `default` branch is a no-op there — nothing
+to lose yet. **Deliberately NOT built this round, flagged rather than
+silently skipped**: the distress call and the delivery run/timed
+contract's own eventual completion. All three finish while the ship
+keeps flying afterward (docked, or back in the open quadrant) — the
+debrief's whole design freezes on `over()`, which none of those three
+ever set; folding them in would mean a different mechanism, not this
+one. `state()` gained a top-level `debrief` field (mirrors the shape
+every mode now shares) alongside `turret`'s own now-cosmetic
+`debriefOpen`. Machine-tested at a local server via real menu navigation
+and key dispatch (never mocked) plus targeted `poke()`/`step()` forcing:
+the flight course's full win debrief (all four lines, then every shell
+mechanic — Down through the end, "End of the debrief.", Home, End,
+Up-from-End, Y passing through to totals without closing, Escape closing
+with "Debrief closed. [hint].", Enter retrying fresh, X leaving to the
+menu); the turret's own loss debrief confirmed byte-for-byte unchanged in
+content through the new shared shell, plus its End/Escape/Enter-retry;
+the minefield's win AND loss (the latter via a real detonation, found by
+coordinate-descending the ship's position onto a live mine using only the
+scalar distances `state()` already reports — no positions were ever
+exposed for mines, so this doubles as this round's technique for anyone
+testing them again); the plain standalone Combat drill's win (with the
+kill line's salvage/rcs `extra` correctly leading the headline) AND loss
+(via `poke({kill:true})`, exercising the no-identity-object fallback);
+the Escort drill's success and the Defend drill's failure (missionEnd's
+both branches, both with `poiName` null so `Enter plays again` correctly
+appears); nebula's loss (forced via a real ablation death at the cloud
+center, not a shortcut). Zero console errors throughout. **Not
+independently live-tested this round, flagged as a coverage gap rather
+than assumed**: the capital ship's win and loss (its four turrets' shield
+doors never opened within a practical test window against the aim-
+forcing technique that worked for ordinary combat) and the win side of
+shadow, nebula, gate run, haul, and mining — all five call the identical,
+already-proven `openDebrief(opener, lines, options)` shape the six
+exercised paths above share, so confidence rests on that shared code
+path plus direct review rather than a further live run of each. Every
+encounter listed in this item's own bullets now opens a debrief; nothing
+here is heard by Brian yet.
+
 #### 3.71 Scoring: the table, then a leaderboard per encounter (ideas16.txt) — DECIDED (Brian, 2026-09-09: the table as proposed, plus a 7-minute clock on Mining)
 
 - Brian: "We need some scoring metrics for The Shadow as well. We should

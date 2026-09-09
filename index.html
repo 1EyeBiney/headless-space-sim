@@ -1482,14 +1482,20 @@ function finishCourse(prefix) {
     // ranked board (time alone still decides personal best).
     var avgOffset = courseState.offsets.reduce(function (a, b) { return a + b; }, 0) / courseState.offsets.length;
     var prevBest = recordCourseRun(seconds, avgOffset);
-    var tally = courseState.made + ' of ' + targets.length + ' gates' +
-                (courseState.missed ? ', ' + courseState.missed + ' missed' : '') + '. ';
     var rankText;
     if (prevBest === undefined) rankText = 'Your first time.';
     else if (seconds < prevBest) rankText = 'New personal best by ' + fmtTime(prevBest - seconds) + '.';
     else rankText = fmtTime(seconds - prevBest) + ' off your best.';
-    say((prefix || '') + 'Course complete. Time ' + fmtTime(seconds) + '. ' + tally +
-        'Average ' + Math.round(avgOffset) + ' off centre. ' + rankText);
+    // SPEC 3.70: the shared debrief — `prefix` (the final gate's own miss
+    // text, if any) folds into the headline line rather than the opener, so
+    // this stays the one say() the finish produces (SPEC 2.15).
+    openDebrief('Flight course complete',
+        [ (prefix || '') + 'Time ' + fmtTime(seconds) + '.',
+          courseState.made + ' of ' + targets.length + ' gates clean' +
+              (courseState.missed ? ', ' + courseState.missed + ' missed.' : '.'),
+          'Average ' + Math.round(avgOffset) + ' off centre.',
+          rankText ],
+        'Enter tries again, X for the mission menu.');
 }
 function updateCourse(dt) {
     if (!courseState || won || lost) return;
@@ -1552,9 +1558,12 @@ function finishMinefield() {
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
-    say('Clear of the minefield. Time ' + fmtTime(seconds) + '. ' +
-        minefieldState.detonations + (minefieldState.detonations === 1 ? ' mine' : ' mines') + ' detonated. ' +
-        rankText);
+    openDebrief('Minefield clear',
+        [ 'Time ' + fmtTime(seconds) + '.',
+          minefieldState.detonations + (minefieldState.detonations === 1 ? ' mine detonated.' : ' mines detonated.'),
+          'Your hull ' + Math.round(hull) + '.',
+          rankText ],
+        'Enter tries again, X for the mission menu.');
 }
 // Called every frame from simTick while mode === 'minefield'. Drift, the
 // per-mine proximity tick, the speed-gated detonation check, and the exit
@@ -1623,7 +1632,15 @@ function finishShadow() {
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
-    say('Contact held. Time ' + fmtTime(seconds) + '. ' + rankText);
+    // SPEC 3.70: contact efficiency/times-lost/longest-hold are 3.71's own
+    // job — this just reads what's already tracked (elapsed, contact
+    // seconds), same "no new measures here" rule every encounter's line-up
+    // follows this round.
+    openDebrief('Contact held',
+        [ 'Time ' + fmtTime(seconds) + '.',
+          'Contact ' + Math.round(shadowState.contact) + ' seconds.',
+          rankText ],
+        'Enter tries again, X for the mission menu.');
 }
 // Called every frame from simTick while mode === 'shadow'. Moves the ship
 // forward, flips lit/dark on its own random-length phase timer (ramping
@@ -1697,7 +1714,11 @@ function finishNebula() {
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
-    say('Clear of the nebula. Time ' + fmtTime(seconds) + '. Your hull ' + Math.round(hull) + ' percent. ' + rankText);
+    openDebrief('Clear of the nebula',
+        [ 'Time ' + fmtTime(seconds) + '.',
+          'Your hull ' + Math.round(hull) + ' percent.',
+          rankText ],
+        'Enter tries again, X for the mission menu.');
 }
 // Called every frame from simTick while mode === 'nebula'. Drifts the
 // exit, tracks the inside/outside boundary (one combined say() on each
@@ -1770,8 +1791,11 @@ function finishGateRun() {
                  : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
                  : fmtTime(seconds - prevBest) + ' off your best.';
     SIM.cues.play('win_fanfare');
-    say('Through the gate. Time ' + fmtTime(seconds) + '. ' +
-        gateRunState.wasted + (gateRunState.wasted === 1 ? ' pass wasted. ' : ' passes wasted. ') + rankText);
+    openDebrief('Through the gate',
+        [ 'Time ' + fmtTime(seconds) + '.',
+          gateRunState.wasted + (gateRunState.wasted === 1 ? ' pass wasted.' : ' passes wasted.'),
+          rankText ],
+        'Enter tries again, X for the mission menu.');
 }
 // H, while mode === 'gaterun' — intercepted in onKeyDown ahead of the
 // normal startWarp() call, the same shape every other drill's own key
@@ -1980,10 +2004,14 @@ function missionEnd(success) {
         setTimeout(function () {
             // SPEC 3.54: a menu-launched drill (no poiName) replays on Enter,
             // same as every other standalone drill — the station-offered
-            // version stays a one-shot, X the only way out.
-            say('Mission complete! ' + mission.friendly.name + ' home at ' + Math.round(frac * 100) +
-                ' percent. ' + reward + ' credits earned, reaction mass topped up.' +
-                (mission.poiName ? ' X returns to the sector.' : ' Enter plays again, X for the mission menu.'));
+            // version stays a one-shot, X the only way out. SPEC 3.70: the
+            // shared debrief shell — station-offered and drill both get one,
+            // just with different options text (3.70's own "station-offered
+            // escort/defend — their own mission-complete lines split").
+            openDebrief('Mission complete',
+                [ mission.friendly.name + ' home at ' + Math.round(frac * 100) + ' percent.',
+                  reward + ' credits earned, reaction mass topped up.' ],
+                mission.poiName ? 'X returns to the sector.' : 'Enter plays again, X for the mission menu.');
         }, 900);
     } else {
         // SPEC 3.23: missionEnd(false) only ever fires from missionStrike's
@@ -1993,8 +2021,9 @@ function missionEnd(success) {
         // still-alive mission costs — see clearMission for that one).
         if (mission.poiName) loseFavor({ name: mission.poiName }, CFG.favorFriendlyLost);
         setTimeout(function () {
-            say('Mission failed. No reward.' +
-                (mission.poiName ? ' X returns to the sector.' : ' Enter plays again, X for the mission menu.'));
+            openDebrief('Mission failed',
+                [ mission.friendly.name + ' destroyed. No reward.' ],
+                mission.poiName ? 'X returns to the sector.' : 'Enter plays again, X for the mission menu.');
         }, 900);
     }
 }
@@ -2445,7 +2474,13 @@ var demo = null;         // the timed delivery run, while active
 var contract = null;
 var tierIdx = 0;         // index into TIERS; 0 = Rookie
 var runlog = { open: false, idx: -1 };   // the Run log virtual pop-up
-var turretDebrief = { open: false, idx: 0 };   // SPEC 3.65: the turret drill's end-of-run browse
+// SPEC 3.70: the shared end-of-encounter debrief — one shell for every
+// encounter's finish, win or loss (started life as SPEC 3.65's turret-only
+// browse; generalized here). `lines` always ends with `options` (the
+// Enter/X hint) — that's the whole "hint on the last line, no nag timer"
+// design: nothing speaks unprompted, a pilot who walks away and comes back
+// presses Down or End and hears what to do.
+var debrief = { open: false, idx: 0, title: '', lines: [], options: '' };
 var shipScreen = { open: false, idx: -1, lines: [] };   // F2 (SPEC 2.13)
 var resourceScreen = { open: false, idx: -1, lines: [] };   // F3 (SPEC 2.15)
 var soundMenu = { open: false, idx: 0 };  // the Sound settings list (SPEC 1.12)
@@ -3742,8 +3777,10 @@ function destroyTarget(t, extra) {
             var capPos = capital.pos;
             setTimeout(function () { SIM.cues.play('explosion_kill', { pos: capPos, size: 'capital' }); }, 400);
             setTimeout(function () {
-                say((extra || '') + 'Last turret down. The capital ship breaks apart. ' +
-                    'Press Enter to play again, or X for the mission menu.');
+                openDebrief('The capital ship breaks apart',
+                    [ (extra || '') + 'Last turret down.',
+                      'Your hull ' + Math.round(hull) + ' percent.' ],
+                    'Enter plays again, X for the mission menu.');
             }, 900);
             return true;
         }
@@ -3766,16 +3803,25 @@ function destroyTarget(t, extra) {
             if (zq && !zq.openComms) {
                 zq.openComms = true;
                 saveProfile();
-                zoneClearNote = ' Quadrant-wide comms open — hail any station from anywhere here.';
+                zoneClearNote = 'Quadrant-wide comms open — hail any station from anywhere here.';
             }
         }
         setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
         setTimeout(function () {
-            var tail;
+            // SPEC 3.70: split into the shared debrief shell — the demo/
+            // contract branches keep their own "Next: ..." step (this
+            // combat encounter is just a leg of a longer run, so there is
+            // no Enter-retry to mention, only X back to the sector); the
+            // generic branch (a standalone drill, or the open quadrant's own
+            // Contested Zone) reads hull/missiles until 3.71 lands a clock.
+            var headline = (extra || '') + 'All targets destroyed.';
+            var opener = 'Victory', lines, options;
             if (demo && !demo.combatCleared) {
                 demo.combatCleared = true;
-                tail = 'Contested Zone cleared. Clock ' + fmtTime(demo.elapsed) +
-                       '. Next: mine ' + CFG.demoOreGoal + ' ore at Asteroid Field Kappa. X returns to the sector.';
+                opener = 'Contested Zone cleared';
+                lines = [ headline, 'Clock ' + fmtTime(demo.elapsed) + '.',
+                          'Next: mine ' + CFG.demoOreGoal + ' ore at Asteroid Field Kappa.' ];
+                options = 'X returns to the sector.';
             } else if (contract && !contract.combatCleared) {
                 // SPEC 3.28: the same zone-clear the demo checks for, but for
                 // the quadrant's own timed contract instead — mining itself
@@ -3783,13 +3829,17 @@ function destroyTarget(t, extra) {
                 // demo's fixed sector), so this only gates the eventual
                 // delivery, not the mining trip itself.
                 contract.combatCleared = true;
-                tail = 'Contested Zone cleared. Contract clock ' + fmtTime(contract.elapsed) +
-                       '. Next: mine ' + CFG.demoOreGoal + ' ore at any field and deliver it to Station Meridian. X returns to the sector.';
+                opener = 'Contested Zone cleared';
+                lines = [ headline, 'Contract clock ' + fmtTime(contract.elapsed) + '.',
+                          'Next: mine ' + CFG.demoOreGoal + ' ore at any field and deliver it to Station Meridian.' ];
+                options = 'X returns to the sector.';
             } else {
-                tail = 'Press Enter to play again, or X ' +
-                       (sectorHome ? 'to return to the sector.' : 'for the mission menu.');
+                lines = [ headline, 'Your hull ' + Math.round(hull) + ' percent.',
+                          'Missiles remaining ' + missiles + '.' ];
+                options = 'Enter plays again, X ' + (sectorHome ? 'to return to the sector.' : 'for the mission menu.');
             }
-            say((extra || '') + 'All targets destroyed. Victory. ' + tail + zoneClearNote);
+            if (zoneClearNote) lines.push(zoneClearNote);
+            openDebrief(opener, lines, options);
         }, 900);
         return true;
     }
@@ -5196,21 +5246,70 @@ function shipDestroyed(source) {
             ? 'Tug dispatched from ' + tug.poiData.name + ', ' + Math.ceil(tug.total) + ' seconds' +
               (tug.total > CFG.tugBaseS ? ' — no trusted station nearby, this is the long way home' : '') +
               '. Enter pays ' + CFG.tugFeeCredits + ' credits to halve the wait — pays again for another halving, as long as credits allow.'
-            : 'Enter tries again' + (sectorHome ? ', X returns to the sector.' : ', X for the mission menu.');
+            // SPEC 3.70: tugCandidate() being false here already guarantees
+            // sectorHome is falsy (tugged = sectorHome || mode==='sector')
+            // — the old sectorHome ternary this replaced was unreachable.
+            : 'Enter tries again, X for the mission menu.';
         say('Hull breached by ' + source + '. Ship lost. ' + tail);
-        // SPEC 3.65: a further real timer boundary, so this never collides
-        // with the line just spoken (SPEC 2.15) — the debrief opens with
-        // its own combined announcement, overriding the generic "Enter
-        // tries again" tail above with its own version of the same thing.
-        // Real bug found in testing: by the time this fires, the player may
-        // already have retried or left (turretState null, or a FRESH one
-        // from a new run) — guarded on the exact turretState this death
-        // belongs to, not just "still in turret mode".
+        // SPEC 3.65/3.70: a further real timer boundary, so this never
+        // collides with the line just spoken (SPEC 2.15) — the debrief
+        // opens with its own combined announcement, overriding the generic
+        // "Enter tries again" tail above with its own version of the same
+        // thing. A tug death (tugged) never debriefs — SPEC 2.16's own
+        // countdown is that state's own voice. Real bug found in testing
+        // 3.65, guarded against here too: by the time this fires, the
+        // player may already have retried or left — guarded on the exact
+        // per-mode state object this death belongs to (turret keeps its
+        // own dedicated check below, unchanged since 3.65), not just
+        // "still in the same mode".
         if (mode === 'turret' && turretState) {
             var deathState = turretState;
             setTimeout(function () { if (turretState === deathState) openTurretDebrief(); }, 1200);
+        } else if (!tugged) {
+            var deathMode = mode, deathRef = capital || mission || minefieldState || nebulaState || null;
+            setTimeout(function () { openLossDebrief(source, deathMode, deathRef); }, 1200);
         }
     }, 900);
+}
+
+// SPEC 3.70: every standalone drill's loss debriefs too, from the delayed
+// line above — never a tug death (2.16's own countdown is that state's own
+// voice; tugCandidate() being false is what routed the death here at all).
+// `deathRef` is whichever per-mode identity object this death belonged to
+// (turret has its own dedicated path above, predating this generalization);
+// the plain combat drill has no such object, so it falls back to the same
+// `lost` check every other guard here also applies — clearMission() resets
+// `lost` synchronously the instant a retry starts, so a stale timer sees it
+// already false by the time it fires.
+function openLossDebrief(source, deathMode, deathRef) {
+    if (mode !== deathMode || !lost) return;
+    var hitBy = 'Ship lost, hit by ' + source + '.';
+    var opener, lines;
+    if (deathMode === 'combat' && capital) {
+        if (capital !== deathRef) return;
+        var turretsLeft = aliveTargets().filter(function (t) { return !t.kind; }).length;
+        opener = 'The capital ship escapes';
+        lines = [ hitBy, turretsLeft + (turretsLeft === 1 ? ' turret still up.' : ' turrets still up.') ];
+    } else if (deathMode === 'combat' && mission) {
+        if (mission !== deathRef) return;
+        opener = 'Mission over';
+        lines = [ hitBy, mission.friendly.name + (mission.friendly.alive ? ' still flying.' : ' lost too.') ];
+    } else if (deathMode === 'minefield') {
+        if (minefieldState !== deathRef) return;
+        opener = 'Minefield over';
+        lines = [ hitBy, 'Time ' + fmtTime(minefieldState.elapsed) + '.',
+                  minefieldState.detonations + (minefieldState.detonations === 1 ? ' mine detonated.' : ' mines detonated.') ];
+    } else if (deathMode === 'nebula') {
+        if (nebulaState !== deathRef) return;
+        opener = 'Nebula transit over';
+        lines = [ hitBy, 'Time ' + fmtTime(nebulaState.elapsed) + '.' ];
+    } else if (deathMode === 'combat') {
+        opener = 'Combat training over';
+        lines = [ hitBy, 'Missiles remaining ' + missiles + '.' ];
+    } else {
+        return;   // course/shadow/gaterun/mining never reach shipDestroyed today
+    }
+    openDebrief(opener, lines, 'Enter tries again, X for the mission menu.');
 }
 
 // ---- shields ----------------------------------------------------------------
@@ -5908,12 +6007,13 @@ function updateHaulTow(t, dt) {
 
 function finishHaul() {
     stopHaulCreak();
-    stopTractor(null);   // silent — the line below is the one combined say() (SPEC 2.15)
+    stopTractor(null);   // silent — openDebrief below is the one combined say() (SPEC 2.15)
     won = true;
     var spent = Math.round(haul.rcsSpent);
-    say('Home. Tow complete. Reaction mass spent: ' + spent + ', par ' + CFG.haulPar + '. ' +
-        (spent <= CFG.haulPar ? 'Under par.' : 'Over par by ' + (spent - CFG.haulPar) + '.') +
-        ' Enter tries again, X for the mission menu.');
+    openDebrief('Tow complete',
+        [ 'Reaction mass spent ' + spent + ', par ' + CFG.haulPar + '.',
+          spent <= CFG.haulPar ? 'Under par.' : 'Over par by ' + (spent - CFG.haulPar) + '.' ],
+        'Enter tries again, X for the mission menu.');
 }
 
 // A single haulable rock and a home beacon, nothing else — reuses spawnRock
@@ -6104,10 +6204,12 @@ function checkMiningEnd() {
     }
     won = true;
     if (ore > 0) setTimeout(function () { SIM.cues.play('win_fanfare'); }, 400);
+    // SPEC 3.70: a 7-minute clock and reaction-mass-spent line land with
+    // 3.71's own scoring pass — for now this reads what's already tracked.
     setTimeout(function () {
-        say('Cloud cleared. Ore hold ' + ore +
-            '. Press Enter to mine a fresh cloud, or X ' +
-            (sectorHome ? 'to return to the sector.' : 'for the mission menu.'));
+        openDebrief('Cloud cleared',
+            [ 'Ore hold ' + ore + '.' ],
+            'Enter mines a fresh cloud, X ' + (sectorHome ? 'to return to the sector.' : 'for the mission menu.'));
     }, 700);
 }
 
@@ -6390,7 +6492,7 @@ function turretWeakestZoneText() {
     return name.charAt(0).toUpperCase() + name.slice(1) + ' zone took ' + zh[idx] + ' of your ' + total +
            ' hit' + (total === 1 ? '' : 's') + '.';
 }
-function debriefLines() {
+function turretDebriefLines() {
     var t = turretState;
     return [
         'Score ' + Math.round(t.score) + '.',
@@ -6403,36 +6505,62 @@ function debriefLines() {
     ];
 }
 // Opened automatically at the end of a run (win or loss, from updateTurret
-// and from shipDestroyed's own delayed line — never in the same tick as
-// either, per SPEC 2.15). Browsed like the Run log; Escape closes it back
-// to the same frozen-ship state that already existed without a debrief —
-// Enter/X are deliberately NOT claimed here, so they fall through to the
-// generic switch exactly as they did before this existed.
+// and from shipDestroyed's own delayed line). SPEC 3.70: routes through the
+// shared debrief shell now — see openDebrief() below.
 function openTurretDebrief() {
     var accuracy = turretAccuracyPct();
     recordTurretRun(Math.round(turretState.score), accuracy, turretState.bestStreak);
-    turretDebrief.open = true;
-    turretDebrief.idx = 0;
-    var lines = debriefLines();
-    say('Turret defense ' + (won ? 'held' : 'over') + '. ' + lines[0] + ' ' +
-        'Up and down arrows browse the debrief, Escape closes it. ' +
-        'Enter tries again, X for the mission menu.');
+    openDebrief('Turret defense ' + (won ? 'held' : 'over'), turretDebriefLines(),
+                 'Enter tries again, X for the mission menu.');
 }
-function turretDebriefKey(lname) {
-    var lines = debriefLines();
+
+// ---- the shared debrief (SPEC 3.70, ideas16.txt) ---------------------------
+// One shell for every encounter's end, win or loss — generalized from the
+// turret's own first-built version (SPEC 3.65) above. `opener` already
+// carries its own status word ("Turret defense held", "Flight course
+// complete", "Ship lost" style headers use their own encounter name plus
+// "over") — this function appends the period, the headline, and the fixed
+// "Down arrow reads the results" tail in one say(), matching the spec's own
+// template: "[Title] [held/complete/over]. [line 1]. Down arrow reads the
+// results." `lines` is the encounter's own facts, headline (the ranked
+// number, SPEC 3.71) first; `options` is that encounter's Enter/X hint,
+// appended as the FINAL entry of `debrief.lines` — that's the whole "no nag
+// timer" design (Brian, 2026-09-09): nothing speaks unprompted after the
+// opener, so a pilot who walks away and comes back presses Down or End and
+// hears exactly what to do next.
+function openDebrief(opener, lines, options) {
+    debrief.title = opener;
+    debrief.options = options;
+    debrief.lines = lines.concat([options]);
+    debrief.open = true;
+    debrief.idx = 0;
+    say(opener + '. ' + lines[0] + ' Down arrow reads the results.');
+}
+// Arrows browse one line at a time (Home/End jump to the first/last — the
+// last is always that encounter's own Enter/X hint), Escape closes back to
+// the same frozen-ship state that already existed without a debrief, Y
+// passes through to the resource totals. Enter/X/F1/F2/F3/F12 are
+// deliberately NOT claimed here — they fall through to the generic switch
+// exactly as they did before any of this existed, so each mode's own
+// existing Enter-retry/X-leave branch (already distinct per encounter) just
+// runs unmodified.
+function debriefKey(lname) {
+    var lines = debrief.lines;
     if (lname === 'arrowdown') {
-        if (turretDebrief.idx < lines.length - 1) { turretDebrief.idx++; say(lines[turretDebrief.idx]); }
+        if (debrief.idx < lines.length - 1) { debrief.idx++; say(lines[debrief.idx]); }
         else { SIM.audio.blip(220, 80, 0.1); say('End of the debrief.'); }
         return true;
     }
     if (lname === 'arrowup') {
-        if (turretDebrief.idx > 0) { turretDebrief.idx--; say(lines[turretDebrief.idx]); }
-        else { turretDebrief.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the debrief.'); }
+        if (debrief.idx > 0) { debrief.idx--; say(lines[debrief.idx]); }
+        else { debrief.idx = 0; SIM.audio.blip(220, 80, 0.1); say('Top of the debrief.'); }
         return true;
     }
+    if (lname === 'home') { debrief.idx = 0; say(lines[0]); return true; }
+    if (lname === 'end') { debrief.idx = lines.length - 1; say(lines[debrief.idx]); return true; }
     if (lname === 'escape') {
-        turretDebrief.open = false;
-        say('Debrief closed. Enter tries again, X for the mission menu.');
+        debrief.open = false;
+        say('Debrief closed. ' + debrief.options);
         return true;
     }
     if (lname === 'y') { speakTotals(); return true; }
@@ -6443,7 +6571,12 @@ function turretDebriefKey(lname) {
 // input. Everything else (arrows up/down, W/S, Tab/T/R, D/B/Z/E/V/Q/H/C)
 // is refused with the offline buzz: none of it means anything here.
 function turretKey(lname) {
-    if (turretDebrief.open) return turretDebriefKey(lname);
+    // SPEC 3.70: the shared debrief check in onKeyDown runs BEFORE this
+    // function and already claims arrows/Home/End/Escape/Y while it's open
+    // — anything reaching here with debrief.open true (Left/Right, Space,
+    // F, G, I) is a key the debrief doesn't want, and none of turret's own
+    // zone-switch/fire/shield logic should run once the drill is over.
+    if (debrief.open) return false;
     var i = turretState.zone, z = turretState.zones[i], name = TURRET_ZONE_NAMES[i];
     if (lname === 'arrowleft' || lname === 'arrowright') {
         turretState.zone = (i + (lname === 'arrowright' ? 1 : -1) + 3) % 3;
@@ -9219,6 +9352,16 @@ function onKeyDown(e) {
         return;
     }
 
+    // SPEC 3.70: the shared end-of-encounter debrief, whatever the mode —
+    // arrows/Home/End/Escape/Y are claimed here, same shape as the Run log
+    // just above (repeats browse, same as holding Down there); Enter/X/F1/
+    // F2/F3/F12 are NOT claimed, so each mode's own distinct Enter-retry/
+    // X-leave branch (already built per encounter, further down) reaches
+    // the generic switch untouched.
+    if (debrief.open) {
+        if (debriefKey(lname)) return;
+    }
+
     // SPEC 3.59: turret defense replaces flight/weapons entirely with its
     // own Left/Right/Space/F/G/I — everything it doesn't claim (f1/f2/f3/
     // f12/escape/x/enter/y) falls through to the generic switch below.
@@ -9697,6 +9840,8 @@ window.__sim = {
     state: function () {
         return {
             mode: mode, menu: menuOpen, menuIdx: menuIdx, ore: ore, won: won, lost: lost,
+            // SPEC 3.70: the shared debrief, whatever encounter opened it.
+            debrief: { open: debrief.open, idx: debrief.idx, title: debrief.title, lines: debrief.lines.slice() },
             menuSub: menuSub ? { idx: encounterIdx, label: itemLabel(menuSub[encounterIdx]), count: menuSub.length } : null,
             tug: tug ? { remaining: Math.round(tug.remaining * 10) / 10, total: Math.round(tug.total * 10) / 10, paid: tug.paid, poi: tug.poiData.name } : null,
             hostile: targets.filter(function (t) { return !t.kind && t.hostile; }).map(function (t) { return t.name; }),
@@ -9818,7 +9963,7 @@ window.__sim = {
                           bestStreak: turretState.bestStreak, volleyCaught: turretState.volleyCaught,
                           volleyLanded: turretState.volleyLanded, zoneHits: turretState.zoneHits.slice(),
                           streakShieldActive: !!turretState.streakPreShield,
-                          debriefOpen: turretDebrief.open,
+                          debriefOpen: debrief.open,   // SPEC 3.70: kept here for compatibility, mirrors state().debrief.open
                           zones: turretState.zones.map(function (z) {
                               return { shieldUp: z.shieldUp, laserReady: Date.now() >= z.laserReadyAt,
                                        incoming: z.incoming ? { height: z.incoming.height, kind: z.incoming.kind,
@@ -10052,7 +10197,7 @@ function clearMission() {
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
     won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; nebulaState = null; gateRunState = null;
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
-    turretDebrief.open = false;   // SPEC 3.65
+    debrief.open = false;   // SPEC 3.70 (was SPEC 3.65's turret-only turretDebrief)
     stopHaulCreak(); haul = null;   // SPEC 3.60
     stopCapitalVoice(); capital = null; capitalDoor = null;   // SPEC 3.69
     // SPEC 3.55: NOT unconditional, unlike every other scoped state above —

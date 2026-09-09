@@ -3855,3 +3855,46 @@ yaw turn so the next thrust heads somewhere new, `shadowGain` 1.5
 the other "7s"/"4s" files are 10 s with ~1.5 s trailing silence,
 the "10s" files 10.5–11.9 s — harmless under the fade rule, flagged
 for Brian to re-export if he wants. Next: Sonnet builds 3.70.
+
+**Round 57 (Sonnet, 2026-09-09): built SPEC 3.70, the shared debrief.**
+See SPEC.md's own DONE paragraph for the full shape — in brief: one
+module-level `debrief` object and a pair of shared functions
+(`openDebrief`/`debriefKey`) replace SPEC 3.65's turret-only
+`turretDebrief`/`openTurretDebrief`/`turretDebriefKey`, dispatched from
+ONE check in `onKeyDown` (right before the existing turret-mode
+intercept, which itself just returns `false` once the shared check has
+already had first refusal) rather than one per mode — every existing
+encounter finish became a debrief instead of a plain `say()`, its own
+blurb split into one-fact lines with the Enter/X hint always the LAST
+line (never a separate reminder, per Brian's own "remove the nag
+message" from Round 56). **Loss debriefs are new, not just carried
+over**: SPEC 3.65 only ever built the turret's; a generic
+`openLossDebrief(source, deathMode, deathRef)` now covers every
+standalone drill's own death the same way, guarded against a stale
+timer the same way 3.65 guarded the turret's (by whichever per-mode
+state object exists, or a plain `lost` check where none does) — a tug
+death still never debriefs, SPEC 2.16's own countdown stays that
+state's own voice. Machine-tested at a local server via real menu
+navigation and key dispatch, never mocked: the flight course's full win
+debrief and every shell mechanic (arrows, Home/End, Y, Escape, Enter-
+retry, X-leave); the turret's own debrief confirmed byte-for-byte
+unchanged through the new shared shell; the minefield's win and a real
+detonation loss (found by coordinate-descending the ship's position
+onto a live mine using only the scalar distances `state()` already
+exposes — no mine positions are exposed, worth remembering for next
+time); the plain Combat drill's win (salvage/rcs `extra` correctly
+leading the headline) and loss via `poke({kill:true})`; the Escort
+drill's success and the Defend drill's failure; nebula's own ablation
+death. Zero console errors throughout. **Flagged as a real coverage
+gap, not silently assumed**: the capital ship's win/loss (its turrets'
+shield doors never opened within a practical test window against the
+same aim-forcing technique that worked for ordinary combat) and the
+win side of shadow, nebula, gate run, haul, and mining — all five call
+the identical `openDebrief` shape already proven six times over, so
+this rests on that shared code path plus direct review, not a further
+live run of each. Also deliberately NOT built, flagged rather than
+skipped: the distress call and the delivery run/timed contract's own
+eventual completion — all three keep the ship flying afterward rather
+than freezing on `over()`, which is the one thing this whole mechanism
+assumes. Not yet heard by Brian. Next per the build order: 3.72
+(turret third pass).
