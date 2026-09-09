@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE** → 3.61 the minefield, next →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE** → 3.62 the shadow, next →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6519,7 +6519,7 @@ the spacing, the turret hp, the door timing) is a placeholder for
 Brian's ear; the metal-door recording itself waits on 3.69a, whenever
 he records it.
 
-#### 3.61 The minefield — proposed (Fable)
+#### 3.61 The minefield — DONE
 
 - Nothing to shoot. A field of slow-drifting proximity mines, each with
   its own tick that quickens as you close (the lock tick's own shape,
@@ -6531,6 +6531,72 @@ he records it.
   detonation check, a clock for the score.
 - Test: crossing at the ceiling clears; one mine passed too fast
   detonates with a hull hit; the far beacon ends it with the time.
+
+**DONE (Round 52, Sonnet).** A new mode, `'minefield'`, reached from the
+Encounters list like the flight course/turret drill (no station, no
+favor — a menu drill). `makeMinefieldRoster()` scatters
+`CFG.mineCount` (7) mines through a corridor toward one exit beacon at
+`CFG.mineFieldDepth`, each mine a `kind: 'mine'` target voiced by the
+EXISTING `buildRockVoice()` (a real `ROCK_TYPES` asset, cycled through
+the three types) — "reuses rock voices" taken literally, not just in
+spirit, since it needed zero new audio machinery. The exit beacon is
+an ordinary `kind: 'poi'` target (`buildPoiVoice`), the only thing
+actually selectable here: mines are deliberately excluded from
+`selectNearest()`/`cycleTarget()` (a new one-line exception alongside
+2.17's own friendly-exclusion and 3.55's tractorable one) since each
+mine's own passive proximity tick — not a lock — is what carries its
+bearing; `T`/Tab only ever find the beacon. `updateMinefield(dt)`
+(called every `simTick` frame the same way `updateCourse` is) does the
+whole mechanic in one pass per mine: drift (`t.pos += t.vel*dt`, a
+small random walk, never a hazard by itself), a distance-gated tick
+timer (`t.tickIn`, decremented every frame, reset from a
+`mineTickFastMs`↔`mineTickSlowMs` interpolation the moment it expires,
+silent entirely past `mineTickRange`) played through a throwaway
+`worldOut` panner at the mine's own position, and the detonation check
+itself: `dist <= mineTriggerDist && len(ship.vel) > mineSafeSpeed` —
+literally the same shape `updateCollisions` already uses for a station/
+planet hit (a radius plus a speed ceiling), just reused as a pattern
+rather than a shared function, since a mine's own consequence (one
+`hullHit`, no reposition, the mine destroyed) is a different enough
+outcome from a station's stop-and-reposition to not be worth forcing
+through one function. Reaching the exit beacon's own
+`mineExitRadius` calls `finishMinefield()`, which records the run
+(`recordMinefieldRun`, a fifth best-10 board — `profile.minefieldRuns`,
+`PROFILE_VERSION` → 10 with the usual unconditional-backfill migration
+line, no gate needed since it's purely additive) and speaks the time,
+detonation count, and the delta against the personal best, the same
+shape 3.49's own course finish uses. Weapons, shields, and auto-target
+are all cold here (`weaponsCold()` gained the mode, plus G's own
+separate course-only check and blink's own course-only refusal both
+grew the same one-line addition) — deliberately, since letting the
+pilot blink past a cluster or otherwise gadget around it would skip
+the entire throttle-control lesson the item exists to teach; `I`'s
+status line and F2's help both gained a Minefield-specific line/
+heading. Machine-tested at a local server, entirely through real
+`__sim.step()` simulated time and direct `poke({pos, vel})` placement
+(no mocks): starting the drill confirmed `mode: 'minefield'`, all 7
+mines plus the exit beacon in the roster, and the beacon auto-selected
+and locked (`t.kind==='mine'` correctly invisible to Tab/selectNearest,
+confirmed by the lock landing on nothing else); Space/G/Shift+T/a
+Shift-arrow blink all refused with their expected lines; warping the
+ship to within 50 of a mine at 40 u/s (over the 25 safe-speed ceiling)
+detonated it for exactly `CFG.mineHullDmg` (20, hull 100→80, "Mine 1
+detonates. Your hull 80.") and marked it `alive: false`; the identical
+approach at 10 u/s (under the ceiling) left hull and the mine
+untouched at exactly the same 50-unit distance — the "slow and
+centered is always safe" rule confirmed both ways, not just asserted;
+fifty further stepped frames near live mines exercised the tick-timer
+branch repeatedly with zero console errors; warping to the exit beacon
+finished the run, wrote a real `profile.minefieldRuns` entry (visible
+directly in `localStorage`), and spoke "Your first time."; Enter
+rebuilt a completely fresh field (7 mines alive again); X returned to
+the mission menu. F1's help was confirmed to include a "Minefield"
+heading in the correct order via 13 consecutive H presses walking
+every heading in the file. Zero console errors throughout, reconfirmed
+on a genuinely fresh tab after the full test sequence. Every number —
+the mine count, spread, drift speed, safe-speed ceiling, trigger
+distance, hull damage, tick pacing — is a placeholder for Brian's ear.
+Not yet heard or flown by Brian.
 
 #### 3.62 The shadow — proposed (Fable)
 

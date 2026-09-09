@@ -3616,3 +3616,40 @@ escort/defend's own already-confirmed tug interaction, but not
 separately driven this round. This closes SPEC.md's Phase 3E build
 order through 3.55 — next up is 3.61 (the minefield), unless Brian wants
 to fly/hear what's shipped first.
+
+**Round 52 (Sonnet, 2026-09-09): built SPEC 3.61, the minefield.**
+Nothing to shoot — pure listening and throttle control. A new mode,
+`'minefield'`, reached from the Encounters list (a menu drill, no
+station, matching the flight course/turret drill precedent). Mines are
+a new `kind: 'mine'`, voiced by the EXISTING `buildRockVoice()` (a real
+rock asset — "reuses rock voices" taken literally, no new audio
+machinery) but deliberately excluded from `selectNearest()`/
+`cycleTarget()` (a one-line exception, same shape as 2.17's friendly-
+exclusion and 3.55's tractorable one) — each mine's own passive
+proximity tick carries its bearing, not a lock; the one real (`kind:
+'poi'`) target is the exit beacon. `updateMinefield(dt)` does drift,
+the distance-gated tick timer (a `mineTickFastMs`/`SlowMs`
+interpolation, silent past `mineTickRange`), and the detonation check
+in one pass per mine — the check itself is the same shape
+`updateCollisions` already uses (a trigger radius plus a speed
+ceiling), reused as a PATTERN rather than a shared function, since a
+mine's consequence (one `hullHit`, no reposition) differs enough from
+a station's stop-and-reposition. Reaching the exit beacon records the
+run on a new fifth best-10 board (`profile.minefieldRuns`,
+`PROFILE_VERSION` → 10, the usual unconditional-backfill migration
+line). Weapons/shields/auto-target/blink are all refused here, same as
+the flight course — letting the pilot gadget past a mine cluster would
+skip the whole lesson. Machine-tested at a local server entirely
+through real `__sim.step()` time and `poke({pos, vel})` placement (no
+mocks): the roster, the Tab-exclusion, every refusal, a real detonation
+at 40 u/s measured at exactly `CFG.mineHullDmg` (20) with the mine
+marked dead, an identical approach at 10 u/s (under the safe-speed
+ceiling) confirmed completely harmless at the SAME 50-unit distance,
+fifty further stepped frames near live mines exercising the tick timer
+with zero errors, a real finish writing a `profile.minefieldRuns`
+entry, Enter rebuilding a fresh field, X returning to the menu, and
+F1's help confirmed carrying a "Minefield" heading in the right order.
+Zero console errors throughout, reconfirmed on a fresh tab. Every
+number is a placeholder for Brian's ear. Not yet heard or flown by
+Brian. This closes SPEC 3.61 — next per the build order is 3.62 (the
+shadow), unless Brian wants to fly/hear what's shipped first.

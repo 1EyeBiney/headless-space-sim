@@ -211,6 +211,17 @@ a creak warning before it parts. A parted line lets the load coast; catch
 up and re-engage. Bring it home, still latched, and the run reports the
 reaction mass it cost against a par.
 
+## Minefield
+
+Nothing to shoot here — a field of slow-drifting mines sits between you
+and an exit beacon, and Tab finds the beacon (the mines themselves are
+never a target). Each mine has its own tick, positioned right where it
+is, quickening the closer you get. A mine only detonates if you're
+moving too fast when you pass close by it; slow down and thread through
+and it stays silent. Weapons, shields, and auto-target are all off, same
+as the flight course. Reach the beacon and the run reports the time, how
+many mines went off, and how that compares to your best.
+
 ## Capital ship
 
 A large ship slowly orbits and turns to face you, carrying four turrets.
