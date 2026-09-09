@@ -6061,7 +6061,7 @@ it, for 3.67.
   exactly 80 with the field-repair line; a second knockout of the same
   system caps it at 70; docking restores 100 and clears every cap.
 
-#### 3.67 Deep space, the ambient bed (ideas15.txt) — DECIDED, build first
+#### 3.67 Deep space, the ambient bed (ideas15.txt) — DONE
 
 - Brian: "need to try out new deep space ambient background sound so
   set that as ambient background for anything in space, quadrant/
@@ -6085,6 +6085,26 @@ it, for 3.67.
   looping; docking in the sector crossfades to the interior; undocking
   brings the bed back; X to the menu swaps it for the menu track; a
   turret drill has it too.
+
+**DONE (Round 48, Sonnet).** Built exactly as scoped — one manifest key
+(`space_ambient`, IN `AUDIO_PRELOAD`), one `startSpaceAmbient()` next to
+`startMenuMusic()`, one call site (`newGame()`'s own tail, after every
+mode's own roster is built) plus swapping `undock()`'s old `stopMusic(1)`
+for the same call. No other code touched — `clearMission()`'s existing
+`stopMusic`, `dockAtStation()`'s existing `playMusic('station_
+interior1', ...)`, and `exitToMenu()`'s existing `startMenuMusic()` all
+needed zero changes, since `playMusic`'s own prev-node crossfade already
+handles "something else wants this slot" for any track, not just the
+ones it originally shipped for. Machine-tested at a local server, all
+in real gameplay (no shortcuts): the menu's 219 s track playing at
+boot; Combat training and the turret drill both confirmed switching to
+the 20 s loop; a real flight into Station Meridian (warp to the nav
+target, close the last 600 units under thrust, brake to a stop, C to
+dock) confirmed the docked interior loop (111 s) crossfading in; a
+real Escape-to-undock confirmed the 20 s bed returning. Zero console
+errors. `blinkDist`-style live volume: `CFG.spaceAmbientVol` (0.25),
+same Sound-menu Music line as every other track. Not yet heard by
+Brian.
 
 #### 3.68 Blink: Ctrl+arrows jump the ship a fixed distance, facing kept (ideas15.txt) — DECIDED, one key question open
 

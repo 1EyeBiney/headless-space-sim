@@ -240,6 +240,7 @@ var CFG_DEFAULTS = {
     undockDist: 1000,
     stationAmbientVol: 0.35, // the docked interior loop (music bus)
     menuMusicVol: 0.3,       // Round 44: the mission menu's own loop (music bus)
+    spaceAmbientVol: 0.25,   // SPEC 3.67: the deep space bed under every mode (music bus)
     // Lock tones by target kind (ideas6): a ship gets the solid tone; a
     // rock or dust field the soft pulse; a point of interest the solid
     // tone much softer WITH the guidance ticks still running underneath,
@@ -7619,7 +7620,7 @@ function undock() {
     // back on every press — Brian's "the controls didn't move my ship".
     ship.yaw = Math.atan2(dir.x, -dir.z); ship.pitch = 0;
     poi.rangeBand = 0;          // outside comm range now; no crossing cue for the departure itself
-    if (SIM.audio.ctx) SIM.audio.stopMusic(1);
+    startSpaceAmbient();   // SPEC 3.67: replaces the docked interior loop, crossfading out
     say('Undocked. ' + CFG.undockDist + ' out from ' + poi.name + ', facing away. The drive won\'t spool within ' +
         CFG.warpInhibitDist + ' of the station — thrust clear first.');
 }
@@ -8898,6 +8899,7 @@ function newGame(m, missionSpec, startHaulRun) {
     }
     selectNearest();
     if (SIM.audio.ctx && SIM.audio.masterGain) SIM.audio.ramp(SIM.audio.masterGain.gain, CFG.masterGain, 0.2);
+    startSpaceAmbient();   // SPEC 3.67: every mode reaches here — the one call site needed
 }
 
 // ---- mission menu -----------------------------------------------------------
@@ -9289,6 +9291,18 @@ function soundKey(lname) {
 // sound stays. Level: the Sound menu's Music line, on the music bus.
 function startMenuMusic() {
     if (SIM.audio.ctx) SIM.audio.playMusic('menu_celestial', { vol: CFG.menuMusicVol, fadeS: 1.5 });
+}
+
+// SPEC 3.67 (ideas15.txt): the deep space bed — Brian: "set that as
+// ambient background for anything in space, quadrant/encounter... the
+// only place we would not use it now is when inside the station."
+// Called unconditionally at the end of newGame() (every mode reaches
+// it there) and again by undock() to bring it back over the docked
+// interior loop's own crossfade. Same music slot as everything else on
+// purpose: playMusic's own prev-node fade is what makes docking and the
+// menu both replace it cleanly with no special-case code here.
+function startSpaceAmbient() {
+    if (SIM.audio.ctx) SIM.audio.playMusic('space_ambient', { vol: CFG.spaceAmbientVol, fadeS: 1.5 });
 }
 
 function exitToMenu() {

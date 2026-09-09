@@ -233,7 +233,16 @@ window.AUDIO_MANIFEST = {
   // every return to the menu); every mission start stops it through
   // clearMission(). Stereo 48k, ~3.6 min, served as placed — fetched at
   // the begin gesture, not preloaded, since it's 5 MB.
-  menu_celestial: 'audio/music/celestial/fingerprints_of_God.mp3'
+  menu_celestial: 'audio/music/celestial/fingerprints_of_God.mp3',
+
+  // SPEC 3.67 (ideas15.txt): the deep space ambient bed — loops on the
+  // music bus under every mode (sector, combat, mining, course, turret,
+  // the haul, escort/defend), started by newGame() and restored by
+  // undock(); docking's station interior crossfades over it, the menu
+  // music replaces it. Brian's own 20s stereo loop (the "r" is his own
+  // loop marker; "10" suggests siblings not dropped yet). DOES preload —
+  // it plays in nearly every encounter, unlike the menu track.
+  space_ambient: 'audio/quadrant/deep_space/deep_space_10r.mp3'
 };
 
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
