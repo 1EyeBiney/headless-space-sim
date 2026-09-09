@@ -245,6 +245,18 @@ SIM.cues = (function () {
                       var A = SIM.audio;
                       A.sfxTone({ type: 'sine', f1: 780, dur: 0.12, vol: 0.12 });
                       A.sfxTone({ type: 'sine', f1: 520, dur: 0.18, vol: 0.12, at: 0.14 });
+                  } },
+                { id: 'gate_unlock', name: 'Jump Gate Unlock', source: 'spec-3.79',
+                  // SPEC 3.79 (ideas17.txt): the moment a gate's own unlock
+                  // condition is first met — "a long descending chord into
+                  // the vortex's own rise" (Brian). A falling three-note
+                  // chord settles, then a rising sweep hands off toward the
+                  // vortex loop the gate's own beacon becomes once open.
+                  // Placeholder until a recording replaces it.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxChord([880, 660, 440], 1.2, 0.28, { type: 'sine' });
+                      A.sfxSweep({ type: 'sawtooth', f1: 120, f2: 300, f3: 220, dur: 1.4, vol: 0.2, at: 0.9 });
                   } }
             ]
         },

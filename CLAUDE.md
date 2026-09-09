@@ -4210,3 +4210,64 @@ errors. Not yet heard by Brian — nothing to hear, by design; this was
 pure removal. Next per the ideas17.txt build order: 3.79 (lock the
 gates) → 3.76 (the shadow third pass) → 3.75 (the minefield second
 pass) → 3.77 (reaction mass as the economy), then quadrant 2.
+
+**Round 61 (Sonnet, 2026-09-09): built SPEC 3.79 — the gate run comes
+out the way the nebula did, and locked gates go in its place.** Brian:
+"I think we will do warp gates a little different. I think the gates
+will be locked and when something is done to unlock them, the player
+would approach and interact with the warp gate... we just need to make
+them not be heard over a longer distance." Removal half:
+`makeGateRunRoster`/`gateRunIntro`/`gateBearingDeg`/`gateBeamDiffDeg`/
+`finishGateRun`/`gateRunKey`/`updateGateRun`, the `gateRunState` var and
+every call site (Enter-retry, both roster dispatches, `clearMission`'s
+reset line, the started-flag setter), the `'gaterun'` board (dropped
+from `BOARD_ORDER`/`BOARDS`, its `OLD_BOARD_FIELDS` entry removed, and
+an explicit `delete` added for either an old flat `gateRunRuns` or an
+already-migrated `boards.gaterun` — 3.78's own "nothing to keep"
+reasoning, reused), the Encounters item, the F1 heading, README's
+section, and the CFG block. The sweep goes too: `t.gatePhase` (SPEC
+3.31/L.9's own cone-driving phase, never written again), the panner
+cone properties in `buildPoiVoice`, `gateSweepS`/`gateCone*` — the
+lab's own L.9 lighthouse demo in `soundlab.html` is a completely
+separate implementation and was never touched. **Locked gates, built
+in its place**: the Jump Gate's `beaconAsset` becomes `vortex1`
+instead of `space_station6` (one QUADRANT-row data edit — the spec's
+own "gateVoice" field is, mechanically, exactly what `beaconAsset`
+already does per-row for every other POI, so a parallel field name
+would have been pure indirection with no functional gain, flagged as a
+deliberate simplification); `vortex1` is carved out of the lab-only
+`vortex[2-8]` `AUDIO_PRELOAD` exclusion, the same promotion SPEC 3.31
+gave the station beacons; `beaconAudible()` gives `poiType: 'gate'` its
+own tighter cutoff (`CFG.gateAudibleDist` 3000, against the shared
+8000 every other beacon uses). `callPoi()`'s old "transit lane not
+commissioned" placeholder is replaced by a real state machine:
+`ensureGate(q, name)` (same lazy-create shape as `ensurePort`),
+`GATE_RULES['Jump Gate']` (`anyStationKnownOrBetter()` plus
+`CFG.gateHydrogenNeeded` 30 hydrogen aboard — only the first gate has a
+rule written; "other gates' rules are written when their quadrants
+are," per the spec's own text), and a new `gate_unlock` cue
+(`audio_cues.js` — a falling chord into a rising sweep, Brian's own "a
+long descending chord into the vortex's own rise") that fires exactly
+once at the moment the rule is first met from within `CFG.gateCommRange`
+(600). Two small test hooks: a new `poke({hydrogen})` alongside the
+existing `poke({favor})`, and `state().gate` (pre-existing) swapped its
+now-meaningless `phase` field for `unlocked` — found only by grepping
+every remaining `gatePhase` reference, since a stale field that nothing
+writes any more doesn't error, it just quietly stops meaning anything.
+Machine-tested at a local server in real gameplay, not mocks: a real
+Sector entry, Tab to the Jump Gate, `warpToSelected` to close the
+distance, C reading the Locked line with its condition (a stray
+double-period caught by actually reading the spoken text rather than
+just checking for a crash, fixed at the source in `needsText()`);
+`poke({favor, hydrogen})` then a real C unlocking it with "Jump Gate
+unlocked." and the cue, and a second C reading "Jump Gate control:
+open." with no repeat unlock; H at the gate refusing with the ordinary
+warp-inhibit line, proving it's plain `startWarp()` again; a reload
+confirming the unlock persisted in `profile.quadrants.home.gates`; the
+Encounters list reading 10 and F1 reading 15 headings, both counts
+computed off the live lists, not hardcoded. Zero console errors. Every
+tunable number is a placeholder for Brian's ear; the vortex pick and
+the rule itself are his own decisions, not placeholders. Not yet heard
+by Brian. This closes both of ideas17.txt's removal items — next per
+the build order: 3.76 (the shadow third pass) → 3.75 (the minefield
+second pass) → 3.77 (reaction mass as the economy), then quadrant 2.

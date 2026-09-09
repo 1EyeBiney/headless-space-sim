@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7808,7 +7808,7 @@ session had been recorded) migrated to v15 clean with that key gone
 from `state().boards` and no crash. Zero console errors. Next per the
 ideas17.txt build order: 3.79 (yank the gate run, lock the gates).
 
-#### 3.79 The gate run — REMOVED; gates are locked, and open by their own rule (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+#### 3.79 The gate run — REMOVED; gates are locked, and open by their own rule (ideas17.txt) — DONE
 
 - Brian: "Remove The Gate Run encounter. I think we will do warp gates
   a little different. I think the gates will be locked and when
@@ -7854,6 +7854,65 @@ ideas17.txt build order: 3.79 (yank the gate run, lock the gates).
   C at 600 speaks Locked with the condition, then Open after favor and
   hydrogen are poked to the rule, with `gate_unlock` and the line once
   and `unlocked` persisted across a reload.
+
+**DONE (Round 61, Sonnet).** The removal half mirrors 3.78's own
+sweep: `makeGateRunRoster`/`gateRunIntro`/`gateBearingDeg`/
+`gateBeamDiffDeg`/`finishGateRun`/`gateRunKey`/`updateGateRun`, the
+`gateRunState` var and all its call sites, the `'gaterun'` board (and
+its `OLD_BOARD_FIELDS` entry, plus an explicit `delete` for either an
+old flat `gateRunRuns` array or an already-migrated `boards.gaterun`
+— same "nothing to keep" reasoning 3.78 used), the Encounters item,
+the F1 heading, README's section, and the CFG block are all gone. The
+sweep goes with it: `t.gatePhase` (never initialized or advanced
+again), the panner's cone properties in `buildPoiVoice`, and
+`gateSweepS`/`gateCone*` — the lab's own L.9 lighthouse demo in
+`soundlab.html` is a separate, self-contained implementation and was
+never touched. **The lock, built in its place**: the Jump Gate's
+`beaconAsset` changes from `space_station6` to `vortex1` (a plain data
+edit on its `QUADRANT` row — no new field name introduced; "gateVoice"
+in the spec's own text and `beaconAsset` are the same mechanism every
+other POI already uses per-row, so a parallel field would have been
+pure indirection, flagged as a deliberate simplification); `vortex1`
+is carved out of the lab-only `vortex[2-8]` `AUDIO_PRELOAD` exclusion,
+matching the precedent SPEC 3.31 set for the station beacons.
+`beaconAudible()` gives `poiType: 'gate'` its own tighter cutoff
+(`CFG.gateAudibleDist` 3000) instead of the shared 8000. `callPoi()`'s
+old placeholder branch ("transit lane not commissioned") is replaced
+with the real state machine: `ensureGate(q, name)` lazily creates
+`profile.quadrants[q].gates[name] = { unlocked: false }` (same shape
+as `ensurePort`); `GATE_RULES['Jump Gate']` holds the first gate's own
+condition (`anyStationKnownOrBetter()` — ANY station at Known favor or
+better, not one named station — and `CFG.gateHydrogenNeeded` 30
+hydrogen aboard) plus its spoken "needs" text; calling within
+`CFG.gateCommRange` (600) checks the rule fresh every time, flips
+`unlocked` and fires the new `gate_unlock` cue (audio_cues.js, a
+falling chord into a rising sweep — Brian's own "a long descending
+chord into the vortex's own rise") exactly once, and speaks Locked-
+with-condition or Open on every other call. A new `poke({hydrogen})`
+test hook joined the existing `poke({favor})` one for exercising the
+rule without a real mining/trading loop. `state().gate` (a pre-existing
+test hook) swapped its now-meaningless `phase` field for `unlocked`,
+caught only by grepping for every remaining `gatePhase` reference — it
+would otherwise have kept reading a value nothing wrote any more,
+silently going stale rather than erroring. Machine-tested at a local
+server in real gameplay: a real Sector entry, Tab to the Jump Gate,
+`warpToSelected` to close the distance, C reading "Locked. Needs Known
+favor at any station, and 30 hydrogen aboard." (a stray double-period
+in the first draft, caught by actually reading the spoken line rather
+than just checking it didn't crash, fixed); `poke({favor, hydrogen})`
+then a real C unlocking it with "Jump Gate unlocked." and the cue,
+followed by "Jump Gate control: open." on a second call with no
+repeat unlock; H at the gate refusing with the ordinary warp-inhibit
+line (proving it's plain `startWarp()` again, not intercepted); a
+reload confirming `profile.quadrants.home.gates['Jump Gate'].unlocked`
+survived; the Encounters list reading exactly 10 with F1 down to 15
+headings, both counts computed, not hardcoded. Zero console errors.
+Every number (the two ranges, the hydrogen threshold) is a placeholder
+for Brian's ear; the vortex pick and the rule itself are his own
+answers, not placeholders. Not yet heard by Brian. This closes the two
+removal items — next per the ideas17.txt build order: 3.76 (the shadow
+third pass), then 3.75 (the minefield second pass), then 3.77
+(reaction mass as the economy).
 
 #### 3.80 Music: Keyboard Commander's player, on brackets (ideas17.txt) — DONE
 

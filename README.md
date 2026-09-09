@@ -127,6 +127,14 @@ the ore's usual price plus a bonus, on its own clock, with its own
 best-time log in the run log. Selling ore is blocked while one is open,
 same as it is during the fixed delivery run above.
 
+The quadrant's **Jump Gate** is locked until its own condition is met.
+Call it (C) within 600 to hear "Locked" and what it still needs, or
+"Open" once it isn't. The moment the condition is met, calling it
+unlocks it for good, with its own chime — this is just the lock;
+actually flying through it is a later item. Its own vortex loop reads
+silent past 3000, tighter than every other beacon in the quadrant, so
+it doesn't drown everything else out.
+
 Out in the open Sector, every station also has its own **standing**
 toward you — Unknown, Known, Trusted, or Allied — spoken every time you
 hail it. Known opens the transporter (rearm, sell, buy reaction mass);
@@ -244,16 +252,6 @@ whenever you're close enough, lit or dark — staying with it through a
 dark leg by dead reckoning still counts. Reach the total needed and
 the run reports how long it took. Weapons, shields, and auto-target
 are all off.
-
-## The gate run
-
-One Jump Gate sits ahead, sweeping its own lighthouse beam in the same
-slow, steady rhythm the real quadrant gate has always had. H only
-works while that beam is actually pointing at you — too far from the
-gate and it refuses by name; close enough but the wrong moment and it
-names how long until the beam swings back around instead. A clean H
-on time jumps and ends the run, reporting the time and how many passes
-were wasted getting there.
 
 ## Capital ship
 

@@ -324,14 +324,17 @@ window.MUSIC_TITLES = {
 // Preloaded in the background from audioStart() (SPEC 2.19) — everything
 // the demo can reach without a special unlock, so the common path never
 // waits on a first-use fetch. Curated, not "all of AUDIO_MANIFEST": the
-// vortex and flyby sets are the sound lab's alone, and the station
+// flyby set and vortex2-8 are the sound lab's alone, and the station
 // interior (1.8 MB) is fetched when a sector run starts instead, since
 // only docking plays it. The space_station beacons DO preload — they're
 // real station voices in the live game as of SPEC 3.31, same as the ship
 // engine loops. SPEC 3.80: the fifteen music tracks are excluded by their
 // own folder (audio/music/) rather than a key prefix, since their names
 // don't share one — they stream through SIM.music on demand instead.
+// SPEC 3.79: vortex1 is carved OUT of the lab-only vortex[2-8] exclusion —
+// it's the Jump Gate's own real quadrant voice now, same reasoning as the
+// station beacons.
 window.AUDIO_PRELOAD = Object.keys(window.AUDIO_MANIFEST).filter(function (k) {
   if (/^audio\/music\//.test(window.AUDIO_MANIFEST[k])) return false;
-  return !/^(vortex\d|propeller_plane\d|station_interior|way_|menu_)/.test(k);
+  return !/^(vortex[2-8]|propeller_plane\d|station_interior|way_|menu_)/.test(k);
 });

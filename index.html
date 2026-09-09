@@ -457,20 +457,14 @@ var CFG_DEFAULTS = {
     beaconGainScale: 2,
     stationBeaconScale: 0.5,  // Station Meridian's beacon, half volume (Brian: too loud)
 
-    // The Jump Gate's lighthouse beam (Phase 3L, L.9): a directional cone on
-    // its beacon panner, sweeping a full turn every gateSweepS — loudest
-    // when the beam points at you, never silent when it doesn't.
-    gateSweepS: 10,
-    gateConeInner: 60, gateConeOuter: 180, gateConeOuterGain: 0.15,
-
-    // SPEC 3.64 (ideas14.txt/Fable): the gate run — the SAME sweep above
-    // becomes a real timing rule, ahead of quadrant 2 needing it. A
-    // tighter angular window than the audio cone's own wide one
-    // (gateConeInner, which is about "loud", not "on time") — this one
-    // decides pass or refuse.
-    gateRunDist: 800,          // ship start distance from the gate
-    gateRunApproachDist: 300,  // must be this close to attempt H at all
-    gateRunBeamHalfAngle: 15,  // degrees either side of dead-on: a clean pass
+    // Locked gates (SPEC 3.79, ideas17.txt — replaces the gate run and its
+    // lighthouse sweep entirely, Phase 3L/L.9's cone included). A gate's
+    // voice is a vortex loop (QUADRANT's own beaconAsset, vortex1 for every
+    // gate today); its audible range is tighter than a station's own
+    // beaconAudibleDist, and C within gateCommRange reads its lock state.
+    gateAudibleDist: 3000,     // Fable's own number, flagged for Brian's ear
+    gateCommRange: 600,        // C this close reads Locked/Open and can trip the unlock
+    gateHydrogenNeeded: 30,    // the first gate's own unlock rule (plus Known favor anywhere in the quadrant)
 
     missileMax: 8,                    // magazine; Station Meridian rearms
     chaffMax: 4,                      // decoys (D); Station Meridian restocks (SPEC 1.8)
@@ -900,8 +894,6 @@ function loadProfile() {
     if (!Array.isArray(profile.minefieldRuns)) profile.minefieldRuns = [];
     // v10 -> v11 (SPEC 3.62): the shadow's own run log.
     if (!Array.isArray(profile.shadowRuns)) profile.shadowRuns = [];
-    // v12 -> v13 (SPEC 3.64): the gate run's own run log.
-    if (!Array.isArray(profile.gateRunRuns)) profile.gateRunRuns = [];
     // v13 -> v14 (SPEC 3.71): one `profile.boards[kind]` object replaces
     // the eight separate top-level arrays just backfilled above —
     // unchanged, entries intact (an old save's own `courseRuns` becomes
@@ -920,8 +912,7 @@ function loadProfile() {
     // field left to re-read), not a check on the board's own contents.
     if (!profile.boards || typeof profile.boards !== 'object') profile.boards = {};
     var OLD_BOARD_FIELDS = { runs: 'runs', contractRuns: 'contract', courseRuns: 'course',
-                              turretRuns: 'turret', minefieldRuns: 'minefield', shadowRuns: 'shadow',
-                              gateRunRuns: 'gaterun' };
+                              turretRuns: 'turret', minefieldRuns: 'minefield', shadowRuns: 'shadow' };
     Object.keys(OLD_BOARD_FIELDS).forEach(function (oldKey) {
         var newKey = OLD_BOARD_FIELDS[oldKey];
         if (Array.isArray(profile[oldKey]) && profile[oldKey].length) {
@@ -929,12 +920,14 @@ function loadProfile() {
         }
         delete profile[oldKey];
     });
-    // SPEC 3.78: the nebula encounter is yanked outright — nothing of its
-    // board is kept. A save from before this round may carry the old
-    // top-level `nebulaRuns` (never folded into `boards` now) or an
-    // already-migrated `boards.nebula`; both are just dropped.
+    // SPEC 3.78/3.79: the nebula and gate-run encounters are both yanked
+    // outright — nothing of either board is kept. A save from before
+    // either round may carry an old top-level Runs array (never folded in
+    // now) or an already-migrated board; all four shapes are just dropped.
     delete profile.nebulaRuns;
     delete profile.boards.nebula;
+    delete profile.gateRunRuns;
+    delete profile.boards.gaterun;
     BOARD_ORDER.forEach(function (k) { if (!Array.isArray(profile.boards[k])) profile.boards[k] = []; });
     // v14 -> v15 (SPEC 3.80): the background music player. A save from
     // before this round simply never had profile.music at all — a plain
@@ -1016,9 +1009,9 @@ function saveProfile() {
 // shape for every encounter's own best-10 log, replacing what had grown
 // into eight near-identical push/sort/slice/save functions (recordRun,
 // recordContractRun, recordCourseRun, recordMinefieldRun, recordShadowRun,
-// recordGateRunRun, recordTurretRun — see git history for their own
-// original shapes; recordNebulaRun existed too until SPEC 3.78 yanked the
-// whole encounter). `rank` names which field of a stored entry
+// recordTurretRun — see git history for their own original shapes;
+// recordNebulaRun and recordGateRunRun existed too, until SPEC 3.78 and
+// 3.79 yanked those whole encounters). `rank` names which field of a stored entry
 // is the ranked headline (SPEC 3.70's own debrief line 1); `dir` says
 // which way wins; `line(entry)` is what the Run log speaks for one entry
 // (runLogItems(), below). The Contested Zone and the distress call get NO
@@ -1030,7 +1023,7 @@ function saveProfile() {
 // flagged here as an apparent undercount in the spec text rather than
 // silently reconciled, since fourteen is what the table's own sixteen
 // rows minus its two "no board" rows actually adds up to.
-var BOARD_ORDER = ['runs', 'contract', 'course', 'minefield', 'shadow', 'gaterun',
+var BOARD_ORDER = ['runs', 'contract', 'course', 'minefield', 'shadow',
                     'combat', 'mining', 'escort', 'defend', 'turret', 'haul', 'capital'];
 var BOARDS = {
     runs:      { label: 'Delivery run', rank: 'seconds', dir: 'asc',
@@ -1052,9 +1045,6 @@ var BOARDS = {
                      return t + ', ' + Math.round(e.efficiency) + ' percent contact, ' + e.timesLost +
                             (e.timesLost === 1 ? ' time lost, longest hold ' : ' times lost, longest hold ') + fmtTime(e.longestHold);
                  } },
-    gaterun:   { label: 'The gate run', rank: 'seconds', dir: 'asc',
-                 line: function (e) { return fmtTime(e.seconds) +
-                                       (typeof e.wasted === 'number' ? ', ' + e.wasted + (e.wasted === 1 ? ' pass wasted' : ' passes wasted') : ''); } },
     combat:    { label: 'Combat training', rank: 'seconds', dir: 'asc',
                  line: function (e) { return fmtTime(e.seconds) + ', hull ' + e.hull + ' percent, ' +
                                        e.missilesUsed + ' missiles used, ' + e.accuracy + ' percent accuracy'; } },
@@ -1845,77 +1835,17 @@ function updateShadow(dt) {
 // gone; the two manifest keys (nebula_pulsar/nebula_cloud) go with them —
 // the recordings stay on disk, unwired, for whenever clouds come back.
 
-// ---- the gate run (SPEC 3.64, ideas14.txt/Fable) ---------------------------
-// The Jump Gate's own lighthouse sweep (Phase 3L L.9 / SPEC 3.31,
-// updateTargeting's t.gatePhase advance) becomes a real timing rule here,
-// ahead of quadrant 2 needing the same one: H only jumps while the beam is
-// actually pointing at the ship, within gateRunBeamHalfAngle — a tighter
-// window than the audio cone's own wide gateConeInner, which is about
-// loudness, not timing. One gate target, reusing its real recorded voice
-// (beaconAsset, the same space_station6 the quadrant's own gate uses) —
-// no new audio, just a new rule read off the SAME t.gatePhase the sweep
-// already writes every frame.
-function makeGateRunRoster() {
-    return [{ name: 'Jump Gate', poiType: 'gate', kind: 'poi', desc: 'jump gate',
-              pos: v3(0, 0, -CFG.gateRunDist), alive: true, resource: false,
-              beaconAsset: 'space_station6' }];
-}
-function gateRunIntro() {
-    return 'The gate run. Fly to the gate and time your jump to its own sweep — H only works while the beam points at you. ' +
-           'A wrong-time H tells you how long until it swings back. The clock starts the moment you thrust.';
-}
-// The ship's own bearing FROM the gate, in the same 0-360 degree phase
-// space t.gatePhase already uses (updateTargeting's own sin/cos convention).
-function gateBearingDeg(t) {
-    var dir = norm(sub(ship.pos, t.pos));
-    var deg = Math.atan2(dir.x, -dir.z) * 180 / Math.PI;
-    return (deg + 360) % 360;
-}
-// Signed degrees from the beam's CURRENT phase to the ship's own bearing,
-// wrapped to [-180, 180] — positive means the beam hasn't reached the ship
-// yet (sweeping forward toward it), negative means it just passed.
-function gateBeamDiffDeg(t) {
-    var diff = (gateBearingDeg(t) - (t.gatePhase || 0) + 360) % 360;
-    return diff > 180 ? diff - 360 : diff;
-}
-function finishGateRun() {
-    won = true;
-    var seconds = gateRunState.elapsed;
-    var prevBest = recordRun('gaterun', { seconds: seconds, wasted: gateRunState.wasted });
-    var rankText = prevBest === undefined ? 'Your first time.'
-                 : seconds < prevBest ? 'New personal best by ' + fmtTime(prevBest - seconds) + '.'
-                 : fmtTime(seconds - prevBest) + ' off your best.';
-    SIM.cues.play('win_fanfare');
-    openDebrief('Through the gate',
-        [ 'Time ' + fmtTime(seconds) + '.',
-          gateRunState.wasted + (gateRunState.wasted === 1 ? ' pass wasted.' : ' passes wasted.'),
-          rankText ],
-        'Enter tries again, X for the mission menu.');
-}
-// H, while mode === 'gaterun' — intercepted in onKeyDown ahead of the
-// normal startWarp() call, the same shape every other drill's own key
-// intercept uses.
-function gateRunKey() {
-    var t = targets[0];
-    if (!t || !t.alive) return;
-    var d = len(sub(t.pos, ship.pos));
-    if (d > CFG.gateRunApproachDist) {
-        SIM.cues.play('refusal_dud');
-        say('Fly closer to the gate first. Distance ' + round10(d) + '.');
-        return;
-    }
-    var diff = gateBeamDiffDeg(t);
-    if (Math.abs(diff) <= CFG.gateRunBeamHalfAngle) { finishGateRun(); return; }
-    gateRunState.wasted++;
-    var forwardDeg = diff >= 0 ? diff : diff + 360;
-    var waitS = forwardDeg / (360 / CFG.gateSweepS);
-    SIM.cues.play('refusal_wait');
-    say('Beam passes in ' + Math.ceil(waitS) + ' seconds.');
-}
-function updateGateRun(dt) {
-    if (!gateRunState || won || lost) return;
-    if (gateRunState.started) gateRunState.elapsed += dt;
-}
+// The gate run encounter (SPEC 3.64) was yanked by SPEC 3.79 (ideas17.txt,
+// Brian, 2026-09-09), the sweep going with it: "I think we will do warp
+// gates a little different... locked, and when something is done to
+// unlock them, the player would approach and interact... we just need to
+// make them not be heard over a longer distance." makeGateRunRoster/
+// gateRunIntro/gateBearingDeg/gateBeamDiffDeg/finishGateRun/gateRunKey/
+// updateGateRun are gone, and so is t.gatePhase and the cone it drove
+// (buildPoiVoice/updateTargeting) — the lab's own L.9 lighthouse demo
+// (soundlab.html) is untouched, it never shared this code. See "Locked
+// gates" below (right after the quadrant's own POI helpers) for what a
+// gate does now instead.
 
 // ---- escort/defend missions (SPEC 2.17) ------------------------------------
 // Only the friendly is in the roster at mission start — raiders arrive in
@@ -2225,7 +2155,7 @@ var QUADRANT = [
     { name: 'Planet B',         poiType: 'planet',  desc: 'planet',
       ring: 11000, degPerHour: 6, phaseDeg: 270 },
     { name: 'Jump Gate',        poiType: 'gate',    desc: 'jump gate',
-      ring: 14000, degPerHour: 0, phaseDeg: 45, beaconAsset: 'space_station6' }
+      ring: 14000, degPerHour: 0, phaseDeg: 45, beaconAsset: 'vortex1' }   // SPEC 3.79: a vortex loop replaces the sweep's space_station6
 ];
 
 // A field's type shapes its rock draw (makeMiningRoster) and is spoken at
@@ -2486,7 +2416,6 @@ var mission = null;      // SPEC 2.17: { kind, friendly, elapsed, wavesSent, wav
 var courseState = null; // SPEC 3.41: { activeIndex, elapsed, started } while mode === 'course'
 var minefieldState = null; // SPEC 3.61: { elapsed, started, detonations } while mode === 'minefield'
 var shadowState = null; // SPEC 3.62: { elapsed, started, contact } while mode === 'shadow'
-var gateRunState = null; // SPEC 3.64: { elapsed, started, wasted } while mode === 'gaterun'
 // SPEC 3.71: the standalone Mining drill's own clock/started pair — null
 // for a quadrant field visit, the demo/contract's own leg, the haul, or
 // the distress call, all of which reach mode 'mining' by a DIFFERENT path
@@ -2846,11 +2775,6 @@ var HELP_SECTIONS = [
         function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
         function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
     ] },
-    { heading: 'The gate run', items: [
-        'One Jump Gate sits ahead, sweeping its own lighthouse beam in a slow, steady rhythm — the same sweep the real quadrant gate has always had.',
-        'H only works while that beam is actually pointing at you. Too far from the gate and it refuses by name; the right distance but the wrong moment and it names how long until the beam swings back around instead.',
-        'A clean H, on time, jumps and ends the run. The final line reads the time and how many passes were wasted getting there. The Run log keeps its own separate board.'
-    ] },
     { heading: 'Capital ship', items: [
         'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them, T reports which one is selected and whether its own shield door is open.',
         function () { return 'Each turret is closed and invulnerable by default — a hit on a closed door splashes off with "Shielded." and does nothing. A door opens ' + CFG.capitalDoorOpenS + ' seconds before that turret fires: that countdown is your only warning, so hearing a door open is the moment to bring your own weapon onto it. The door stays open through the shot and for another ' + CFG.capitalDoorCloseS + ' seconds after — that whole stretch is when it can be hit.'; },
@@ -2871,6 +2795,7 @@ var HELP_SECTIONS = [
         function () { return 'The drive won\'t spool within ' + CFG.warpInhibitDist + ' of any point of interest — fly clear of a station before jumping anywhere, not just before jumping back to it.'; },
         'Within 500, C calls the point. Combat and mining areas pull you into those missions, and X afterward returns you to open space right where you were.',
         function () { return 'The station works by range and standing: C within ' + CFG.stationCommRange + ' hails it for a talk, C within ' + CFG.stationTransporterRange + ' reaches the transporter once the station knows you, and C within ' + CFG.stationDockRange + ' docks once it trusts you and once you have come to a full stop — no corridor to fly, but the stabilizers need a moment to settle a coasting ship.'; },
+        function () { return 'The Jump Gate is locked until its own condition is met — C within ' + CFG.gateCommRange + ' reads Locked with what it still needs, or Open. The moment the condition is met, calling it unlocks it for good with its own chime. Its own vortex loop reads silent past ' + CFG.gateAudibleDist + ', tighter than every other beacon in the quadrant. Actual transit through it is a later item — this is just the lock.'; },
         'Favor is a station\'s own standing toward you: Unknown, Known, Trusted, or Allied, spoken every time you hail. Earned by finishing a mission there or selling what it wants; lost by a failed mission or letting its own ship die; it decays slowly if you stay away, never past one tier below the best you ever reached. Station Meridian starts Trusted — it\'s home.',
         function () { return 'The comms hail (talk only) offers missions and a status report; the transporter, closer in and gated on Known standing, is where rearm, sell, and buy actually happen. Missions offers escort and defend work — each pays ' + CFG.missionCredits + ' credits on success, and once accepted, is off the table again for ' + Math.round(CFG.missionCooldownS / 60) + ' minutes.'; },
         function () { return 'A distress call sends you out as the tug this time: a disabled ship drifts nearby, calling for help. Tractor it in and E recovers it, then bring it home to the station that offered the call for ' + CFG.distressCredits + ' credits — no weapons involved.'; },
@@ -3232,16 +3157,6 @@ function buildPoiVoice(t) {
     panner.refDistance = CFG.beaconRef;
     panner.maxDistance = CFG.beaconMax;
     panner.rolloffFactor = CFG.beaconRolloff;
-    // Phase 3L, L.9: the gate's beacon is directional — a cone sweeping a
-    // full turn every gateSweepS (updateTargeting), loudest when the beam
-    // points at you. The outer gain floors rather than zeros — silence is
-    // a bug, and beacon mode's "target only" setting still has to find it.
-    if (t.poiType === 'gate') {
-        panner.coneInnerAngle = CFG.gateConeInner;
-        panner.coneOuterAngle = CFG.gateConeOuter;
-        panner.coneOuterGain = CFG.gateConeOuterGain;
-        t.gatePhase = 0;
-    }
     // Beacon mode's mute sits after the tremolo — the LFO is summed INTO
     // gain.gain, so zeroing that gain would still swing it by the depth.
     var mute = SIM.audio.ctx.createGain();
@@ -3343,7 +3258,12 @@ function beaconAudible(t) {
     // quadrant's ten points get a distance cutoff instead (the selected
     // target is always audible regardless), so "on" isn't a beacon soup.
     if (demo) return true;
-    return targets[selected] === t || len(sub(t.pos, ship.pos)) <= CFG.beaconAudibleDist;
+    // SPEC 3.79: the gate's own vortex loop reads silent past a tighter
+    // range than every other quadrant beacon — Brian's own "just need to
+    // make them not be heard over a longer distance like we do with the
+    // other POI in the quadrant."
+    var cutoff = t.poiType === 'gate' ? CFG.gateAudibleDist : CFG.beaconAudibleDist;
+    return targets[selected] === t || len(sub(t.pos, ship.pos)) <= cutoff;
 }
 
 // Push every beacon's mute to beaconAudible() right now. updateTargeting
@@ -3830,14 +3750,6 @@ function updateTargeting(dt) {
             if (t.nodes.mute && SIM.audio.ctx) {
                 var muteTarget = t.poiType === 'course' ? courseGainFor(t) : (beaconAudible(t) ? 1 : 0);
                 t.nodes.mute.gain.setTargetAtTime(muteTarget, SIM.audio.ctx.currentTime, 0.15);
-            }
-            // Phase 3L, L.9: the gate's lighthouse beam sweeps a full turn
-            // every gateSweepS, independent of the listener — loud when it
-            // points at you, faint (never silent) when it doesn't.
-            if (t.poiType === 'gate' && dt) {
-                t.gatePhase = ((t.gatePhase || 0) + (360 / CFG.gateSweepS) * dt) % 360;
-                var rad = t.gatePhase * Math.PI / 180;
-                SIM.audio.setOrientation(t.nodes.panner, Math.sin(rad), 0, -Math.cos(rad));
             }
         }
         t.nodes.lp.frequency.setTargetAtTime(cutoff, SIM.audio.ctx ? SIM.audio.ctx.currentTime : 0, 0.1);
@@ -7110,7 +7022,7 @@ function statusReport() {
         len(sub(t.pos, ship.pos)) <= stationRangeFor('comm', t.name)) {
         line += capFirst(favorTier(favorOf(t.name))) + ' with ' + t.name + '. ';
     }
-    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'gaterun' && autoTargetFitted()) {
+    if (mode !== 'sector' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && autoTargetFitted()) {
         line += autoTargetCharges + (autoTargetCharges === 1 ? ' auto-target charge. ' : ' auto-target charges. ');
     }
     if (mode === 'course') {
@@ -7126,18 +7038,13 @@ function statusReport() {
         line += (shadowTarget && shadowTarget.dark ? 'Ship dark. ' : 'Ship lit. ') +
                 'Contact ' + Math.round(shadowState.contact) + ' of ' + CFG.shadowNeedS + ' seconds. ' +
                 'Clock ' + fmtTime(shadowState.elapsed) + '. ';
-    } else if (mode === 'gaterun') {
-        var gt = targets[0];
-        line += (gt ? 'Distance to the gate ' + round10(len(sub(gt.pos, ship.pos))) + '. ' : '') +
-                gateRunState.wasted + (gateRunState.wasted === 1 ? ' pass wasted. ' : ' passes wasted. ') +
-                'Clock ' + fmtTime(gateRunState.elapsed) + '. ';
     } else {
         line += mode === 'mining' ? (distress ? '' : aliveRocks().length + ' rocks remain. ')
               : mode === 'sector' ? aliveTargets().length + ' points of interest. '
               : mission ? aliveTargets().filter(function (x) { return !x.kind; }).length + ' hostiles remain. '
               : aliveTargets().length + ' targets remain. ';
     }
-    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow' && mode !== 'gaterun') {
+    if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow') {
         line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
                 chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
@@ -9106,6 +9013,40 @@ function hailGreeting(poi) {
     return poi.name + ' control. ' + FAVOR_TIER_WORDS[favorTier(favorOf(poi.name))] + ' ';
 }
 
+// ---- locked gates (SPEC 3.79, ideas17.txt) ---------------------------------
+// Replaces the yanked gate run: a gate stays locked (Jump Gate control:
+// "Locked. Needs...") until its own rule is met, at which point calling it
+// unlocks it once, permanently, with a cue and a line — actual transit is
+// still SPEC 3.22's own, not built. Persisted per quadrant, per gate name
+// (profile.quadrants[q].gates[name].unlocked), same shape as ensurePort's
+// own lazy-create.
+function ensureGate(q, name) {
+    if (!q.gates) q.gates = {};
+    if (!q.gates[name]) q.gates[name] = { unlocked: false };
+    return q.gates[name];
+}
+// True once ANY station in the current quadrant reads Known favor or
+// better — "Known favor at any station" (Brian), not one named station in
+// particular, since a miner who avoids one port shouldn't be locked out
+// by it alone.
+function anyStationKnownOrBetter() {
+    if (!currentQuadrant()) return false;
+    return QUADRANT.some(function (row) {
+        return row.poiType === 'station' &&
+               favorTierRank(favorTier(favorOf(row.name))) >= favorTierRank('known');
+    });
+}
+// One rule per gate name; only the first gate (the one QUADRANT already
+// has) is defined — "other gates' rules are written when their quadrants
+// are" (SPEC 3.79's own text). check() is read fresh every call() rather
+// than cached, since favor and hydrogen both change outside this code.
+var GATE_RULES = {
+    'Jump Gate': {
+        check: function () { return anyStationKnownOrBetter() && profile.resources.hydrogen >= CFG.gateHydrogenNeeded; },
+        needsText: function () { return 'Known favor at any station, and ' + CFG.gateHydrogenNeeded + ' hydrogen aboard'; }
+    }
+};
+
 // The three ranges, per station: CFG's own value already reflects any
 // owned range module (comm_array/transporter_booster/docking_computer,
 // via moduleCfgOverlay); the station's own favor TIER adds its own bonus
@@ -9486,7 +9427,8 @@ function callPoi() {
     // which still read the real distance below.
     var commsOpenQuadrantWide = !demo && t.poiType === 'station' &&
         currentQuadrant() && currentQuadrant().openComms;
-    var range = t.poiType === 'station' ? stationRangeFor('comm', t.name) : CFG.poiInteract;
+    var range = t.poiType === 'station' ? stationRangeFor('comm', t.name)
+              : t.poiType === 'gate' ? CFG.gateCommRange : CFG.poiInteract;
     if (d > range && !commsOpenQuadrantWide) {
         say('Too far to call ' + t.name + '. Get within ' + range +
             '. Distance ' + round10(d) + '.');
@@ -9534,9 +9476,23 @@ function callPoi() {
         if (d <= stationRangeFor('transporter', t.name) && favorTierAtLeast(t, 'known')) { openHailMenu(t, 'transporter'); return; }
         openHailMenu(t, 'comm');
     } else if (t.poiType === 'gate') {
-        // SPEC 3.10: sealed until SPEC 3.22 gives it a real transit — no
-        // favor/hydrogen check yet, just the placeholder 2.6 text.
-        say(t.name + ' control: transit lane not commissioned.');
+        // SPEC 3.79: locked until its own rule is met — real transit is
+        // still SPEC 3.22's, not built; this is just the lock and its
+        // unlock moment.
+        var gq = currentQuadrant();
+        var gate = gq ? ensureGate(gq, t.name) : { unlocked: false };
+        var rule = GATE_RULES[t.name];
+        if (!gate.unlocked && rule && rule.check()) {
+            gate.unlocked = true;
+            saveProfile();
+            SIM.cues.play('gate_unlock');
+            say(t.name + ' unlocked.');
+        } else if (gate.unlocked) {
+            say(t.name + ' control: open.');
+        } else {
+            say(t.name + ' control: locked. Needs ' +
+                (rule ? rule.needsText() : 'an unlock condition not yet defined') + '.');
+        }
     } else if (t.poiType === 'star') {
         // SPEC 3.74: an encounter, not open flight — the same
         // sectorHome-snapshot-then-newGame('mining') shape calling a
@@ -9851,7 +9807,7 @@ function onKeyDown(e) {
         case 'v':      if (!over()) startDustVac(); break;
         case 'z':      zStatusKey(); break;   // SPEC 3.66
         case 'q':      openMap(); break;
-        case 'h':      if (mode === 'gaterun') { if (!over()) gateRunKey(); } else startWarp(); break;
+        case 'h':      startWarp(); break;
         case 'c':
             if (mode === 'sector') { callPoi(); }
             else say('C calls points of interest in open sector space.');
@@ -9957,10 +9913,6 @@ function onKeyDown(e) {
                         // rather than after finding it a second time.
                         shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
                         say(shadowIntro());
-                    } else if (mode === 'gaterun') {
-                        // SPEC 3.64: same shape again.
-                        gateRunState = { elapsed: 0, started: false, wasted: 0 };
-                        say(gateRunIntro());
                     } else if (mode === 'mining' && wasMiningDrill) {
                         // SPEC 3.71: same shape again — only for the
                         // standalone drill (wasMiningDrill, captured above
@@ -10114,8 +10066,6 @@ function simTick(dt) {
         if (mode === 'minefield' && minefieldState && !minefieldState.started) minefieldState.started = true;
         // SPEC 3.62: same rule for the shadow.
         if (mode === 'shadow' && shadowState && !shadowState.started) shadowState.started = true;
-        // SPEC 3.64: same rule for the gate run.
-        if (mode === 'gaterun' && gateRunState && !gateRunState.started) gateRunState.started = true;
         // SPEC 3.71: same rule for the Mining and Combat drills' own clocks
         // — miningState/combatState are only ever set for the standalone
         // drill (see their own declarations above), so this never touches
@@ -10169,7 +10119,6 @@ function simTick(dt) {
     if (mode === 'course') updateCourse(dt);
     if (mode === 'minefield') updateMinefield(dt);
     if (mode === 'shadow') updateShadow(dt);
-    if (mode === 'gaterun') updateGateRun(dt);
     if (mode === 'mining') updateMining(dt);   // SPEC 3.71: a no-op unless miningState is set
     if (mode === 'mining' && corona) updateCorona(dt);   // SPEC 3.74
     if (mode === 'combat') updateCombat(dt);   // SPEC 3.71: a no-op unless combatState is set
@@ -10313,10 +10262,14 @@ window.__sim = {
             sound: profile ? Object.assign({}, profile.sound) : null,
             beaconMutes: targets.filter(function (t) { return t.kind === 'poi' && t.nodes && t.nodes.mute; })
                                 .map(function (t) { return { name: t.name, mute: Math.round(t.nodes.mute.gain.value * 100) / 100 }; }),
+            // SPEC 3.79: phase/the sweep are gone with the gate run — this
+            // now reports the lock state instead, for testing GATE_RULES.
             gate: (function () {
                 var g = targets.filter(function (t) { return t.poiType === 'gate'; })[0];
-                return g ? { name: g.name, phase: Math.round((g.gatePhase || 0) * 10) / 10,
-                             hasAsset: !!(g.nodes && g.nodes.oscs.some(function (o) { return o.buffer; })) } : null;
+                if (!g) return null;
+                var gq = currentQuadrant();
+                return { name: g.name, unlocked: gq ? ensureGate(gq, g.name).unlocked : false,
+                         hasAsset: !!(g.nodes && g.nodes.oscs.some(function (o) { return o.buffer; })) };
             })(),
             tractor: { active: tractor.active, fitted: tractorFitted(),
                        targetName: tractor.active && targets[tractor.targetIdx] ? targets[tractor.targetIdx].name : null,
@@ -10485,6 +10438,7 @@ window.__sim = {
         if (o && o.missionElapsed !== undefined && mission) mission.elapsed = o.missionElapsed;
         if (o && o.credits !== undefined && profile) profile.credits = o.credits;
         if (o && o.alloy !== undefined && profile) profile.resources.alloy = o.alloy;
+        if (o && o.hydrogen !== undefined && profile) profile.resources.hydrogen = o.hydrogen;   // SPEC 3.79 test hook
         if (o && o.laserHealth && profile) Object.assign(profile.laserHealth, o.laserHealth);
         if (o && o.laserLevels && profile) Object.assign(profile.laserLevels, o.laserLevels);
         if (o && o.clock !== undefined && profile) profile.clock = o.clock;
@@ -10605,7 +10559,7 @@ function clearMission() {
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;
-    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null; gateRunState = null;
+    won = false; lost = false; locked = false; tug = null; mission = null; courseState = null; minefieldState = null; shadowState = null;
     miningState = null; combatState = null;   // SPEC 3.71
     corona = null;   // SPEC 3.74
     stopAllTurretVoices(); turretState = null;   // SPEC 3.59: incomings aren't `targets`
@@ -10660,9 +10614,6 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     } else if (mode === 'shadow') {
         targets = makeShadowRoster();
         targets.forEach(function (t) { if (SIM.audio.ctx) buildVoice(t); });
-    } else if (mode === 'gaterun') {
-        targets = makeGateRunRoster();
-        targets.forEach(function (t) { if (SIM.audio.ctx) buildPoiVoice(t); });
     } else if (mode === 'turret') {
         // SPEC 3.59: no targets at all — the three zones and their incomings
         // are their own state (turretState), built by startMission() right
@@ -10818,11 +10769,6 @@ var ENCOUNTER_ITEMS = [
     { label: 'The shadow',
       desc: function () { return 'Tail a ship that cuts its engine at random. Hold within ' + CFG.shadowRange + ' for ' + CFG.shadowNeedS + ' seconds total — lit or dark — to finish. Weapons cold.'; },
       run: function () { startMission('shadow'); } },
-    // SPEC 3.64 (ideas14.txt/Fable): the gate's own sweep becomes a real
-    // timing rule. See makeGateRunRoster/gateRunKey.
-    { label: 'The gate run',
-      desc: function () { return 'Time your jump to the gate\'s own sweep — H only works while the beam points at you. A wrong-time H tells you the wait.'; },
-      run: function () { startMission('gaterun'); } },
     // SPEC 3.54: the same missions offered from a station's hail menu,
     // playable directly so a pilot can hear them without flying to a
     // station first. No sectorHome, no favor, no cooldown, credits kept,
@@ -10947,10 +10893,6 @@ function startMission(m) {
         // SPEC 3.62: same reasoning again.
         shadowState = { elapsed: 0, started: false, contact: 0, inRange: false, currentHold: 0, longestHold: 0, timesLost: 0 };
         say(shadowIntro());
-    } else if (m === 'gaterun') {
-        // SPEC 3.64: same reasoning again.
-        gateRunState = { elapsed: 0, started: false, wasted: 0 };
-        say(gateRunIntro());
     } else if (m === 'turret') {
         // SPEC 3.59: built AFTER newGame() for the same reason courseState
         // is — newGame()'s own clearMission() call nulls it out first.
