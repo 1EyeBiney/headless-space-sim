@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7666,7 +7666,7 @@ biggest and touches the audio engine.
   monotonically toward it and reads 0 gain past `mineTickRange`; the
   board entry carries the beacon count.
 
-#### 3.76 The shadow, third pass: louder, slower than you, and gone from the start (ideas17.txt) — DECIDED (Brian, 2026-09-09)
+#### 3.76 The shadow, third pass: louder, slower than you, and gone from the start (ideas17.txt) — DONE
 
 - Brian: "the ship needs to be made louder, the thrusters are great,
   the amount of thrust needs toned down as I lost the ship once and
@@ -7697,6 +7697,50 @@ biggest and touches the audio engine.
   never within 30° of the pilot's own bearing; its speed never reads
   above 80; the engine gain reads 2.5 × `targetGain` lit; a full-W
   chase from the start closes no faster than the 20 u/s edge allows.
+
+**DONE (Round 62, Sonnet).** Four independent numbers plus one new
+opening rule, all in the CFG block and `makeShadowRoster()`/
+`updateShadow()`: `shadowThrustSpeed` 110 → 80 (under the pilot's own
+`maxSpeed` 100 — the actual bug), `shadowGain` 1.5 → 2.5, and a new
+`shadowSpawnDist` (500, replacing a hardcoded 400 in
+`makeShadowRoster()`) and `shadowOpeningAvoidDeg` (30). The opening
+facing is now `shadowOpeningFacingRad()` — a random pick from the two
+120°-wide arcs that remain once ±30° around BOTH 0° (t.facing's own
+convention: fwd = (sin, ., cos), and the shadow spawns dead ahead of
+the pilot at -shadowSpawnDist, so facing 0 flies straight at the
+pilot's own position) and 180° (straight away) are excluded — either
+axis let a stationary W-hold either meet the shadow head-on or never
+have to react at all, so both had to go, not just one. **The first
+thrust always runs the longest tier's own length AND plays that
+tier's own recording**, regardless of the live difficulty: a new
+`t.firstThrust` flag (set in `makeShadowRoster()`, cleared the instant
+the first dark→thrust transition fires) makes `updateShadow()` pick
+tier index 0 instead of `tierIdx` for that ONE transition, and
+`shadowThrustKey()`/`startShadowThrust()` both grew an optional tier-
+override parameter so the PLAYED recording matches the FORCED
+duration — without it, an Ace-tier run would have scheduled a 10-second
+thrust phase while playing the 4-second recording, leaving several
+seconds of silent thrust before the next transition. Machine-tested at
+a local server in real gameplay, entirely within single unbroken
+script executions per this project's own standing lesson (a first
+attempt split the Ace-tier check across separate tool calls and
+appeared to show the override failing — real wall-clock time between
+calls had already carried the run past the first 10-second leg into
+the second, tier-correct 4-second one; redone in one script, the
+override held for the full first 10 seconds before dropping to 4):
+opening facing sampled across repeated fresh drills, landing at 40°,
+63°, 290°, 304°, 297°, and 252° — every one inside the two safe arcs,
+none near 0° or 180°; speed measured ramping smoothly up to exactly 80
+and holding there, never higher; engine gain measured converging to
+exactly 0.625 (`0.25 targetGain × 2.5`) and holding; spawn distance
+measured at essentially 500; and, at Ace specifically, the very first
+thrust confirmed running the full 10 seconds (`phaseElapsed` climbing
+to 9.54 before the dark transition) with the SECOND thrust correctly
+dropping to Ace's own 4. Zero console errors. Every number is a
+placeholder for Brian's ear; the two exclusions and the first-thrust
+rule are behavior he specifically asked for, not placeholders. Not yet
+heard or flown by Brian. Next per the ideas17.txt build order: 3.75
+(the minefield second pass), then 3.77 (reaction mass as the economy).
 
 #### 3.77 Reaction mass is the economy: every action draws it, tanks grow it (ideas17.txt) — DECIDED (Brian, 2026-09-09: "all of them, and we need to figure out how to balance them")
 

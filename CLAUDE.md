@@ -4271,3 +4271,57 @@ the rule itself are his own decisions, not placeholders. Not yet heard
 by Brian. This closes both of ideas17.txt's removal items — next per
 the build order: 3.76 (the shadow third pass) → 3.75 (the minefield
 second pass) → 3.77 (reaction mass as the economy), then quadrant 2.
+
+**Round 62 (Sonnet, 2026-09-09): built SPEC 3.76, the shadow's third
+pass.** Brian: "the ship needs to be made louder... the amount of
+thrust needs toned down as I lost the ship once and just could not get
+back to it." **The finding**: `shadowThrustSpeed` was 110 against the
+pilot's own `maxSpeed` of 100 — the target outran the pilot on every
+single thrust leg, so losing it was arithmetic, not a flying mistake;
+blink forward (3.68) already existed as the recovery and needed no
+building, only surfacing. Four numbers: `shadowThrustSpeed` 110 → 80
+(under the cap, so a straight chase always closes), `shadowGain` 1.5 →
+2.5 (the engine loop only — Brian said the thrusters were already
+right), and two new CFG constants — `shadowSpawnDist` (500, replacing
+a hardcoded 400 literal in `makeShadowRoster()`) and
+`shadowOpeningAvoidDeg` (30). **Gone from the start**: a new
+`shadowOpeningFacingRad()` picks the shadow's opening facing from
+whichever of two 120°-wide safe arcs remain once ±30° around BOTH
+"straight toward the pilot" (0°, in `t.facing`'s own sin/cos
+convention — the shadow spawns dead ahead of the pilot at
+`-shadowSpawnDist`, so facing 0 flies directly at the pilot's own
+position) and "straight away" (180°) are excluded — Brian's own
+worry was a player who just holds W from the start; either axis would
+have let that either meet the shadow head-on or never have to react
+at all, so both needed excluding, not just one. **The first thrust
+always runs the longest tier's length AND recording**: a new
+`t.firstThrust` flag (set at roster build, cleared the instant the
+first dark→thrust transition fires) makes that ONE transition use
+tier index 0 instead of the live `tierIdx`; `shadowThrustKey()` and
+`startShadowThrust()` both grew an optional tier-override parameter so
+the PLAYED recording matches the forced 10-second duration — without
+this half of the fix, an Ace-tier run would schedule a 10-second
+thrust phase but play the 4-second recording, leaving several seconds
+of dead air before the next transition. Machine-tested at a local
+server in real gameplay (no mocks): opening facing sampled across six
+fresh drills landed at 40°/63°/290°/304°/297°/252°, every one inside
+a safe arc and none near 0° or 180°; speed measured ramping smoothly
+to exactly 80 and holding, never higher; engine gain measured
+converging to exactly 0.625 (`0.25 × 2.5`) and holding; spawn distance
+measured at ~500; and, switched to Ace specifically, the first thrust
+confirmed running the full 10 seconds before dropping to Ace's own 4
+for the second. **A real testing-methodology snag along the way, not
+a game bug**: a first attempt to verify the Ace-tier override split
+the check across separate tool calls and looked like the override had
+failed (the very first sample already read the Ace-tier 4-second
+phase) — real wall-clock time between the separate calls had let the
+run advance past the whole first 10-second leg and its following dark
+leg before the check ever ran. Redone inside one unbroken script (this
+project's own standing lesson, from the turret and haul rounds before
+it — background sim state keeps advancing in real time between tool
+round-trips), the override held for the full 10 seconds as designed.
+Zero console errors. Every number is a placeholder for Brian's ear;
+the two exclusion axes and the first-thrust rule are his own asks, not
+placeholders. Not yet heard or flown by Brian. Next per the ideas17.txt
+build order: 3.75 (the minefield second pass), then 3.77 (reaction
+mass as the economy).

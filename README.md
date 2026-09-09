@@ -241,7 +241,11 @@ many mines went off, and how that compares to your best.
 
 ## The shadow
 
-Tail one ship ahead of you as it thrusts in bursts. While it's
+Tail one ship ahead of you as it thrusts in bursts. The moment it
+appears it burns off at an angle for a long first leg — never straight
+at you, never straight away — so hammering W from the start catches
+nothing; it never outruns your own top speed, so a straight chase
+always closes, and a blink forward helps if you lose it. While it's
 thrusting, Tab, T, the lock tone, and the tick all work on it
 normally; the instant its engine cuts, the lock drops and the tick
 goes silent, no bearing updates until it thrusts again. It coasts on

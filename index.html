@@ -625,12 +625,29 @@ var CFG_DEFAULTS = {
     // a random 45-135 degrees (either way) over the leg's own length —
     // the coast itself still follows the OLD velocity, so the surprise
     // lands with the NEXT thrust, not partway through the dark.
-    shadowGain: 1.5,                 // "raised 50%" — multiplies targetGain when lit
+    // SPEC 3.76 (ideas17.txt): third pass. Brian lost the ship once and
+    // couldn't get back to it — the finding was arithmetic, not flying:
+    // shadowThrustSpeed (110) exceeded the pilot's own maxSpeed (100), so
+    // the target outran the pilot on every thrust leg. 80, under the cap,
+    // so a straight chase always closes; blink forward (3.68) is the
+    // recovery now, not the only way.
+    shadowGain: 2.5,                  // "raised" — multiplies targetGain when lit; louder per 3.76
     shadowThrustTiers: [10, 7, 4],    // seconds, by TIERS index (Rookie/Veteran/Ace)
-    shadowThrustSpeed: 110, shadowThrustAccel: 30,
+    shadowThrustSpeed: 80, shadowThrustAccel: 30,
     shadowCoastSpeed: 25, shadowCoastDecel: 10,
     shadowTurnMinDeg: 45, shadowTurnMaxDeg: 135,
     shadowThrustFadeS: 0.3,           // the recording fades out at the tier length, whatever its real length is
+    // SPEC 3.76: "make sure the player cannot just hammer W at the start
+    // of the encounter and catch the ship right away... the ship needs
+    // to almost immediately go off in some direction." Spawns farther out
+    // (400 -> 500) with a random opening facing that excludes a 30-degree
+    // arc around straight toward AND straight away from the pilot — dead
+    // on either axis let a stationary W-hold either meet it head-on or
+    // never have to react at all — and its first thrust always runs the
+    // longest tier's length (10s), regardless of difficulty, so the
+    // opening leg is a real departure every time.
+    shadowSpawnDist: 500,
+    shadowOpeningAvoidDeg: 30,
 
     // SPEC 3.59 (ideas14.txt): turret defense — three fixed zones, ship
     // stationary, weapons act on whichever zone is selected. First pass is
@@ -1667,16 +1684,34 @@ function updateMinefield(dt) {
 // NOT 'friendly', since that would exclude it from selectNearest/
 // cycleTarget the way an escort/defend friendly is; here it's the only
 // thing to select and lock onto while lit.
+// SPEC 3.76: a random opening facing, excluding a shadowOpeningAvoidDeg
+// arc straddling BOTH straight toward the pilot (0) and straight away
+// (180) — the ship spawns dead ahead of the pilot (pos below), so those
+// two headings are the ones that let a stationary W-hold either meet it
+// head-on or never have to react at all. t.facing's own convention
+// (fwd = sin/cos, matching updateShadow) puts 0 toward +Z — the pilot's
+// own origin, since the shadow spawns at -shadowSpawnDist.
+function shadowOpeningFacingRad() {
+    var avoid = CFG.shadowOpeningAvoidDeg;
+    var zoneLen = 180 - 2 * avoid;               // width of each safe arc
+    var pick = Math.random() * (2 * zoneLen);
+    var deg = pick < zoneLen ? (avoid + pick) : (180 + avoid + (pick - zoneLen));
+    return deg * Math.PI / 180;
+}
 function makeShadowRoster() {
     var t = {
         name: 'Silent Ship', kind: 'shadow', hp: 1, maxHp: 1, alive: true,
-        pos: v3(0, 0, -400), dark: false, facing: 0, vel: v3(0, 0, 0),
+        pos: v3(0, 0, -CFG.shadowSpawnDist), dark: false, facing: shadowOpeningFacingRad(), vel: v3(0, 0, 0),
         // SPEC 3.73: starts as a zero-length DARK phase so the very first
         // updateShadow() call (once t.nodes exists — buildVoice runs
         // right after this in newGame()) immediately transitions into a
         // real thrust leg and starts its own audio, rather than special-
         // casing "the very first thrust" separately from every later one.
-        phase: 'dark', phaseElapsed: 0, phaseLen: 0, turnRate: 0, thrustNodes: null,
+        // SPEC 3.76: firstThrust makes THAT one transition use the
+        // longest tier's own length/recording regardless of difficulty —
+        // "the ship needs to almost immediately go off" is a departure
+        // every pilot hears the same way, not just Rookie's own.
+        phase: 'dark', phaseElapsed: 0, phaseLen: 0, turnRate: 0, thrustNodes: null, firstThrust: true,
         voice: { type: 'sawtooth', freq: 55, trem: 3 },
         shipAsset: { name: 'ship_cruiser_1', rate: 0.8 }
     };
@@ -1712,8 +1747,12 @@ function finishShadow() {
 }
 // SPEC 3.73: the manifest key is named for the tier length it plays for —
 // Rookie/Veteran/Ace read CFG.shadowThrustTiers[tierIdx] (10/7/4), which is
-// exactly the number in the key.
-function shadowThrustKey() { return 'shadow_thruster_' + CFG.shadowThrustTiers[tierIdx]; }
+// exactly the number in the key. SPEC 3.76: the very first thrust always
+// uses tier 0 (Rookie's own 10s) regardless of the live tierIdx, so the
+// opening departure sounds and lasts the same for everyone.
+function shadowThrustKey(tierOverrideIdx) {
+    return 'shadow_thruster_' + CFG.shadowThrustTiers[tierOverrideIdx !== undefined ? tierOverrideIdx : tierIdx];
+}
 // Plays the thrust leg's own recording through the shadow's EXISTING
 // engine panner (t.nodes.panner) — no separate position tracking needed,
 // it rides the same node updateShadow already moves every frame. Faded
@@ -1722,10 +1761,10 @@ function shadowThrustKey() { return 'shadow_thruster_' + CFG.shadowThrustTiers[t
 // claims — see SPEC.md 3.73), then hard-stopped just after. A retry/leave
 // before either fires is handled by stopVoice() below cancelling both
 // timers, not by this function.
-function startShadowThrust(t, durS) {
+function startShadowThrust(t, durS, tierOverrideIdx) {
     if (t.thrustNodes) stopShadowThrust(t);
     if (!SIM.audio.ctx || !t.nodes) return;
-    var key = shadowThrustKey();
+    var key = shadowThrustKey(tierOverrideIdx);
     var buf = SIM.audio.assetBufs[key];
     if (!buf) { SIM.audio.load(key); return; }
     var A = SIM.audio;
@@ -1776,9 +1815,14 @@ function updateShadow(dt) {
             if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, 0.0001, 1.5);
         } else {
             t.phase = 'thrust'; t.dark = false; t.phaseElapsed = 0; t.turnRate = 0;
-            t.phaseLen = CFG.shadowThrustTiers[tierIdx];
+            // SPEC 3.76: the first thrust always runs tier 0's own length
+            // (10s), whatever the live difficulty — a real departure every
+            // pilot hears the same way.
+            var tierForThisLeg = t.firstThrust ? 0 : tierIdx;
+            t.phaseLen = CFG.shadowThrustTiers[tierForThisLeg];
             if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, CFG.shadowGain * CFG.targetGain, 1.5);
-            startShadowThrust(t, t.phaseLen);
+            startShadowThrust(t, t.phaseLen, tierForThisLeg);
+            t.firstThrust = false;
         }
     }
 
@@ -2771,6 +2815,7 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'The shadow', items: [
         'One ship flies ahead of you, thrusting in bursts. Tab finds it, T reports it, and the lock tone and tick work on it exactly like any other target — while it is thrusting.',
+        'The moment it appears it thrusts off at an angle, never straight at you and never straight away, for a long first burn — hammering W from the start catches nothing. It never outruns your own top speed, so a straight chase always closes; a blink forward helps if you lose it.',
         'The instant its engine cuts, the lock drops and the tick goes silent — no bearing updates at all until it thrusts again. It coasts on whatever heading it already had, but its NOSE turns while dark, so the next thrust can head somewhere new. Fly on the last bearing you had; R still reports range with closing or opening either way.',
         function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
         function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
