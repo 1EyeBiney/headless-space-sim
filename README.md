@@ -244,6 +244,16 @@ a separate target nearby that drifts slowly, so it's rarely exactly
 where the pulsar points. Tab cycles between them. Reach the exit and
 the run reports the time and your hull remaining.
 
+## The gate run
+
+One Jump Gate sits ahead, sweeping its own lighthouse beam in the same
+slow, steady rhythm the real quadrant gate has always had. H only
+works while that beam is actually pointing at you — too far from the
+gate and it refuses by name; close enough but the wrong moment and it
+names how long until the beam swings back around instead. A clean H
+on time jumps and ends the run, reporting the time and how many passes
+were wasted getting there.
+
 ## Capital ship
 
 A large ship slowly orbits and turns to face you, carrying four turrets.

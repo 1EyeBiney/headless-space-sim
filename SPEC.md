@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE** → 3.64 the gate run, next →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → 3.59b (numpad 3×3, optional) or 3.42 escort in formation, next →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6793,7 +6793,7 @@ the cloud radius, the ablation rate, the alert thresholds, the exit's
 own drift speed — is a placeholder for Brian's ear. Not yet heard or
 flown by Brian.
 
-#### 3.64 The gate run — proposed (Fable)
+#### 3.64 The gate run — DONE
 
 - The Jump Gate's cone already sweeps every `gateSweepS` (L.9, 3.31).
   Rule: you can only jump while inside the beam. Fly to it, time the
@@ -6803,6 +6803,64 @@ flown by Brian.
   ("Beam passes in 6 seconds."). Score: time, and passes wasted.
 - Test: H outside the beam refuses naming the wait; H inside jumps; the
   wasted-pass count is spoken at the end.
+
+**DONE (Round 55, Sonnet).** A new mode, `'gaterun'`, reached from the
+Encounters list (a menu drill, no station). `makeGateRunRoster()`
+spawns one `kind: 'poi', poiType: 'gate'` target, wired through the
+SAME `beaconAsset` (`space_station6`, the real quadrant gate's own
+recording) and reusing `buildPoiVoice`'s existing gate-specific branch
+(the directional cone, `t.gatePhase` initialized to 0) completely
+unchanged — the sweep itself needed zero new code, since
+`updateTargeting`'s own per-frame `t.gatePhase` advance (built for
+SPEC 3.31/L.9's audio cone) already runs for any `poiType: 'gate'`
+target regardless of mode. The only new code is the RULE: H, while
+`mode === 'gaterun'`, is intercepted ahead of the normal `startWarp()`
+call (`gateRunKey()`) and computes the signed angular difference
+between the beam's live phase and the ship's own bearing from the gate
+(`gateBearingDeg`/`gateBeamDiffDeg`, plain trig off the exact same
+sin/cos convention `t.gatePhase`'s own orientation write already
+uses) — inside `CFG.gateRunBeamHalfAngle` (15°, deliberately tighter
+than the audio cone's own wide `gateConeInner` 60°, which is about
+loudness, not timing) passes; outside it refuses and speaks how many
+seconds until the beam sweeps back around, computed from the SAME
+diff (folded onto the forward, always-positive direction the beam
+actually sweeps). Being too far from the gate at all refuses by name
+first, before the timing check ever runs. **One real bug found and
+fixed in testing**: the first draft's H-intercept had no `over()`
+guard (every other action key in `onKeyDown` wraps its own handler in
+`if (!over())`, and this one was missed) — pressing H again after
+already winning ran the whole check again and called `finishGateRun()`
+a second time, silently pushing a duplicate entry onto
+`profile.gateRunRuns` for every extra press. Fixed to match the
+established convention exactly (`if (mode === 'gaterun') { if
+(!over()) gateRunKey(); } else startWarp();`). A genuine testing
+confusion along the way, worth remembering: after applying the fix, a
+follow-up test kept seeing the SAME "Through the gate..." text on every
+subsequent H press and was briefly misread as the bug persisting —
+it wasn't; a fixed key press that does nothing leaves the aria-live
+div showing whatever it last said, which is unchanged text, not a
+repeat announcement. Confirmed the fix genuinely works by planting a
+distinct marker string in the div immediately beforehand and observing
+it survive an H press untouched, with `profile.gateRunRuns.length`
+also unchanged — the real, decisive test, not just "the words look the
+same as before." Machine-tested at a local server, entirely through
+real `__sim.step()` time (no mocks): the "too far" refusal by name;
+a repeated wrong-time H counting down cleanly second by second
+("Beam passes in 6/5/4/3/2/1 seconds" as the ship sat still and the
+beam swept toward it); a correctly-timed H finishing the run with the
+real wasted-pass count and a genuine `profile.gateRunRuns` entry
+written to `localStorage`, including a correct personal-best
+comparison on a repeat run; Enter rebuilding a fresh gate and
+confirming the intro line spoken immediately (no real-time gap for a
+lock chime to race it); X returning to the mission menu; F1 confirmed
+a "The gate run" heading in the correct position among 16 total
+headings. Zero console errors throughout, reconfirmed on a genuinely
+fresh tab. This completes Phase 3E's own build order in full (3.56
+through 3.64, all DONE) — deliberately NOT built alongside it: 3.59b
+(the numpad 3×3 turret variant), specced from the start as a later
+comparison pass, never a prerequisite. Every number — the approach
+distance, the beam's own timing tolerance — is a placeholder for
+Brian's ear. Not yet heard or flown by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 

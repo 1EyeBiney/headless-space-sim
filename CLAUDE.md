@@ -3741,3 +3741,44 @@ prompts), explicitly specced as later lettered sub-items. Every number
 is a placeholder for Brian's ear. Not yet heard or flown by Brian. This
 closes SPEC 3.63 — next per the build order is 3.64 (the gate run),
 unless Brian wants to fly/hear what's shipped first.
+
+**Round 55 (Sonnet, 2026-09-09): built SPEC 3.64, the gate run —
+completing Phase 3E in full.** A new mode, `'gaterun'`, reached from
+the Encounters list. One `poiType: 'gate'` target, reusing the EXISTING
+sweep (`updateTargeting`'s own `t.gatePhase` advance, built for SPEC
+3.31's audio cone) with zero new sweep code — the only new code is the
+RULE: H is intercepted (`gateRunKey()`) and computes the signed angle
+between the beam's live phase and the ship's own bearing from the
+gate, using the exact same sin/cos convention the sweep's own
+orientation write already uses. Inside `CFG.gateRunBeamHalfAngle`
+(15°, tighter than the audio cone's own 60° "loud" cone) passes;
+outside it, refuses and names the wait until the beam swings back
+around. **One real bug found and fixed**: the first draft's H-
+intercept had no `over()` guard — every other action key in `onKeyDown`
+wraps its handler in `if (!over())`, and this one was missed — so
+pressing H again after already winning ran the check again and pushed
+a duplicate entry onto `profile.gateRunRuns` every extra press. Fixed
+to match the established convention. A genuine testing confusion along
+the way: after the fix, a follow-up test kept seeing the SAME "Through
+the gate..." text on every subsequent press and looked like the bug
+persisting — it wasn't; a no-op key press leaves the aria-live div
+showing whatever it last said. Confirmed the real fix by planting a
+distinct marker string in the div before an H press and watching it
+survive untouched, with the run count also unchanged — the decisive
+test, not "the words look the same." Machine-tested at a local server
+entirely through real `__sim.step()` time: the "too far" refusal by
+name, a wrong-time H counting down cleanly second by second as the
+beam swept toward the ship, a correctly-timed H finishing the run with
+a real `profile.gateRunRuns` entry and personal-best comparison, Enter
+rebuilding fresh and speaking the intro immediately, X returning to
+the menu, F1 confirming a "The gate run" heading in the right position
+among 16 headings. Zero console errors, reconfirmed on a fresh tab.
+This closes Phase 3E's own build order in full (3.56 through 3.64, all
+DONE) — deliberately not built alongside it: 3.59b (the numpad 3×3
+turret variant, specced from the start as a later comparison pass,
+never a prerequisite). Every number is a placeholder for Brian's ear.
+Not yet heard or flown by Brian. Next per the build order: either 3.59b
+or 3.42 (escort in formation — still waiting on Brian having actually
+flown auto-target), then quadrant 2 as ordered — nothing past what
+Brian has explicitly asked for should be started without further word
+from him, per the standing rule.
