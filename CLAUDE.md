@@ -4378,3 +4378,64 @@ for Brian's ear; the beacon-any-order rule and the continuous voice
 are his own asks, not placeholders. Not yet heard or flown by Brian.
 This closes every item in ideas17.txt except one — next: 3.77
 (reaction mass as the economy), the last item before quadrant 2.
+
+**Round 64 (Sonnet, 2026-09-09): built SPEC 3.77, reaction mass as the
+economy — closing ideas17.txt in full.** Brian: "we will have to
+consider using reaction mass for more than just thrusters and
+shields... to force capacity upgrades and maybe other effects." A
+single shared gate, `rcsGateRefuse(amount)`, does the whole job:
+refuses outright with the offline buzz — never a silent nothing — on
+battery power (where `spendRcs()`'s own existing no-op would
+otherwise have let the action through for free, which is exactly the
+hole this closes) or when the tank can't cover the cost; every call
+site just reads `if (rcsGateRefuse(N)) return;` right before
+committing. Wired into `shieldKey()` (`rcsShieldRaise` 5, on the raise
+only), `fireMissile()` (`rcsMissile` 3, checked after the ammo/lock
+checks so a genuinely out-of-lock shot doesn't get an rcs refusal
+instead of the real reason it failed), `fireChaff()` (`rcsDecoy` 2),
+and `autoTargetKey()` (`rcsAutoTarget` 6, spent alongside the existing
+charge pool, never instead of it). `blinkKey()` (3.68) had never
+checked `rcsBattery` at all — a blink on an empty tank quietly worked
+for free before this round; it now runs through the identical gate.
+Two tiered `MODULES` entries in the repair crew's own shape:
+`rcs_tank_1` (`rcsMax` 100→150) and `rcs_tank_2` (→200, requiring the
+first) — `rcsMax` was already read live everywhere, so no new
+plumbing was needed beyond the entries themselves. F2's Reaction mass
+heading now names the tank size, not just the percent, and its second
+line names the five things battery power refuses outright.
+`runBudget()` gained a `'combat'` scenario — a genuinely different
+SHAPE from the delivery run's own legs-and-clears model, since a fight
+has no legs — reading Fable's own worked example (two shield raises,
+four missiles, two decoys, one auto-target, "a minute of thrust")
+with "a minute of thrust" read as the FIGHT's own length rather than
+60 continuous seconds of held W (which would drain the tank on thrust
+alone before any action ran); the named assumption is 20 of those 60
+seconds actually spent thrusting. Computed straight from CFG rather
+than reverse-tuned to a target, it landed at 42% on a stock tank and
+71% on `rcs_tank_2` — close to Fable's own "near 40%"/"near 70%"
+language without forcing it. Machine-tested at a local server in real
+gameplay (no mocks, per this project's own standing lesson about
+sim state advancing between tool round-trips): a live Combat drill
+measured the shield raise costing exactly 5, the decoy exactly 2, and
+a genuinely locked missile exactly 3, each via direct before/after
+`state().rcs` reads; auto-target measured costing exactly 6 alongside
+its own charge count dropping by one; a tank poked to 4 correctly
+refused shields and auto-target with the charge untouched; a tank at
+full charge but `rcsBattery: true` correctly refused all FIVE actions
+outright with the charge exactly unchanged afterward — direct proof
+none of them slip through for free on battery any more; a real
+station visit bought `rcs_tank_1`, measured `CFG.rcsMax` jump from 100
+to 150 immediately, and confirmed F2 reading the new size in the same
+session, no reload needed. Zero console errors throughout. Every cost
+number is a placeholder for Brian's own ear to balance — his text says
+so directly; the battery-refuses-outright rule and the two tank tiers
+are his own asks. Not yet heard or flown by Brian.
+
+**ideas17.txt is now fully built — 3.75 through 3.80, all six items
+DONE (Rounds 59–64).** Per the standing build order, next is quadrant
+2: 3.18 (containers and hydrogen) → 3.14 (the cargo limit) → 3.22 (the
+gate and quadrant 2's skeleton) → 3.11 (ports and F4) → onward. Per
+the standing rule, nothing past what Brian has explicitly asked for
+should be started without further word from him — quadrant 2 is a
+large new track, not a small follow-on item, and waits for his own
+go-ahead.

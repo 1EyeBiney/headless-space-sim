@@ -96,6 +96,17 @@ var CFG_DEFAULTS = {
     rcsPerDustUnit: 0.002,        // per unit of dust collected (about 2 per 1,000 dust)
     rcsMission: 25,               // escort/defend/the timed contract, on success
     rcsCreditPerUnit: 1,          // hail-range purchase price
+    // SPEC 3.77 (ideas17.txt): "we will have to consider using reaction
+    // mass for more than just thrusters and shields... to force capacity
+    // upgrades." Shields/missiles/decoys/auto-target never drew on the
+    // tank before this — first-draft costs, Brian's to balance by ear;
+    // each refuses by name (the offline buzz, never a silent nothing)
+    // when the tank can't cover it, and refuses outright on battery
+    // power rather than spending nothing and doing something anyway.
+    rcsShieldRaise: 5,            // shieldKey, on the raise only — holding costs nothing, the pool is its own cost
+    rcsMissile: 3,                // fireMissile, per launch
+    rcsDecoy: 2,                  // fireChaff, per decoy
+    rcsAutoTarget: 6,             // autoTargetKey, per use — alongside the 3 charges (3.38), not instead of them
     alloyPerIronCore: 1,          // SPEC 2.15: an iron core's other yield
     salvageCredit: 30,            // sell price per unit at the landing menu
     alloyCredit: 20,
@@ -1357,7 +1368,19 @@ var MODULES = [
       cfg: { stationTransporterRange: 900 } },
     { id: 'docking_computer', name: 'docking computer', cost: 450, mass: 10,
       desc: 'Doubles the range at which a station will dock you.',
-      cfg: { stationDockRange: 300 } }
+      cfg: { stationDockRange: 300 } },
+    // SPEC 3.77 (ideas17.txt): "force capacity upgrades" — Brian's own
+    // want, once reaction mass started paying for more than thrusters.
+    // Tiered like the repair crew, alloy-costing, the second requiring
+    // the first; rcsMax is already read live everywhere (rcsPct,
+    // refillRcs, the hail's Buy line), so this is moduleCfgOverlay() with
+    // no new plumbing.
+    { id: 'rcs_tank_1', name: 'reaction mass tank', cost: 400, mass: 8, alloy: 2,
+      desc: 'Half again the reaction mass tank, 100 to 150.',
+      cfg: { rcsMax: 150 } },
+    { id: 'rcs_tank_2', name: 'reaction mass tank II', cost: 600, mass: 10, alloy: 3, requires: 'rcs_tank_1',
+      desc: 'Twice the stock tank, 100 to 200.',
+      cfg: { rcsMax: 200 } }
 ];
 
 function moduleById(id) {
@@ -1401,6 +1424,26 @@ function spendRcs(amount) {
         SIM.cues.play('refusal_wait');
         say('Reaction mass empty. Battery power.');
     }
+}
+
+// SPEC 3.77: the shared gate for shields/missiles/decoys/auto-target/
+// blink — refuses outright on battery power (spendRcs's own silent
+// no-op would otherwise let the action through for free) or when the
+// tank can't cover the cost, always with the offline buzz, never a
+// silent nothing. Returns true if refused; the caller's own return
+// follows immediately, same shape as every other refusal check here.
+function rcsGateRefuse(amount) {
+    if (rcsBattery) {
+        SIM.cues.play('refusal_offline');
+        say('Reaction mass on battery power.');
+        return true;
+    }
+    if (rcs < amount) {
+        SIM.cues.play('refusal_offline');
+        say('Reaction mass too low.');
+        return true;
+    }
+    return false;
 }
 
 // Free refill (station landing) or a purchased amount (hail range) — either
@@ -2795,7 +2838,7 @@ var HELP_SECTIONS = [
         'Targets behind you sound muffled, as if behind the hull.',
         'Shift Z cycles the target zone size: wide, standard, or narrow. Wide is for learning, narrow for aces.',
         'Z is a quick status cycle: one line a press — hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, any broken systems, and auto-target charges if fitted — skipping anything already at full health. Press again within a few seconds to move to the next one; wait longer and it starts back at hull.',
-        function () { return 'Shift T hands the stabilizers your selected target — they aim the ship at it for you, worst case ' + CFG.autoTargetWorstTiers[CFG.autoTargetWorstTiers.length - 1] + ' seconds at the fastest tier, then hold on it ' + CFG.autoTargetHoldS + ' seconds, tracking a moving target so the lock actually lands. Never fires, never damages. Any arrow key mid-slew cancels it — you always win. Not standard gear, and from a limited pool of ' + CFG.autoTargetCharges + ' a sortie.'; }
+        function () { return 'Shift T hands the stabilizers your selected target — they aim the ship at it for you, worst case ' + CFG.autoTargetWorstTiers[CFG.autoTargetWorstTiers.length - 1] + ' seconds at the fastest tier, then hold on it ' + CFG.autoTargetHoldS + ' seconds, tracking a moving target so the lock actually lands. Never fires, never damages. Any arrow key mid-slew cancels it — you always win. Not standard gear, from a limited pool of ' + CFG.autoTargetCharges + ' a sortie, and costs ' + CFG.rcsAutoTarget + ' reaction mass on top of the charge — refused outright on battery power.'; }
     ] },
     { heading: 'Weapons', items: [
         'Your ship has six laser slots. Keys 1 through 6 select a slot and speak what is fitted there; Space fires the selected laser. You start with mining laser one in slot 1 and mining laser two in slot 2; the rest are empty until the station sells more.',
@@ -2810,7 +2853,7 @@ var HELP_SECTIONS = [
         'The laser bites harder up close: at point-blank range every tick does up to ' + Math.round((CFG.laserCloseMult - 1) * 100) + ' percent more. Closing in is worth it, but it shortens your warning time when the enemy fires back.',
         'Two bursts in a row that do no damage overheat the laser. It hisses and pings while it cools for ' + (CFG.laserOverheatMs / 1000) + ' seconds, and a chime tells you it is ready again.',
         'Targets have different hull strengths. T and I report hull percent, and weak spots die to a single good burn.',
-        function () { return 'F fires a homing missile for ' + CFG.missileDamage + ' damage. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.'; },
+        function () { return 'F fires a homing missile for ' + CFG.missileDamage + ' damage, and costs ' + CFG.rcsMissile + ' reaction mass — refused on battery power. You carry ' + CFG.missileMax + ', and only Station Meridian rearms you, so make them count.'; },
         'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
         'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
         'Weapon and tool keys sit under the left hand — 1 to 6, Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
@@ -2822,11 +2865,11 @@ var HELP_SECTIONS = [
         'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
         'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
         'Some ships carry a cannon instead of a beam: a steady rattle at their own position with no warning chirps, loud and biting only while they are actually turned to face you, fading to a fraction off to the side and falling silent once you are clear of their nose. Every hostile ship\'s own engine gets a little brighter as it turns toward you, ahead of any attack — that turn is the tell.',
-        function () { return 'G raises the shields. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.'; },
+        function () { return 'G raises the shields, costing ' + CFG.rcsShieldRaise + ' reaction mass on the raise only — holding them up costs nothing more. Refused on battery power. They take ' + (CFG.shieldRaiseMs / 1000) + ' seconds to come up, with a rising sweep, then settle into a steady hum. Every hit that lands on them splashes instead of hurting.'; },
         'Get the shields up two seconds into a five-second beam and only two bites land. That is the whole game: attack, hear the warning, shield, drop, attack again.',
         'While the shields are up no weapons fire, your own missile in flight loses guidance, and so does any missile coming at you.',
         'An incoming missile that loses guidance still coasts straight for a moment. It splashes on the shield if you keep it up, and hurts if you drop it too soon.',
-        function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It goes ballistic at once and coasts, no shield needed, so your weapons stay live — a moment later you hear it pop clear. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
+        function () { return 'D fires a decoy: a burst that spoofs the missile coming at you right now. It goes ballistic at once and coasts, no shield needed, so your weapons stay live — a moment later you hear it pop clear. Decoys do nothing against a laser beam. You carry ' + CFG.chaffMax + ', the station restocks them, and a press with nothing inbound still spends one plus ' + CFG.rcsDecoy + ' reaction mass — refused on battery power. At Veteran and Ace, a spoofed missile brings the next attack fast.'; },
         'Shields hold as long as you want them up, but every hit they absorb drains them, and you hear "Shields failing" once they drop under a quarter. Drain them to nothing and they go into disrepair for a stretch, repaired by a damage-control crew you can hear working, and come back at half strength.',
         'G again drops them on your own terms, before they fail, and whatever charge is left keeps recovering while they are down. A depleted shield cannot be raised again until the disrepair crew finishes and a chime tells you.',
         function () { return 'A missile that actually lands on your hull — never a beam, never one your shields caught — can knock a subsystem offline: a laser slot, missiles, decoys, shields, the warp engine, thrust, the targeting sensor, or the cargo hold. A repair crew works the worst one automatically, one at a time, and I, F2, and Z all name what is broken and how far along the fix is.'; },
@@ -3831,7 +3874,9 @@ function autoTargetKey() {
         say('No auto-target charges. The station refills them.');
         return;
     }
+    if (rcsGateRefuse(CFG.rcsAutoTarget)) return;   // SPEC 3.77: alongside the charges, not instead of them
     autoTargetCharges--;
+    spendRcs(CFG.rcsAutoTarget);
     autoTarget = { holding: false, holdRemaining: CFG.autoTargetHoldS };
     autoTargetHum(true);
     say('Auto-target engaged, ' + autoTargetCharges + ' left.');
@@ -4721,6 +4766,7 @@ function fireMissile() {
         say('No missiles left.' + (sectorHome ? ' Station Meridian rearms.' : ''));
         return;
     }
+    if (rcsGateRefuse(CFG.rcsMissile)) return;   // SPEC 3.77
     var t = targets[selected];
     if (!t || !t.alive) { say('No target selected.'); return; }
     if (t.kind === 'dust') { say('Missiles cannot lock onto dust. V vacuums it up.'); return; }
@@ -4746,6 +4792,7 @@ function fireMissile() {
         guided: true, outCone: 0, coast: 0
     };
     missiles--;
+    spendRcs(CFG.rcsMissile);   // SPEC 3.77
     if (SIM.audio.ctx) {
         var g = SIM.audio.ctx.createGain(); g.gain.value = 0.22;
         var p = SIM.audio.makePanner(m.pos);
@@ -5272,7 +5319,9 @@ function fireChaff() {
         say('No decoys left.' + (sectorHome ? ' Station Meridian restocks.' : ''));
         return;
     }
+    if (rcsGateRefuse(CFG.rcsDecoy)) return;   // SPEC 3.77
     chaff--;
+    spendRcs(CFG.rcsDecoy);
     // SPEC 3.27: a half-broken decoy system has a coin-flip chance to
     // fizzle — spent, no cue, no effect on any inbound threat.
     if (systemState('decoys') === 'half' && Math.random() < CFG.repairChaffFizzlePct) {
@@ -5579,9 +5628,11 @@ function shieldKey() {
         say('Laser burst in progress, ' + Math.ceil(beamSecondsLeft()) + ' seconds. Shields after.');
         return;
     }
+    if (rcsGateRefuse(CFG.rcsShieldRaise)) return;   // SPEC 3.77: on the raise only — holding is free
     shield.raising = 0;
     shield.warnedLow = false;
     stopBeam(true);                                // an E/V tool yields to the shield
+    spendRcs(CFG.rcsShieldRaise);
     var secs = CFG.shieldRaiseMs / 1000;
     SIM.cues.play('shield_raise', { dur: secs });
     say('Raising shields.');
@@ -7598,9 +7649,9 @@ function buildShipLines() {
     line('Reaches ' + Math.round(warpEffectiveCharge()) + ' at this charge.');
 
     heading('Reaction mass');
-    line(Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + '.');
+    line(Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery power' : '') + ' of a ' + CFG.rcsMax + '-unit tank.');
     line('Battery power holds thrust, braking, and the stabilizers to ' +
-         Math.round(CFG.rcsBatteryFactor * 100) + ' percent.');
+         Math.round(CFG.rcsBatteryFactor * 100) + ' percent, and refuses shields, missiles, decoys, auto-target, and blink outright.');
 
     heading('Thrusters');
     line('Thrust ' + CFG.thrust + ', brake ' + CFG.brakeThrust + ', turn rate ' +
@@ -9380,6 +9431,7 @@ function blinkKey(dir) {
         say('Blink recharging, ' + Math.ceil((blinkReadyAt - Date.now()) / 1000) + ' seconds.');
         return;
     }
+    if (rcsGateRefuse(CFG.blinkRcs)) return;   // SPEC 3.77
     var fromPos = v3(ship.pos.x, ship.pos.y, ship.pos.z);
     var toPos = add(ship.pos, scale(blinkOffset(dir), CFG.blinkDist));
     // Never a free hull hit: a blink that would land inside a station's or
@@ -10529,7 +10581,28 @@ window.__sim = {
     // no-warp zone, a clean approach; 'sloppy' adds a second field (a
     // rock kicked out), a lost fight's own extra maneuvering, and one
     // fewer clean kill.
+    // SPEC 3.77: a 'combat' scenario — every action in the encounter now
+    // draws on the tank, not just thrust, so the same rough-estimate idea
+    // needs a fight-shaped model instead of the delivery run's own
+    // legs-and-clears one. "A Combat training run fought normally — two
+    // shield raises, four missiles, two decoys, one auto-target, a
+    // minute of thrust" (Fable's own worked example) reads the actions
+    // literally and "a minute of thrust" as the FIGHT's own length, not
+    // 60 continuous seconds of held W (which would drain the tank on
+    // thrust alone, before any action) — thrustSeconds below is the
+    // named assumption for how much of that minute is actually spent
+    // thrusting, the rest maneuvering by coast/stabilizer between shots.
     runBudget: function (scenario) {
+        if (scenario === 'combat') {
+            var actionsRcs = 2 * CFG.rcsShieldRaise + 4 * CFG.rcsMissile + 2 * CFG.rcsDecoy + 1 * CFG.rcsAutoTarget;
+            var thrustSeconds = 20;   // roughly a third of the minute actually under thrust
+            var thrustRcs = thrustSeconds * CFG.rcsThrustPerS + thrustSeconds * CFG.rcsPerSpeedShed * 15;
+            var spentC = actionsRcs + thrustRcs;
+            var balanceC = clamp(CFG.rcsMax - spentC, 0, CFG.rcsMax);
+            return { scenario: 'combat', actionsRcs: actionsRcs, thrustRcs: Math.round(thrustRcs * 10) / 10,
+                     spent: Math.round(spentC * 10) / 10, balance: Math.round(balanceC * 10) / 10,
+                     pct: Math.round(balanceC / CFG.rcsMax * 100), onBattery: balanceC <= 0 };
+        }
         scenario = scenario || 'clean';
         var kills = scenario === 'sloppy' ? 4 : 5;           // one lost in a sloppy fight
         var killRcs = kills * (RCS_PER_KILL.corvette || 0);   // the Contested Zone's own mixed roster, corvette-average

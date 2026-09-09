@@ -154,10 +154,17 @@ F3 your hold.
 Thrust and braking both draw on a reaction mass tank, and so do the
 automatic stabilizers that quietly cancel your drift whenever you coast —
 run it dry and everything gets weaker, never dead. Landing fills it
-free; a hail can buy more. Braking is a real reverse thruster now, about
+free; a hail can buy more; two shipyard tanks (100 to 150, then to
+200) raise the max. Braking is a real reverse thruster now, about
 half the push of forward thrust, so slowing down for a landing takes
 real distance — and hitting a station or a planet too fast costs hull
 that isn't free to fix; the bill comes due at your next landing.
+
+Shields, missiles, decoys, auto-target, and blink all draw on the
+same tank now — a fixed cost per use, refused outright once you're
+running on battery power rather than spent for nothing. Thrust,
+braking, and the stabilizers alone still just weaken on battery,
+never refuse.
 
 The warp drive has a tank, measured in distance, and a jump spends it —
 you need at least a quarter tank to jump at all. A jump longer than the
@@ -287,12 +294,12 @@ Right hand on the arrows, left hand on everything else.
 | F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (one block per fitted slot: level, damage, matchups, health — left and right cycle that slot's level within what you own, and the block re-reads with the new numbers), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, tractor beam, sensor, repair crew, broken systems, cargo, modules, station access (your comm/transporter/docking ranges). H jumps between headings, a letter jumps to one, arrows read line by line |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
 | Space | Fire the selected laser. Five ticks over five seconds, fire-and-forget — it can't be stopped once it starts. Harder up close. Two empty bursts overheat it |
-| F | Homing missile. Keep the target inside your missile zone for the whole flight |
-| D | Decoy. A burst that spoofs the missile coming at you, sending it ballistic at once — no shield needed, and a moment later you hear it pop clear. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
-| G | Shields. Take a moment to raise, block enemy fire, weapons offline while up |
+| F | Homing missile, 3 reaction mass a launch. Keep the target inside your missile zone for the whole flight |
+| D | Decoy, 2 reaction mass. A burst that spoofs the missile coming at you, sending it ballistic at once — no shield needed, and a moment later you hear it pop clear. Four per sortie, restocked at the station; a press with nothing inbound still spends one |
+| G | Shields, 5 reaction mass to raise (holding costs nothing more). Take a moment to raise, block enemy fire, weapons offline while up |
 | B | Tractor beam (mining), tiered like the lasers: pulls the selected rock or core toward you instead of flying to it — B again releases it. A higher tier pulls faster, reaches further, and costs less reaction mass. Firing a laser, the extractor, or the vacuum cuts it off |
 | Tab / T | Cycle targets / report the selected target. Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
-| Shift+T | Auto-target: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. A limited pool, not something you start with |
+| Shift+T | Auto-target, 6 reaction mass a use on top of its own limited charge pool: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. Not something you start with |
 | R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
 | E / V | Ore extractor / dust vacuum (mining) |
 | Z | Quick status: one line a press — hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, any broken systems, auto-target charges if fitted — skipping anything at full health. Press again within a few seconds to continue, or it restarts at hull |

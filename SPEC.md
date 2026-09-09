@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -7794,7 +7794,7 @@ rule are behavior he specifically asked for, not placeholders. Not yet
 heard or flown by Brian. Next per the ideas17.txt build order: 3.75
 (the minefield second pass), then 3.77 (reaction mass as the economy).
 
-#### 3.77 Reaction mass is the economy: every action draws it, tanks grow it (ideas17.txt) — DECIDED (Brian, 2026-09-09: "all of them, and we need to figure out how to balance them")
+#### 3.77 Reaction mass is the economy: every action draws it, tanks grow it (ideas17.txt) — DONE
 
 - Brian: "we will have to consider using reaction mass for more than
   just thrusters and shields and use it for blink and maybe other
@@ -7838,6 +7838,68 @@ heard or flown by Brian. Next per the ideas17.txt build order: 3.75
   a poked-low tank; on battery each refuses outright; the two modules
   raise `rcsMax` and F2 reads it; `runBudget('combat')` lands near the
   target above.
+
+**DONE (Round 64, Sonnet) — closes ideas17.txt.** A shared gate,
+`rcsGateRefuse(amount)`, is the whole mechanism: refuses outright
+(the offline buzz, never a silent nothing) on battery power — where
+`spendRcs()`'s own existing no-op would otherwise have let the action
+through for free — or when the tank can't cover the cost, returning
+true either way so each call site reads `if (rcsGateRefuse(N)) return;`
+right before committing. Wired into `shieldKey()` (`rcsShieldRaise` 5,
+on the raise only — dropping or holding costs nothing more, matching
+"the pool is its own cost"), `fireMissile()` (`rcsMissile` 3, checked
+after the ammo/lock checks so a genuinely out-of-lock shot never
+double-refuses on rcs first), `fireChaff()` (`rcsDecoy` 2), and
+`autoTargetKey()` (`rcsAutoTarget` 6, spent alongside the existing
+charge pool, never instead of it). `blinkKey()` (3.68) had never
+checked `rcsBattery` at all before this — a blink on an empty tank
+used to just work for free, since `spendRcs`'s own no-op silently
+absorbed the cost; it now runs through the same gate as everything
+else, closing that hole. Two tiered `MODULES` entries, the repair
+crew's own shape (alloy-costing, the second requiring the first):
+`rcs_tank_1` (`rcsMax` 100→150, 400cr+2 alloy) and `rcs_tank_2`
+(→200, 600cr+3 alloy) — `rcsMax` was already read live everywhere
+(`rcsPct`, `refillRcs`, the hail's Buy line), so this needed zero new
+plumbing beyond the module entries themselves. F2's Reaction mass
+heading now names the tank size ("67 percent of a 150-unit tank")
+rather than percent alone, and its second line names which five
+things battery power refuses outright. `runBudget()` gained a
+`'combat'` scenario, a different SHAPE from the delivery run's own
+legs-and-clears model since a fight has no legs to clear: it reads
+Fable's own worked example (two shield raises, four missiles, two
+decoys, one auto-target) literally, and interprets "a minute of
+thrust" as the fight's own length rather than 60 continuous seconds
+of held W (which drains the tank on thrust alone before any action
+even runs) — the named assumption is 20 of those 60 seconds actually
+spent thrusting, the rest coasting or maneuvering between shots.
+Computed from CFG rather than tuned to hit a number, it landed at 42%
+for a stock tank and 71% on `rcs_tank_2` — close to Fable's own "near
+40%"/"near 70%" targets without forcing them. Machine-tested at a
+local server in real gameplay (no mocks): a live Combat drill measured
+the shield raise costing exactly 5 (100→95), the decoy exactly 2, and
+a genuine locked-on missile exactly 3, each confirmed by direct
+before/after `state().rcs` reads; auto-target confirmed costing
+exactly 6 alongside its own charge count dropping by one; a tank
+poked to 4 (below the shield/auto-target costs, above the missile/
+decoy ones) correctly refused shields and auto-target by name with
+the charge untouched; a tank poked to 100 with `rcsBattery: true`
+correctly refused all FIVE actions (shields, missile, decoy,
+auto-target, blink) outright with the charge exactly unchanged
+afterward — the direct proof battery mode no longer lets any of them
+through for free; a real station visit bought `rcs_tank_1` for the
+stated price, measured `CFG.rcsMax` jumping from 100 to 150
+immediately, and confirmed F2 reading the new tank size in the same
+session with no reload. Zero console errors throughout. Every cost
+number is a placeholder for Brian's ear — his own text says so
+explicitly ("we need to figure out how to balance them"); the battery
+refusal rule and the two tank tiers are his own asks, not
+placeholders. Not yet heard or flown by Brian. **This closes
+ideas17.txt in full** — every item from 3.75 through 3.80 is DONE.
+Per the standing build order, next is quadrant 2: 3.18 (containers and
+hydrogen) → 3.14 (the cargo limit) → 3.22 (the gate and quadrant 2's
+skeleton) → 3.11 (ports and F4) → onward — but per the standing rule,
+nothing past what Brian has explicitly asked for should be started
+without further word from him.
 
 #### 3.78 Nebula transit — REMOVED (ideas17.txt, Brian, 2026-09-09) — DONE
 
