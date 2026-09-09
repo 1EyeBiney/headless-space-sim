@@ -7836,9 +7836,22 @@ biggest and touches the audio engine.
   `audio/music/celestial/` beside `fingerprints_of_God` — fifteen.
 - **KC's shape, copied** (`c:\nbs\kc\kc_bgm.js`, reviewed): a
   `MUSIC_STYLES` table of named playlists (one today, **Celestial**,
-  fifteen keys `celestial_01`–`celestial_15`; the fourteen files are
-  **renamed** to that convention, `fingerprints_of_God` becomes
-  `celestial_01` — Fable's default, flagged), a **grab-bag shuffle**
+  fifteen keys named exactly by the files' own stems **as Brian placed
+  and named them — never renamed again** (Brian, 2026-09-09):
+  `aurora_memories`, `chronos_halos`, `cosmic_drift`, `cryoVault_elegy`
+  (capital V, keep it), `dust_of_the_nebula`, `echos_in_the_comets_wake`,
+  `echos_of_andromeda` (his spelling, keep it),
+  `final_transmission_from_vega`, `fingerprints_of_God`,
+  `harmonic_singularity`, `hushed_by_gravity`, `midnight_on_europa`,
+  `tears_of_the_ion_sea`, `the_slow_collapse_of_light`, `vegers_vision`
+  — ~72 MB, staged explicitly, none preloaded — with a `MUSIC_TITLES`
+  table of spoken names beside it: "Aurora Memories", "Chronos Halos",
+  "Cosmic Drift", "CryoVault Elegy", "Dust of the Nebula", "Echoes in
+  the Comet's Wake", "Echoes of Andromeda", "Final Transmission from
+  Vega", "Fingerprints of God", "Harmonic Singularity", "Hushed by
+  Gravity", "Midnight on Europa", "Tears of the Ion Sea", "The Slow
+  Collapse of Light", "V'Ger's Vision" — so a file name is never what
+  the pilot hears), a **grab-bag shuffle**
   (every track once before any repeats), a **2-second crossfade**
   between tracks, next-on-ended, `profile.music = { on, style, idx }`
   saved on every change. **One deliberate difference**: KC streams
@@ -7855,9 +7868,11 @@ biggest and touches the audio engine.
   since a shifted `]` arrives as `}` — the same trap 3.24 fixed for
   Shift+digits. Live everywhere the sim takes keys: the menu, flight,
   every encounter, every overlay's pass-through list (the Y precedent,
-  3.51). Each answers: "Music on. [track name]." / "Music off." /
-  "[track name]." Track names are spoken from a `MUSIC_TITLES` table,
-  not the file names.
+  3.51). Each answers: "Music on. [title]." / "Music off." / "[title]."
+  **Every track start speaks its title** — a key press or the last
+  track ending alike (Brian asked; yes) — one `say()` from
+  `MUSIC_TITLES`, never the file name. Starts are minutes apart, so
+  this isn't a collision risk worth a timer.
 - **Where it plays**: everywhere the pilot has it on, encounters and
   combat included — it is their choice (Fable's default, flagged). It
   sits **over** the deep-space bed and the docked interior, not instead
@@ -7876,8 +7891,8 @@ biggest and touches the audio engine.
   menu's Music level scales the player; `?mute=1` silences it; the
   choice and track survive a reload; the bed and interior still play
   underneath; a docked/undock cycle and a mission start never stop it;
-  fifteen keys resolve to renamed files and none is in
-  `AUDIO_PRELOAD`.
+  fifteen keys resolve to the files as named on disk and none is in
+  `AUDIO_PRELOAD`; a track ending speaks the next one's title.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
@@ -9211,4 +9226,7 @@ tier; (2) gate audible range 3000; (3) A.13's three gates per corner
 stands; (4) music plays everywhere the pilot has it on, encounters
 included; (5) music defaults ON for a new pilot; (6) it replaces the
 menu-only track and sits over the deep-space bed, no ducking under
-speech; (7) the fifteen files renamed `celestial_01`–`15`.
+speech. (7), the rename, is **withdrawn** — Brian renamed them
+himself and said "do not rename the MP3s"; keys are the stems as they
+are, titles from `MUSIC_TITLES`. Brian also moved music to the **front**
+of the order and confirmed every new track announces its title.

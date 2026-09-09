@@ -4070,3 +4070,11 @@ music bus rather than decoded, `[` play/stop, `]` next, Shift+`]`
 previous, read from `e.code`. Build order 3.78 → 3.79 → 3.76 → 3.75 →
 3.77 → 3.80, then quadrant 2. Seven defaults flagged in Part C for
 Brian to overrule. Nothing built. Next: Sonnet builds 3.78.
+**Round 58, continued**: Brian wants **music built first** (3.80 now
+heads the ideas17 order), renamed the fifteen MP3s himself to lowercase
+stems (`cryoVault_elegy`'s capital V and `echos_` are his — keep them)
+and said not to rename further, and confirmed **every new track
+announces its title**, key press or auto-advance alike — all written
+into 3.80. ideas16.txt/ideas17.txt/todo.txt are no longer in the
+working tree. Next: Sonnet builds 3.80, then 3.78 → 3.79 → 3.76 → 3.75
+→ 3.77.
