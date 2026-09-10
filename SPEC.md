@@ -2272,7 +2272,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, DONE → 3.83 the capital ship's hatch sequence and big laser, DONE — ideas19.txt complete** → **ideas_hold / hold2 / hold3 (2026-09-10, docs): the third-pass cube (26 quadrants, Q1 home at the near face's centre, Q2 the right midpoint), four doctrines, trade goods, the planet grid — 3.84 dust traces buildable any time** → the quadrant-2 track (3.18 → 3.14 → 3.22 → 3.11 → 3.19 → 3.12 → 3.20 → 3.20b contracts → 3.23b the planet grid + F7; the doctrine pick and the shuttle line are Phase 4's first items) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, DONE → 3.83 the capital ship's hatch sequence and big laser, DONE — ideas19.txt complete** → **ideas_hold / hold2 / hold3 (2026-09-10, docs): the third-pass cube (26 quadrants, Q1 home at the near face's centre, Q2 the right midpoint), four doctrines, trade goods, the planet grid** → **Round 69 (Sonnet, unattended overnight, Brian's go-ahead): 3.84 dust traces DONE → 3.18 loot containers and hydrogen DONE → 3.14 cargo limit DONE, stopping there for a fresh session's full attention before 3.22's cube rework** → the quadrant-2 track (3.22 → 3.11 → 3.19 → 3.12 → 3.20 → 3.20b contracts → 3.23b the planet grid + F7; the doctrine pick and the shuttle line are Phase 4's first items) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -8816,7 +8816,7 @@ the shuffle order are not. Not yet heard by Brian.
   `Math.round(hull)`, matching every other hull line in the file that
   already did. Not yet heard or flown by Brian.
 
-#### 3.84 Traces in the dust (ideas_hold, 2026-09-10) — buildable any time
+#### 3.84 Traces in the dust (ideas_hold, 2026-09-10) — DONE (Round 69, Sonnet)
 
 - Brian: "make them be able to be part of asteroid mining, likely have
   them be vacuumed up as a component of the dust clouds that get
@@ -8834,6 +8834,44 @@ the shuffle order are not. Not yet heard by Brian.
   `resources.hydrogen` by the expected fraction and nothing else;
   iron raises alloy; stone raises neither; F3 reads the fractions
   rounded; the reaction-mass trickle is unchanged.
+- **DONE (Round 69, Sonnet, 2026-09-10, unattended overnight — Brian's
+  go-ahead the same night).** Built as specced, with the rates settled
+  on `hydrogen: 0.0005` (ice) and `alloy: 0.00025` (iron) rather than
+  the item's own placeholder `0.0003` — chosen so a full ~2,000-dust
+  cloud lands almost exactly on the worked examples (1.0 hydrogen, 0.5
+  alloy), confirmed by an isolated Node calculation before ever
+  touching the browser. `ROCK_TYPES[i].dustTrace` is read by
+  `addDebris(pos, amount, type)` (a new third param, threaded through
+  all four of its call sites — the laser tick, a missile impact, a
+  rock-stage blast, and `shatterCore` — each already had `t.type` in
+  scope) and stored on the dust field itself as `f.trace`; a field fed
+  by more than one rock type blends proportionally
+  (`traceMerge(f, amount, trace)`, an amount-weighted average, not just
+  whichever rock fed it last). `dustTick`'s own accumulate-and-flush
+  (`dustTraceAccum`, module-level, deliberately NOT part of `profile`)
+  only ever adds a WHOLE unit to `profile.resources.hydrogen`/`alloy`
+  once the fractional total crosses 1 — every other read site for
+  those two fields speaks them raw with no rounding (confirmed by
+  grep), so letting the fraction itself leak into the real resource
+  would have reproduced the exact "68.27777777777759" bug 3.83 just
+  fixed elsewhere in this same file. Machine-tested at a local server:
+  firing a real laser burst at a live Ice rock produced a dust field
+  reading `trace: {hydrogen: 0.0005}` exactly; vacuuming that field to
+  completion (636 units) landed the accumulator at exactly 0.318
+  (636 × 0.0005) with zero console errors. **A genuine environmental
+  wrinkle, not a game bug, worth recording for any future unattended
+  round**: with nobody watching, the Browser pane stays hidden even
+  when fronted, and Chrome's own background-tab timer throttling fully
+  stalls the game's `setTimeout`-driven beam-tick chain (the laser and
+  vacuum's real per-tick cadence) for short waits — a poll every few
+  seconds saw zero progress across 12+ seconds, but ONE continuous
+  ~45-second wait inside a single script call let the throttling clear
+  and the whole vacuum run to completion. Short, repeated real-time
+  polling is the wrong shape for this kind of unattended test; one long
+  wait in one call is what works. The isolated Node check (full ice/
+  iron/stone/mixed-field cases) and this one live confirmation together
+  cover the arithmetic; a second live pass wasn't repeated for alloy
+  given the math is identical. Not yet heard or flown by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
@@ -9107,7 +9145,7 @@ Brian.
   Planet Auren in the delivery run's sector keeps its placeholder hail —
   the run is untouched.
 
-#### 3.14 Cargo limit (A.12) — builds before 3.20, since hauling needs a hold
+#### 3.14 Cargo limit (A.12) — DONE (Round 69, Sonnet) — builds before 3.20, since hauling needs a hold
 
 - `CFG.cargoMax` 20,000 ore-equivalent; ore fills it 1:1, alloy 20 per
   unit, hydrogen 10 per unit, biomass 5 per unit; salvage is small and
@@ -9117,6 +9155,63 @@ Brian.
   shipyard.
 - The tug gains the experience lever only once experience exists (A.11,
   still deferred).
+- **DONE (Round 69, Sonnet, 2026-09-10, unattended overnight).** Built
+  as specced: `cargoUsed()` (ore + alloy×20 + hydrogen×10 — biomass
+  weighted in CFG but omitted from the sum since it isn't a real
+  resource yet) and `cargoRoom()` (the remainder, floored at 0) are the
+  whole mechanism, called from every place that needed to check or
+  report it rather than a single central gate — there wasn't one to
+  hook, since ore is gained from two genuinely different tools
+  (`vacTick`'s core extraction, `dustTick`'s dust vacuum) plus, as of
+  tonight's own earlier two items, alloy/hydrogen from dust traces
+  (3.84) and loot containers (3.18). Both `vacTick` and `dustTick` gained
+  an identical room check right before computing their own per-tick
+  pull amount — `Math.min(existing caps..., room)` — with a shared
+  refusal ("Hold full. Sell, or extract no more.") when room is
+  already 0, stopping the beam outright rather than pulling amount 0
+  and saying "0" forever. `collectLoot` (3.18) gained the same idea
+  shaped for a one-shot pickup: a container's hydrogen+alloy are
+  weighed TOGETHER, no partial collection of a mixed bundle — the
+  whole thing or nothing, container left in place either way so a
+  sale first and a return trip still works ("Hold full. Sell, or leave
+  it."). The corona's own hydrogen scoop and the dust-trace trickle
+  (3.84) were deliberately left UNCAPPED — both gains are small and
+  incidental (a few units a tick at most), matching the spec's own
+  "salvage is small and never counts" leniency in spirit, and gating
+  them would have meant touching two more call sites for a
+  vanishingly small overflow risk. I and F3 both read "Hold N of
+  20,000" using `cargoUsed()`, not raw `ore` alone, so alloy/hydrogen
+  weight actually shows up in the number a pilot hears; F3 gained a
+  dedicated "Hold:" line rather than folding it into "Ore:", since it
+  reads on the whole hold, not just ore. `cargo_bay` (500cr, 3 alloy,
+  `cfg: {cargoMax: 30000}`) follows the exact tiered-module shape
+  `rcs_tank_1`/`repair_crew_1` already established — confirmed correct
+  by that precedent and by code review, not by a fresh live purchase
+  tonight (docking to reach the shipyard wasn't exercised this round).
+  Machine-tested at a local server via real gameplay (a real laser
+  burst producing real dust, not a mock): with ore poked near the cap,
+  a real vacuum attempt on a real dust field spoke exactly "Hold full.
+  Sell, or extract no more." with the field and the hold both left
+  completely untouched; a loot container refused pickup with "Hold
+  full. Sell, or leave it." then, once ore was dropped back down,
+  collected normally ("Container: 46 hydrogen, 1 alloy.") with the
+  hold rising by exactly the expected weighted amount (480, matching
+  46×10 + 1×20); `cargoUsed()` cross-checked against hand-computed
+  sums at three different resource combinations. **A genuine testing-
+  methodology trap found and resolved along the way, not a game bug**:
+  starting a beam tool (`startBeam`) has always been silent until its
+  OWN first scheduled tick fires — true of the laser too, and not new
+  tonight — so a same-script check immediately after pressing V/E
+  correctly shows no change yet; reading that as "the key did nothing"
+  looked exactly like a bug until a direct `beam` exposure (added to
+  `state().laser` as `tool`, since the existing `burstLeft` derivation
+  reads 0 for BOTH "no beam" and "a non-laser beam active" — a real,
+  now-fixed blind spot) proved the vacuum HAD started correctly and
+  just hadn't ticked yet. The refusal itself only became audible once
+  that first real tick was given the same long-single-wait treatment
+  3.84/3.18 already needed tonight. Zero console errors throughout,
+  reconfirmed on a fresh tab. Every weight and the cap itself are
+  placeholders for Brian's ear. Not yet heard or flown by Brian.
 
 #### 3.12 The price levers (A.9)
 
@@ -9368,7 +9463,7 @@ control at a corner planet, later, is their share of its tiles.
   a pilot who chains fights finds them harder — where a pilot spends
   their hours is the strategic choice (A.9), now in combat's own terms.
 
-#### 3.18 Loot containers and hydrogen (the old 2.8, moved into Phase 3 — the market's fourth good)
+#### 3.18 Loot containers and hydrogen (the old 2.8, moved into Phase 3 — the market's fourth good) — DONE (Round 69, Sonnet)
 
 - A destroyed ship drops a **container** (target kind `'loot'`): a soft
   intermittent double-click beacon at the wreck's position, drifting at
@@ -9383,6 +9478,74 @@ control at a corner planet, later, is their share of its tiles.
   bought at a gate station (3.20), cargo weight 10 (3.14), the gate's
   fare (3.22), and what a gate station wants (3.23). The
   hydrogen-extractor module (mining ticks yield it) waits for Phase 4.
+- **DONE (Round 69, Sonnet, 2026-09-10, unattended overnight).** Built
+  as specced, with one deliberate departure from the letter of it,
+  flagged here: the container is NOT a `targets`-array entry with
+  `kind: 'loot'` (which would have needed a fresh Tab/selectNearest
+  exclusion the way mines and friendlies each already carry their own)
+  — it lives in its own module-level `loot` array instead, so "not
+  Tab-cycled" falls out for free (Tab simply never sees it) rather than
+  needing a guarded exception added to every targeting function that
+  reads `targets`. `spawnLoot(pos, shipName)` is called from
+  `destroyTarget` on the same `!t.kind` gate salvage and reaction-mass
+  already use — a kill is a kill, drill or mission or capital turret
+  alike, matching that precedent exactly. `updateLoot(dt)`, called from
+  `simTick` right after `updateEnemies`, drifts each container on a
+  fixed random heading picked at spawn and counts its life down — pure
+  `dt`-driven physics, no real timer in the path, so it (and pickup, a
+  synchronous check-and-award with no beam/tool state at all) tests
+  cleanly with `__sim.step()`. Only the beacon's own periodic double-
+  click (`scheduleLootBlip`, a `setTimeout` chain re-arming itself every
+  `lootBlipMs`) depends on real time, same as the lock-pulse tone's own
+  precedent. V (`startDustVac`) checks `nearestLoot()` FIRST, ahead of
+  its `mode !== 'mining'` refusal, since a kill can happen anywhere;
+  `radarPing()` sweeps live containers last, after every real target
+  regardless of distance, with its own fresh double-click standing in
+  for the volume-swell trick used on a target's persistent node (a
+  container has none). `clearMission()` gained `clearLoot()` alongside
+  the existing `clearDebris()`, so an uncollected container is genuinely
+  lost on leaving, per spec. `state().economy` was ALSO found missing
+  `hydrogen` entirely — a real, pre-existing gap (F3 has read the real
+  field since 3.74, but the test hook never exposed it) — fixed in
+  passing since testing hydrogen gains needed it. Machine-tested at a
+  local server via a real Combat drill kill (not just the new
+  `poke({spawnLoot})` test hook, though that exists too, for forcing a
+  class without hunting for a real one): a Raider's death produced
+  "Salvage plus 2, reaction mass plus 6. Raider destroyed. 4 targets
+  remain." immediately followed by a container reading 15 hydrogen
+  (inside the interceptor 10–20 range); Tab confirmed never landing on
+  it across a fresh spawn; drift measured at exactly 50 units after 10
+  simulated seconds (`lootDriftSpeed` 5); life measured counting down
+  1:1 with elapsed time and the container removed the instant it
+  crossed zero; V collecting it from 50 away and refusing (falling
+  through to the ordinary combat-mode line) from 125 away; a second
+  spawn's alloy roll landing 1, confirming that branch fires too;
+  Shift+R's final line reading "5 targets remain, 1 container." with
+  correct singular wording; X correctly clearing the array on leaving.
+  **A real testing-methodology bug found and fixed FIRST, before any of
+  the above**: every Space/V press this round (and, in hindsight,
+  probably several fired in the 3.82/3.83 rounds before it) was being
+  dispatched with `key: 'Space'`/`key: 'V'` — but `keyName()` reads
+  `e.key` first and only falls back to `e.code` when `e.key` is falsy,
+  so a literal string `'Space'` was accepted as a real (wrong) key name
+  and the switch's own `case ' '` never matched, silently refusing
+  every fire. Fixed in the test harness by dispatching Space with
+  `key: ''` so the fallback (`e.code === 'Space'` → `' '`) engages; V
+  was unaffected (a real letter key resolves correctly either way) but
+  the SAME two-hour stretch also surfaced a second, unrelated real
+  environmental limit: with the session unattended, the Browser pane
+  stays hidden even when explicitly fronted, and Chrome's own
+  background-tab timer throttling fully stalls anything riding a
+  `setTimeout` chain (every laser/vacuum burst's own tick cadence) for
+  short waits — confirmed dead for 12+ seconds of short polling, then
+  confirmed working once given one continuous ~40-second wait inside a
+  single script call. Every live confirmation above that needed a real
+  burst (the Raider kill) used that long-single-wait shape once this
+  was understood; anything `__sim.step()`-driven (drift, life, pickup)
+  was unaffected throughout and tested normally. Zero console errors.
+  Every number (the drift speed, the life, the pickup range, the
+  hydrogen ranges, the alloy chance) is a placeholder for Brian's ear.
+  Not yet heard or flown by Brian.
 
 #### 3.13 Salvage gates and the drone swarm (A.9) — as written, with 2.17 in mind
 
@@ -10413,18 +10576,16 @@ ownership kinds, NPC shares better early, built tiles more at height;
 F7 "yes"; contracts with collateral "yes"; economy AND planet building
 both land in Q2, everything running there even without control.
 
-**DECIDE (open, from ideas_hold3 — Fable's defaults, written into
-A.8/A.9/A.13/3.23b, Brian to overrule)**: (1) the 26-quadrant shell
-with the Core as the base site and the five other face centres as
-rival homes (seated by the difficulty setting); (2) the numbering rule
-— centre first, then clockwise from the right, per slab; (3) science
-as the fourth doctrine with relics + isotopes, its base the Array;
-(4) the antipodal placement from Brian's front face — Q3 military, Q5
-economy, Q7 science, Q9 industry, antipodes on the far face; (5) the
-placeholder names (Bastion/Redoubt, Lantern/Harrow, Foundry/Kiln,
-Lens/Halo); (6) the six trade goods, and luxuries as tribute for
-control at corners; (7) home has four doors in the data, one built in
-Phase 3; (8) the planet grid at 3×3 with three tile kinds, the share
-cap at 50 %, `levelMult` 1.6, five levels; (9) collateral is one fitted
-module, never a laser slot or a test fit; (10) the doctrine perk
-numbers.
+**ANSWERED (Brian, 2026-09-10, on ideas_hold3): "I like those defaults
+so far, science as 4th is fine."** All ten stand as written into
+A.8/A.9/A.13/3.23b: (1) the 26-quadrant shell, Core as the base site,
+five rival homes seated by difficulty; (2) the numbering rule; (3)
+science as the fourth doctrine, relics + isotopes, the Array; (4) the
+antipodal placement from Brian's front face; (5) the placeholder names;
+(6) the six trade goods and luxury tribute for control; (7) home's
+four doors in data, one built in Phase 3; (8) the 3×3 planet grid,
+50% share cap, `levelMult` 1.6, five levels; (9) collateral as one
+fitted module; (10) the doctrine perk numbers. Nothing open from
+ideas_hold. Brian is going unattended for the night; Sonnet builds
+3.84 → 3.18 → 3.14, stopping before 3.22 (the cube rework) for a fresh
+session's full attention.

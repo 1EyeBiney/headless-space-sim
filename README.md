@@ -315,8 +315,8 @@ Right hand on the arrows, left hand on everything else.
 | B | Tractor beam (mining), tiered like the lasers: pulls the selected rock or core toward you instead of flying to it — B again releases it. A higher tier pulls faster, reaches further, and costs less reaction mass. Firing a laser, the extractor, or the vacuum cuts it off |
 | Tab / T | Cycle targets / report the selected target. Shift+Tab cycles back. The distance is spoken the moment the lock tone comes on |
 | Shift+T | Auto-target, 6 reaction mass a use on top of its own limited charge pool: the stabilizers aim the ship at your selected target for you, holding on it a few seconds once aimed so a moving target's lock actually lands. Never fires, never damages. Not something you start with |
-| R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first |
-| E / V | Ore extractor / dust vacuum (mining) |
+| R | Range to the selected target, and whether it's closing or opening. Shift+R is the radar sweep of every target, nearest first, loot containers last |
+| E / V | Ore extractor / dust vacuum (mining); V also collects a nearby loot container in any mode, no aiming needed |
 | Z | Quick status: one line a press — hull, shields, the selected laser, missiles, decoys, reaction mass, warp charge, any broken systems, auto-target charges if fitted — skipping anything at full health. Press again within a few seconds to continue, or it restarts at hull |
 | Shift+Z | Target zone size: wide, standard, narrow |
 | Q / H / C | Quadrant map / hyperwarp (spends the warp tank by distance) / call a point of interest — hails a station within 2000, reaches its transporter within 600 once it knows you, docks within 150 once it trusts you |

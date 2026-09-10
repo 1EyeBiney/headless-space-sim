@@ -108,6 +108,22 @@ var CFG_DEFAULTS = {
     rcsDecoy: 2,                  // fireChaff, per decoy
     rcsAutoTarget: 6,             // autoTargetKey, per use — alongside the 3 charges (3.38), not instead of them
     alloyPerIronCore: 1,          // SPEC 2.15: an iron core's other yield
+    // SPEC 3.18 (the old 2.8, moved into Phase 3): a destroyed ship drops
+    // a container instead of the loot vanishing with it — found by ear
+    // (its own soft double-click beacon) and by the radar sweep, not
+    // Tab-cycled, collected with V like the corona's own scoop.
+    lootDriftSpeed: 5,            // units/s, a fixed random heading picked at spawn
+    lootLifeS: 90,                // fades (and is removed) if never collected
+    lootPickupDist: 100,          // V collects it from within this range, no aim needed
+    lootBlipMs: 1800,             // the beacon's own "soft intermittent" double-click gap
+    // SPEC 3.14 (A.12): the hold has a limit, in ore-equivalent units —
+    // ore fills it 1:1, alloy and hydrogen weigh more per unit since a
+    // little of either is worth a lot of ore. Salvage never counts
+    // (small, and never blocks anything — the spec's own call).
+    // Biomass isn't a real resource yet (Phase 4), so its weight sits
+    // here unused until it exists.
+    cargoMax: 20000,
+    cargoWeightOre: 1, cargoWeightAlloy: 20, cargoWeightHydrogen: 10, cargoWeightBiomass: 5,
     salvageCredit: 30,            // sell price per unit at the landing menu
     alloyCredit: 20,
     // Collisions (SPEC 2.14): hit a station or planet too fast and it costs
@@ -1254,13 +1270,23 @@ LASER_FAMILIES.forEach(function (fam) {
 var SHIP_CLASS = { Freighter: 'cruiser', Raider: 'interceptor', Scout: 'interceptor',
                     Drone: 'corvette', Cruiser: 'cruiser' };
 // Salvage (SPEC 2.15/A.9): collected on the kill (a container to fly to
-// comes later, 2.8). The one resource combat-only play can't skip mining
-// for — Brian: even the most mining-focused pilot should fight a little.
+// comes later, 2.8 -> 3.18, built). The one resource combat-only play
+// can't skip mining for — Brian: even the most mining-focused pilot
+// should fight a little.
 var SALVAGE = { interceptor: 2, corvette: 3, cruiser: 5 };
 // SPEC 3.32: reaction mass looted the same way, by class — sized (with
 // rcsPerDustUnit and rcsMission below) so a clean delivery run never
 // spends long on battery, while a sloppy one definitely feels it.
 var RCS_PER_KILL = { interceptor: 6, corvette: 9, cruiser: 15 };
+// SPEC 3.18: the container itself, by class — a range rather than a flat
+// number (SALVAGE/RCS_PER_KILL's own precedent is flat, but the spec's
+// own text asks for a spread here: "interceptor 10-20... corvette
+// 15-30... cruiser 40-60"). alloyChance is the "plus one alloy in
+// three" clause, same for every class.
+var LOOT = { interceptor: { hydrogenMin: 10, hydrogenMax: 20 },
+             corvette:    { hydrogenMin: 15, hydrogenMax: 30 },
+             cruiser:     { hydrogenMin: 40, hydrogenMax: 60 } };
+var LOOT_ALLOY_CHANCE = 1 / 3;
 // Ship destruction, four size tiers (this round): which of
 // audio_cues.js's explosion_kill pools plays when a NAMED ship dies.
 // Keyed by name rather than SHIP_CLASS, since the cruiser class itself
@@ -1430,7 +1456,14 @@ var MODULES = [
       cfg: { rcsMax: 150 } },
     { id: 'rcs_tank_2', name: 'reaction mass tank II', cost: 600, mass: 10, alloy: 3, requires: 'rcs_tank_1',
       desc: 'Twice the stock tank, 100 to 200.',
-      cfg: { rcsMax: 200 } }
+      cfg: { rcsMax: 200 } },
+    // SPEC 3.14/A.12: the first 3.13 salvage/alloy gate — a bigger hold,
+    // 20,000 to 30,000, same tiered/alloy-costing shape as the repair
+    // crew and the tank above (their own alloy costs are hardcoded
+    // literals too, not a CFG reference — matched here on purpose).
+    { id: 'cargo_bay', name: 'cargo bay', cost: 500, mass: 20, alloy: 3,
+      desc: 'Ten thousand more room in the hold, twenty to thirty thousand.',
+      cfg: { cargoMax: 30000 } }
 ];
 
 function moduleById(id) {
@@ -1512,6 +1545,15 @@ function shipMass() {
     }, 0);
     return 1 + extra / 100;
 }
+
+// SPEC 3.14: the hold, in ore-equivalent weighted units. Salvage never
+// counts (small, and never blocks anything); biomass doesn't exist yet.
+function cargoUsed() {
+    return ore * CFG.cargoWeightOre +
+           (profile ? profile.resources.alloy * CFG.cargoWeightAlloy : 0) +
+           (profile ? profile.resources.hydrogen * CFG.cargoWeightHydrogen : 0);
+}
+function cargoRoom() { return Math.max(0, CFG.cargoMax - cargoUsed()); }
 
 function laserById(id) {
     for (var i = 0; i < LASERS.length; i++) if (LASERS[i].id === id) return LASERS[i];
@@ -2310,13 +2352,22 @@ var ZONES = [
 // coreAssets (this round): two recordings per type, swapped in when the
 // rock collapses to its mineable core (see swapRockCoreVoice) instead of
 // just pitching up the same pre-core loop.
+// SPEC 3.84 (ideas_hold.txt): "make them be able to be part of asteroid
+// mining, likely have them be vacuumed up as a component of the dust
+// clouds." dustTrace is resource-per-unit-of-dust-vacuumed, a silent
+// trickle exactly like the reaction-mass one dustTick already runs — ice
+// is water (hydrogen), iron sheds alloy flakes, stone is the plain rock,
+// no extra. Ice hydrogen supersedes 3.18's old "hydrogen-extractor
+// module" idea outright: mining is a real route to the gate fare now.
+// Placeholders sized so a full ~2,000-dust cloud yields roughly one
+// hydrogen (ice) or half an alloy (iron) — a trickle, not a mine.
 var ROCK_TYPES = [
     { name: 'Ice',   asset: 'asteroid1', hardness: 1.3, splitChance: 0.75, ore: 3000,
-      coreAssets: ['asteroid_core1', 'asteroid_core2'] },
+      coreAssets: ['asteroid_core1', 'asteroid_core2'], dustTrace: { hydrogen: 0.0005 } },
     { name: 'Iron',  asset: 'asteroid2', hardness: 0.7, splitChance: 0.25, ore: 6750,
-      coreAssets: ['asteroid_core3_iron', 'asteroid_core4_iron'] },
+      coreAssets: ['asteroid_core3_iron', 'asteroid_core4_iron'], dustTrace: { alloy: 0.00025 } },
     { name: 'Stone', asset: 'asteroid3', hardness: 1.0, splitChance: 0.5,  ore: 4500,
-      coreAssets: ['asteroid_core5', 'asteroid_core6'] }
+      coreAssets: ['asteroid_core5', 'asteroid_core6'], dustTrace: {} }
 ];
 // Size classes, biggest first. `rate` pitches the rock's loop (big = low),
 // `push` scales how far laser shoves and blasts throw it (small = flighty).
@@ -2921,11 +2972,12 @@ var HELP_SECTIONS = [
         'A missile needs the target inside your missile zone at launch, and it keeps needing it: hold the target in the zone for the whole flight. Drift off it for more than a moment and the missile goes ballistic and pops.',
         'A ship that survives a missile knows it is under attack: it burns away hard, the direction is spoken, and it will hit back within seconds.',
         'Weapon and tool keys sit under the left hand — 1 to 6, Space, F, G, E, V, T, R — leaving the right hand free for the arrows.',
-        'R reads the range to the selected target and whether it is closing or opening. Shift R sounds a radar ping of every surviving target in order, nearest first.'
+        'R reads the range to the selected target and whether it is closing or opening. Shift R sounds a radar ping of every surviving target in order, nearest first — any loot containers drifting nearby are swept last, after every target.'
     ] },
     { heading: 'Shields and enemy fire', items: [
         'Every ship holds its fire until you hit it. From the first hit on, that ship is hostile and shoots back. Your hull starts at ' + CFG.shipHull + ' percent, and I reports it.',
         'So pick your fights: a ship killed in one burst never fires at all, and a wounded ship is an angry ship.',
+        function () { return 'A kill drops a container — a soft double-click beacon drifting where the wreck was, fading after ' + CFG.lootLifeS + ' seconds if you never reach it. Fly within ' + CFG.lootPickupDist + ' and V collects it, no aiming needed: hydrogen by the ship\'s own class, and sometimes a point of alloy too.'; },
         'A ship within ' + CFG.enemyLaserRange + ' paints you first: three rising chirps from its position and a spoken warning, then a five-second beam that bites once a second.',
         'A ship farther out launches a missile instead. You hear it fly toward you, and it takes longer to arrive.',
         'Some ships carry a cannon instead of a beam: a steady rattle at their own position with no warning chirps, loud and biting only while they are actually turned to face you, fading to a fraction off to the side and falling silent once you are clear of their nose. Every hostile ship\'s own engine gets a little brighter as it turns toward you, ahead of any attack — that turn is the tell.',
@@ -2959,6 +3011,7 @@ var HELP_SECTIONS = [
         'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
         'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
         'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
+        function () { return 'Your hold has a limit, ' + CFG.cargoMax + ' ore-equivalent — ore fills it one for one, alloy and hydrogen weigh far more per unit. Fill it and both E and V refuse outright: sell, or extract no more.'; },
         function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: a higher tier pulls faster, reaches further, and costs less reaction mass. It needs the target within ' + TRACTOR_TIERS[tractorLevel() - 1].range + ' and centered — point at it first, the same way a lock comes on; off-target it refuses and says so. Once latched, facing no longer matters at all. Firing a laser, the extractor, or the vacuum cuts it off; it refuses while any of those is running.'; },
         'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
         'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
@@ -4050,6 +4103,11 @@ function destroyTarget(t, extra) {
     t.alive = false;
     SIM.cues.play('explosion_kill', { pos: t.pos, size: shipExplosionSize(t.name) });
     stopVoice(t);
+    // SPEC 3.18: a kill drops a container at the wreck — same !t.kind
+    // gate as salvage/reaction-mass loot (a mission's friendly, a rock,
+    // a POI all carry a kind and never reach here), same "a kill is a
+    // kill" rule regardless of drill/mission/capital-turret.
+    if (!t.kind) spawnLoot(t.pos, t.name);
     if (targets[selected] === t) selectNearest();
     if (threat && threat.t === t) endThreat();
     // SPEC 2.17: a mission's win/loss is its own wave-count/timer logic
@@ -4672,7 +4730,7 @@ function beamTick() {
             pushRock(t, scale(norm(sub(t.pos, ship.pos)), CFG.beamPush * rockPush(t)));
             if (t.resource) { shatterCore(t); stopBeam(true); return; }
             // Every bite of the laser sheds particulates where the rock is.
-            addDebris(t.pos, actual * CFG.debrisPerDamage);
+            addDebris(t.pos, actual * CFG.debrisPerDamage, t.type);
             t.hp -= actual;
             if (t.hp <= 0) { rockEvent(t); return; }   // rockEvent stops the beam
             say(String(actual));
@@ -4724,7 +4782,16 @@ function vacTick() {
         say('Extraction lost. Stay close and centered on the core.');
         return;
     }
-    var amount = Math.min(t.oreLeft, 300 + Math.floor(Math.random() * 300));
+    // SPEC 3.14: a full hold refuses outright, rather than pulling
+    // amount 0 silently and still saying "0" every tick.
+    var room = cargoRoom();
+    if (room <= 0) {
+        stopBeam(true);
+        SIM.cues.play('refusal_dud');
+        say('Hold full. Sell, or extract no more.');
+        return;
+    }
+    var amount = Math.min(t.oreLeft, 300 + Math.floor(Math.random() * 300), room);
     t.oreLeft -= amount;
     ore += amount;
     oreGained();
@@ -4796,7 +4863,15 @@ function dustTick() {
             : 'Area filtered clean. Ore hold ' + ore + '.');
         return;
     }
-    var amount = Math.min(f.amount, 150 + Math.floor(Math.random() * 250));
+    // SPEC 3.14: same full-hold refusal as the extractor.
+    var room = cargoRoom();
+    if (room <= 0) {
+        stopBeam(true);
+        SIM.cues.play('refusal_dud');
+        say('Hold full. Sell, or extract no more.');
+        return;
+    }
+    var amount = Math.min(f.amount, 150 + Math.floor(Math.random() * 250), room);
     f.amount -= amount;
     ore += amount;
     oreGained();
@@ -4805,6 +4880,22 @@ function dustTick() {
     // time; naming it here every couple of seconds would just be noise
     // on top of the ore count this line already reads).
     addRcs(amount * CFG.rcsPerDustUnit);
+    // SPEC 3.84: the field's own trace (set by whichever rock types have
+    // fed it) trickles a fraction of a resource per unit vacuumed — held
+    // in dustTraceAccum until it crosses a whole unit, same silent-not-
+    // spoken-per-tick rule as the reaction-mass trickle just above.
+    if (f.trace) {
+        ['hydrogen', 'alloy'].forEach(function (res) {
+            if (!f.trace[res]) return;
+            dustTraceAccum[res] += amount * f.trace[res];
+            var whole = Math.floor(dustTraceAccum[res]);
+            if (whole > 0) {
+                dustTraceAccum[res] -= whole;
+                profile.resources[res] += whole;
+                saveProfile();
+            }
+        });
+    }
     depleteCurrentField(amount);
     updateDustVolume(f);
     if (f.amount <= 0) removeDust(f);
@@ -4942,7 +5033,7 @@ function stepMissile(dt) {
         killMissile();
         if (t.kind === 'rock') {
             if (t.resource) { shatterCore(t); return; }
-            addDebris(t.pos, 200 + Math.floor(Math.random() * 200));
+            addDebris(t.pos, 200 + Math.floor(Math.random() * 200), t.type);
             if (t.size <= 1) {
                 // Huge and large rocks ABSORB the blast: deep cracking
                 // damage, very little motion. This is the missile's job.
@@ -6053,10 +6144,31 @@ function repairAllSystems() {
 // shoved away — the consolation prize a pilot can always come back for.
 // Each field carries a faint high shimmer through its own HRTF panner, so
 // drifting dust is findable by ear; louder shimmer means a richer field.
-var debris = [];   // { kind:'dust', name, pos, amount, alive, nodes }
+var debris = [];   // { kind:'dust', name, pos, amount, alive, nodes, trace }
 var dustSeq = 0;
+// SPEC 3.84: fractional trickle accumulator for dust traces — kept OFF
+// profile on purpose (a trickle's own leftover fraction on quit is not
+// worth persisting) so profile.resources.alloy/hydrogen, spoken and
+// displayed raw everywhere with no rounding, only ever gain a WHOLE
+// unit at a time; the fraction lives here until it crosses 1.
+var dustTraceAccum = { hydrogen: 0, alloy: 0 };
 
-function addDebris(pos, amount) {
+// SPEC 3.84: type is the rock's own ROCK_TYPES entry (undefined for a
+// call site with no rock in scope, e.g. none today). traceMerge blends a
+// new contribution's dustTrace into a field's own by amount, so a field
+// fed by more than one rock type carries a proportional trace rather
+// than just whichever rock happened to feed it last.
+function traceMerge(f, amount, trace) {
+    var total = f.amount + amount;
+    if (total <= 0) return;
+    ['hydrogen', 'alloy'].forEach(function (res) {
+        var existing = (f.trace[res] || 0) * f.amount;
+        var incoming = (trace[res] || 0) * amount;
+        var v = (existing + incoming) / total;
+        if (v > 0) f.trace[res] = v; else delete f.trace[res];
+    });
+}
+function addDebris(pos, amount, type) {
     amount = Math.round(amount * CFG.debrisScale);
     if (mode !== 'mining' || amount <= 0) return;
     var f = null, best = CFG.debrisMergeDist;
@@ -6064,11 +6176,15 @@ function addDebris(pos, amount) {
         var dd = len(sub(d.pos, pos));
         if (dd < best) { best = dd; f = d; }
     });
-    if (f) { f.amount += amount; updateDustVolume(f); return; }
+    if (f) {
+        if (type && type.dustTrace) traceMerge(f, amount, type.dustTrace);
+        f.amount += amount; updateDustVolume(f); return;
+    }
     // A dust field is itself a target: it joins the T-cycle list so the
     // pilot can select it, center it with the tick, and fly to it.
     f = { kind: 'dust', name: 'Dust ' + (++dustSeq), alive: true,
-          pos: v3(pos.x, pos.y, pos.z), amount: amount, nodes: null };
+          pos: v3(pos.x, pos.y, pos.z), amount: amount, nodes: null,
+          trace: (type && type.dustTrace) ? Object.assign({}, type.dustTrace) : {} };
     buildDustVoice(f);
     debris.push(f);
     targets.push(f);
@@ -6134,6 +6250,85 @@ function clearDebris() { debris.slice().forEach(removeDust); debris = []; }
 
 function debrisTotal() {
     return debris.reduce(function (s, d) { return s + d.amount; }, 0);
+}
+
+// ---- loot containers (SPEC 3.18, the old 2.8) ------------------------------
+// A destroyed ship's container: not a `targets` entry at all (so it never
+// needs a Tab/selectNearest exclusion the way mines/friendlies do — Tab
+// simply never sees it), found instead by its own soft double-click beacon
+// and by the radar sweep (radarPing, which sweeps it in last), collected
+// with V from lootPickupDist away, no aim needed — same idea as the
+// corona's own hydrogen scoop. Drifts on a fixed heading picked at spawn
+// and fades (is removed) after lootLifeS if never collected.
+var loot = [];
+function playLootBlip(c) {
+    if (!c.alive) return;
+    var out = SIM.audio.worldOut(c.pos, 350);
+    if (out) {
+        SIM.audio.sfxTone({ type: 'sine', f1: 520, dur: 0.05, vol: 0.14, out: out });
+        SIM.audio.sfxTone({ type: 'sine', f1: 520, dur: 0.05, vol: 0.14, out: out, at: 0.12 });
+    }
+}
+function scheduleLootBlip(c) {
+    if (!c.alive) return;
+    playLootBlip(c);
+    c.blipTimer = setTimeout(function () { scheduleLootBlip(c); }, CFG.lootBlipMs);
+}
+function spawnLoot(pos, shipName) {
+    var cls = SHIP_CLASS[shipName] || 'corvette';
+    var t = LOOT[cls];
+    var hydrogen = t.hydrogenMin + Math.floor(Math.random() * (t.hydrogenMax - t.hydrogenMin + 1));
+    var alloy = Math.random() < LOOT_ALLOY_CHANCE ? 1 : 0;
+    var ang = Math.random() * Math.PI * 2;
+    var c = { kind: 'loot', name: 'Container', alive: true, pos: v3(pos.x, pos.y, pos.z),
+              vel: v3(Math.cos(ang) * CFG.lootDriftSpeed, 0, Math.sin(ang) * CFG.lootDriftSpeed),
+              life: CFG.lootLifeS, hydrogen: hydrogen, alloy: alloy, blipTimer: null };
+    loot.push(c);
+    scheduleLootBlip(c);
+}
+function updateLoot(dt) {
+    for (var i = loot.length - 1; i >= 0; i--) {
+        var c = loot[i];
+        c.pos = add(c.pos, scale(c.vel, dt));
+        c.life -= dt;
+        if (c.life <= 0) removeLoot(c);
+    }
+}
+function removeLoot(c) {
+    c.alive = false;
+    if (c.blipTimer) clearTimeout(c.blipTimer);
+    var i = loot.indexOf(c);
+    if (i >= 0) loot.splice(i, 1);
+}
+function clearLoot() { loot.slice().forEach(removeLoot); loot = []; }
+// V, checked ahead of startDustVac's own mode gate — a kill (and its
+// drop) can happen in combat, a mission, or a drill, none of which are
+// 'mining', so this can't wait behind that refusal.
+function nearestLoot() {
+    var best = null, bestD = CFG.lootPickupDist;
+    loot.forEach(function (c) {
+        var d = len(sub(c.pos, ship.pos));
+        if (d <= bestD) { bestD = d; best = c; }
+    });
+    return best;
+}
+function collectLoot(c) {
+    // SPEC 3.14: a container's own contents are weighed together — no
+    // partial pickup of a mixed bundle, the whole thing or nothing; the
+    // container itself is untouched (still there) so a sale first and a
+    // return trip still works.
+    var weight = c.hydrogen * CFG.cargoWeightHydrogen + c.alloy * CFG.cargoWeightAlloy;
+    if (weight > cargoRoom()) {
+        SIM.cues.play('refusal_dud');
+        say('Hold full. Sell, or leave it.');
+        return;
+    }
+    profile.resources.hydrogen += c.hydrogen;
+    if (c.alloy) profile.resources.alloy += c.alloy;
+    saveProfile();
+    SIM.cues.play('course_pass');   // a positive pickup chime, same reuse 3.75's beacons made
+    say('Container: ' + c.hydrogen + ' hydrogen' + (c.alloy ? ', ' + c.alloy + ' alloy.' : '.'));
+    removeLoot(c);
 }
 
 // ---- tractor beam (SPEC 3.30, tiered as of SPEC 3.44) ----------------------
@@ -6613,7 +6808,7 @@ function rockEvent(t) {
     // bigger rocks throw bigger mists. (Computed before the size changes.)
     var mist = Math.round((CFG.debrisEventBase + Math.random() * 200) *
                           (1 + (ROCK_SIZES.length - 1 - t.size) * 0.5));
-    addDebris(t.pos, mist);
+    addDebris(t.pos, mist, t.type);
     if (t.size >= ROCK_SIZES.length - 1) {
         // Small rock collapses into the mineable core.
         t.resource = true;
@@ -6667,7 +6862,7 @@ function rockEvent(t) {
 // the run entirely.
 function shatterCore(t) {
     SIM.cues.play('explosion_rock', { pos: t.pos });
-    addDebris(t.pos, Math.round(t.oreLeft * 0.25));
+    addDebris(t.pos, Math.round(t.oreLeft * 0.25), t.type);
     t.alive = false;
     stopVoice(t);
     say(t.name + ' shatters under the laser. Most of the ore is lost, but a dust mist remains.');
@@ -6810,6 +7005,12 @@ function startExtract() {
 // V — the space vacuum. Filters loose particulates near the ship; no aim
 // needed. The consolation harvest when a rock got away.
 function startDustVac() {
+    // SPEC 3.18: a loot container is checked FIRST, ahead of the mode
+    // gate below — a kill (and its drop) can happen in combat, a
+    // mission, or a drill, none of which are 'mining'. An instant pickup,
+    // not a beam tool, so it doesn't touch or care about `beam`.
+    var c = nearestLoot();
+    if (c) { collectLoot(c); return; }
     if (mode !== 'mining') { SIM.cues.play('refusal_offline'); say('The vacuum is a mining tool.'); return; }
     if (beam) { SIM.cues.play('refusal_wait'); return; }
     // SPEC 3.74: the corona's own harvest — no debris field to check range
@@ -7246,7 +7447,14 @@ function radarPing() {
     var alive = aliveTargets().slice().sort(function (x, y) {
         return len(sub(x.pos, ship.pos)) - len(sub(y.pos, ship.pos));
     });
-    if (!alive.length) { say('No targets remain.'); return; }
+    // SPEC 3.18: containers are swept LAST, after every ordinary target,
+    // regardless of distance — "found... by the radar sweep, names
+    // containers last." A container has no persistent node graph to
+    // swell (its beacon is ephemeral worldOut pulses, unlike a real
+    // target's own lasting gain node), so its own sweep ping is a fresh
+    // double-click rather than the volume-boost trick below.
+    var lootAlive = loot.filter(function (c) { return c.alive; });
+    if (!alive.length && !lootAlive.length) { say('No targets remain.'); return; }
     radarBusy = true;
     alive.forEach(function (t, i) {
         setTimeout(function () {
@@ -7266,6 +7474,10 @@ function radarPing() {
             }
         }, i * CFG.radarGapMs);
     });
+    lootAlive.forEach(function (c, j) {
+        setTimeout(function () { playLootBlip(c); }, (alive.length + j) * CFG.radarGapMs);
+    });
+    var totalSteps = alive.length + lootAlive.length;
     setTimeout(function () {
         radarBusy = false;
         if (mode === 'mining') {
@@ -7275,9 +7487,13 @@ function radarPing() {
         } else if (mode === 'sector') {
             say(alive.length + ' points of interest.');
         } else {
-            say(alive.length + (alive.length === 1 ? ' target remains.' : ' targets remain.'));
+            var line = alive.length + (alive.length === 1 ? ' target remains' : ' targets remain');
+            line += lootAlive.length
+                ? (', ' + lootAlive.length + (lootAlive.length === 1 ? ' container.' : ' containers.'))
+                : '.';
+            say(line);
         }
-    }, alive.length * CFG.radarGapMs + 200);
+    }, totalSteps * CFG.radarGapMs + 200);
 }
 
 // Shift+W (SPEC 1.15). Ends on Shift+W again, any W or S press, a warp
@@ -7336,12 +7552,15 @@ function statusReport() {
     var t = targets[selected];
     if (t && t.alive) line += bearingText(t) + ' ';
     if (mode === 'mining') {
-        line += 'Ore hold ' + ore + '. ';
+        // SPEC 3.14: cargoUsed() is the weighted total (ore, alloy,
+        // hydrogen) against the hold's own cap — plain `ore` alone
+        // would under-report once alloy/hydrogen are carrying weight.
+        line += 'Hold ' + cargoUsed() + ' of ' + CFG.cargoMax + '. ';
         if (debris.length) {
             line += debris.length + (debris.length === 1 ? ' dust field' : ' dust fields') + ' adrift. ';
         }
     }
-    if (mode === 'sector') line += 'Ore hold ' + ore + '. Warp charge ' + warpPct() + ' percent. ' +
+    if (mode === 'sector') line += 'Hold ' + cargoUsed() + ' of ' + CFG.cargoMax + '. Warp charge ' + warpPct() + ' percent. ' +
         'Reaction mass ' + Math.round(rcsPct()) + ' percent' + (rcsBattery ? ', on battery' : '') + '. ';
     // SPEC 3.23: the selected station's own standing, once close enough to
     // hail it — not spoken for the demo's own fixed sector, which never
@@ -7987,20 +8206,26 @@ function shipScreenKey(lname, shift) {
 function buildResourceLines() {
     var lines = [];
     lines.push('Ore: ' + ore + '. Mined from any rock, sold for credits at a station.');
+    // SPEC 3.14: the hold's own cap, weighted (ore 1:1, alloy 20/unit,
+    // hydrogen 10/unit) — its own line, not folded into Ore's, since it
+    // reads on everything in the hold at once, not just ore.
+    lines.push('Hold: ' + cargoUsed() + ' of ' + CFG.cargoMax + '.');
     lines.push('Salvage: ' + (profile ? profile.resources.salvage : 0) +
                 '. From combat kills only, sold for ' + CFG.salvageCredit +
                 ' credits each, and some modules will need it.');
     lines.push('Alloy: ' + (profile ? profile.resources.alloy : 0) +
-                '. From iron cores, sold for ' + CFG.alloyCredit + ' credits each.');
+                '. From iron cores, a trace in iron dust, and combat containers, sold for ' +
+                CFG.alloyCredit + ' credits each.');
     lines.push('Reaction mass: ' + Math.round(rcsPct()) + ' percent' +
                 (rcsBattery ? ', on battery power' : '') +
                 '. Spent by thrust, braking, and the stabilizers; earned back from combat kills, ' +
                 'vacuuming dust, mining an ice core, buying it at a station, or finishing a mission.');
     lines.push('Warp charge: ' + warpPct() + ' percent. Spent by hyperwarp jumps.');
-    // SPEC 3.74: real now — V scoops it from the star's own corona.
-    // Combat containers (SPEC 3.18) will add a second source later.
+    // SPEC 3.18/3.84: two more sources landed this round — combat
+    // containers and a trace in ice dust — alongside the corona scoop.
     lines.push('Hydrogen: ' + (profile ? profile.resources.hydrogen : 0) +
-                '. Scooped from the star\'s corona with V. Pays the jump gate\'s own fare.');
+                '. Scooped from the star\'s corona with V, a trace in ice dust, and combat ' +
+                'containers. Pays the jump gate\'s own fare.');
     lines.push('Credits: ' + (profile ? profile.credits : 0) + '. Spent on modules, lasers, and collision repairs.');
     lines.push(missiles + (missiles === 1 ? ' missile.' : ' missiles.') + ' Fired with F.');
     lines.push(chaff + (chaff === 1 ? ' decoy.' : ' decoys.') + ' Spent with D against an incoming missile.');
@@ -10461,6 +10686,7 @@ function simTick(dt) {
     stepMissile(dt);
     updateShield(dt);
     updateEnemies(dt);
+    if (loot.length) updateLoot(dt);   // SPEC 3.18
     if (mission) updateMission(dt);
     updateWarpCore(dt);
     updateRepairCrew(dt);
@@ -10544,7 +10770,13 @@ window.__sim = {
             laser: { slot: laserSlot, id: profile ? profile.slots[laserSlot] : null,
                      readyIn: Math.round(laserCooldownLeft(laserSlot) * 10) / 10,
                      switching: Math.round(laserSwitchLeft() * 10) / 10,
-                     burstLeft: beamSecondsLeft() },
+                     burstLeft: beamSecondsLeft(),
+                     // `burstLeft` reads 0 for BOTH "no beam at all" and "beam
+                     // active but not a laser" (vac/dust/extractor have no
+                     // beam.laser to compute seconds-left from) — a real gap
+                     // found testing 3.14 tonight. `tool` tells the two apart
+                     // without guessing from burstLeft alone.
+                     tool: beam ? beam.tool : null },
             shield: { up: shield.up, raising: shield.raising, pool: Math.round(shield.pool), repairing: shield.repairing },
             threat: threat ? { type: threat.type, from: threat.t.name, guided: threat.guided,
                                 coneMul: threat.coneMul, dealt: threat.dealt,
@@ -10684,6 +10916,8 @@ window.__sim = {
             economy: profile ? { credits: profile.credits, modules: profile.upgrades.slice(),
                                   mass: shipMass(), ports: (currentQuadrant() && currentQuadrant().ports) || {},
                                   version: profile.version, alloy: profile.resources.alloy,
+                                  hydrogen: profile.resources.hydrogen,   // SPEC 3.84: was missing entirely
+                                  cargo: { used: Math.round(cargoUsed() * 100) / 100, max: CFG.cargoMax },   // SPEC 3.14
                                   laserLevels: Object.assign({}, profile.laserLevels),
                                   laserHealth: Object.assign({}, profile.laserHealth) } : null,
             systems: Object.keys(shipSystems).reduce(function (o, id) {
@@ -10696,8 +10930,14 @@ window.__sim = {
             shieldPoolMax: Math.round(shieldPoolMax() * 10) / 10,
             assets: SIM.audio.assetsReady(),
             dust: debris.map(function (d) {
-                return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))) };
+                return { amount: d.amount, dist: Math.round(len(sub(d.pos, ship.pos))), trace: d.trace };
             }),
+            loot: loot.map(function (c) {   // SPEC 3.18
+                return { alive: c.alive, dist: Math.round(len(sub(c.pos, ship.pos))),
+                         hydrogen: c.hydrogen, alloy: c.alloy, life: Math.round(c.life * 10) / 10 };
+            }),
+            dustTraceAccum: { hydrogen: Math.round(dustTraceAccum.hydrogen * 10000) / 10000,
+                              alloy: Math.round(dustTraceAccum.alloy * 10000) / 10000 },   // SPEC 3.84 test hook
             targets: targets.map(function (t) {
                 return { name: t.name, alive: t.alive,
                          size: t.kind === 'rock' ? ROCK_SIZES[t.size] && ROCK_SIZES[t.size].label : undefined,
@@ -10783,6 +11023,10 @@ window.__sim = {
     step: function (dtSeconds, chunk) { stepSim(dtSeconds, chunk); },
     // Test-only knobs: pull the next enemy attack forward, or set the hold.
     poke: function (o) {
+        // SPEC 3.18 test hook: force-spawn a container at the ship's own
+        // position without needing a real kill, at whichever ship name's
+        // class the caller wants (a plain `true` reads as a Raider).
+        if (o && o.spawnLoot) spawnLoot(ship.pos, o.spawnLoot === true ? 'Raider' : o.spawnLoot);
         if (o && o.threatIn !== undefined) threatIn = o.threatIn;
         if (o && o.ore !== undefined) ore = o.ore;
         if (o && o.hull !== undefined) hull = o.hull;
@@ -10925,6 +11169,7 @@ function clearMission() {
     thrusterSync(null);
     stopLockTone();
     clearDebris();
+    clearLoot();   // SPEC 3.18: uncollected containers are lost on leaving
     dustSeq = 0;
     targets = [];
     ship.pos = v3(0, 0, 0); ship.vel = v3(0, 0, 0); ship.yaw = 0; ship.pitch = 0;

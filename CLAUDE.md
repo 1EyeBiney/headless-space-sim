@@ -4648,3 +4648,68 @@ work before Q1" — noted, not scheduled. Nothing built. Next: Brian's
 overrules on the ten defaults; then 3.84 whenever, and the quadrant-2
 track (3.18 → 3.14 → 3.22 → 3.11 → 3.19 → 3.12 → 3.20 → 3.20b → 3.23b)
 on his go-ahead.
+
+**Round 69 (Sonnet, 2026-09-10, unattended overnight per Brian's own
+go-ahead — "I like those defaults so far... would like Sonnet to run
+unattended for a little while").** Built **3.84** (dust traces), **3.18**
+(loot containers and hydrogen), and **3.14** (the cargo limit), in that
+order, then stopped BEFORE 3.22 on purpose — the cube rework changes
+the whole quadrant data model and deserves a fresh session's full
+attention rather than being the last thing built at 3am with nobody
+around to catch a mistake in a foundation everything else sits on.
+**3.84**: `ROCK_TYPES[i].dustTrace` (ice → hydrogen 0.0005/unit, iron →
+alloy 0.00025/unit — settled, not the item's own placeholder 0.0003,
+via an isolated Node check landing almost exactly on the worked
+examples before the browser was ever touched), threaded through all
+four `addDebris` call sites, blended proportionally on a mixed field
+(`traceMerge`), flushed a whole unit at a time from a private
+accumulator so the two real resource fields — spoken raw everywhere,
+no rounding — never carry a fraction. **3.18**: a destroyed ship drops
+a container (its own `loot` array, never `targets`, so "not
+Tab-cycled" costs nothing to build); found by a soft double-click
+beacon and by the radar sweep (last, after every real target); V
+collects it from 100 away, no aim, in ANY mode a kill can happen in,
+checked ahead of V's own `mode !== 'mining'` refusal; drift and life
+are pure `dt` physics off `simTick`, so they tested cleanly with
+`__sim.step()` even though the beacon's own cadence (real `setTimeout`)
+couldn't be timed precisely tonight. **3.14**: `cargoUsed()`/
+`cargoRoom()` (ore 1:1, alloy ×20, hydrogen ×10) gate the extractor and
+the vacuum (a shared "Hold full. Sell, or extract no more.", the beam
+stopped outright rather than pulling amount 0 forever) and a
+container's own pickup (the whole bundle or nothing — "Hold full.
+Sell, or leave it."); the corona scoop and the dust trace stayed
+deliberately uncapped, both too small to be worth the extra call
+sites tonight; I and F3 now read "Hold N of 20,000" off the weighted
+total, not raw ore; a `cargo_bay` module (500cr, 3 alloy, 20,000 →
+30,000) follows the exact shape `rcs_tank_1`/`repair_crew_1` already
+proved, confirmed by that precedent rather than a fresh live purchase.
+**Two real, unrelated things were found and fixed along the way, both
+worth remembering for future unattended rounds**: (1) every Space/V
+key dispatched with `key: 'Space'` (the word) instead of `key: ''`
+(letting `keyName()`'s `e.code` fallback resolve it) was being SILENTLY
+refused all evening — `keyName()` accepts any truthy `e.key` before
+ever checking `e.code`, so the literal string `'Space'` matched
+nothing in the switch. Several `3.82`/`3.83` live-fire claims earlier
+tonight rest on this same broken dispatch and are now understood to
+lean more on code review than a proven live shot — flagged, not
+silently let stand. (2) with nobody watching, the Browser pane stays
+hidden even when explicitly fronted, and Chrome's own background-tab
+timer throttling fully stalls anything riding a `setTimeout` chain
+(every beam tool's own tick cadence, a container's beacon) for short
+waits — dead for 12+ seconds of polling, working again once given ONE
+continuous ~40-second wait inside a single script call. Every physics-
+only mechanic (drift, life, the cargo math itself) is `__sim.step()`-
+driven and was completely unaffected; only the few checks that needed
+a REAL beam tick to fire (the vacuum's own full-hold refusal) needed
+the long-wait treatment, now used consistently. A third small fix, not
+part of any of the three items: `state().economy` was missing
+`hydrogen` entirely (a real, pre-existing gap since 3.74 — F3 read the
+real field, the test hook never exposed it) — fixed in passing since
+testing tonight's own hydrogen gains needed it, alongside adding
+`laser.tool` (distinguishing "no beam" from "a non-laser beam active",
+which the existing `burstLeft` derivation cannot). Zero console errors
+throughout all three items, reconfirmed on fresh tabs after every fix.
+Every number in all three items is a placeholder for Brian's ear. Not
+yet heard or flown by Brian. **Stopping here for the night** — next up
+is 3.22 (the cube rework), which per the standing rule waits for a
+fresh session's start rather than continuing unattended into it.
