@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), NEXT** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, NEXT → 3.83 the capital ship's hatch sequence and big laser** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -6378,7 +6378,7 @@ Every number (`blinkDist`, `blinkRcs`, `blinkCooldownS`) is a
 placeholder, `blinkDist` deliberately live-pokeable since Brian has no
 real distance yet.
 
-#### 3.69 The capital ship: turrets behind doors (ideas15.txt) — DONE
+#### 3.69 The capital ship: turrets behind doors (ideas15.txt) — DONE; door model replaced by 3.83's hatch sequence
 
 - Brian: "a really big capital ship that had different guns/turrets
   such that they would all be attached... each one of them maybe have
@@ -8357,6 +8357,189 @@ the shuffle order are not. Not yet heard by Brian.
   on a fresh tab. Every number besides the two measured corrections
   above is still Fable's own placeholder for Brian's ear. Not yet heard
   or flown by Brian.
+- **ideas19.txt (Brian, 2026-09-09) — the tension note is this item.**
+  Brian, flying the 3.60 build: "The Haul needs to have the tension on
+  the tether tightened... I was able to almost continually use W to
+  pull it forward and never really got the high pitch sound of the
+  tether breaking loose... so that I cannot use W, thruster, so much
+  without breaking the tether." That is 3.81 as built, the same day:
+  under 3.60's strain model gentle W never reached the creak (it
+  charged for speed, turn, and reverse — not for the load lagging);
+  under the tether, a full W-hold from rest parts the line in 3.6 s and
+  the creak rises from half stretch, so W IS rationed now — measured,
+  above. One honest caveat for his flying: once the load is MATCHED to
+  the ship's speed, holding W is safe again (the ship caps at
+  `maxSpeed` 100 and the spring catches up), which is the momentum
+  answer working as designed, not a loophole. If, after flying 3.81,
+  W still feels too free, the knob is `haulTetherStretch` (180 → 120
+  parts sooner at the same spring) before touching `haulTetherK`. No
+  new item.
+
+#### 3.82 The shadow, fourth pass: burns that shrink, and blink is allowed (ideas19.txt) — DECIDED (Fable concurs, 2026-09-09; defaults flagged in Part C)
+
+- Brian: "we should make the distance that the ship moves in The
+  Shadow encounter less with each of its burns as a mean of allowing
+  the player to catch up. I don't know if this is the case now, but for
+  a while I was losing ground and then seemed to gain ground, could be
+  my flying, but we should also make it easier to catch the ship the
+  longer the encounter goes on so the struggling player doesn't just
+  give up." And: "I tried using Shift Page Up thinking I would blink
+  forward and I got a message about weapons being cold in space or
+  similar."
+- **What he felt is real, not his flying.** Every thrust leg today is
+  the SAME length (`shadowThrustTiers`, 10/7/4 s by tier — the first
+  always 10) at the same `shadowThrustSpeed` 80, and every dark leg
+  bleeds to `shadowCoastSpeed` 25. So the shadow gains on the pilot
+  during each burn (80 against a pilot who has to turn first) and
+  gives it back during each coast — losing ground, then gaining, on a
+  fixed cycle that never gets easier. There is no decay in the build.
+- **(a) Burns shrink.** The Nth thrust leg runs `tierLen ×
+  shadowBurnDecay^(N−1)` seconds, floored at `shadowBurnMinS` — with
+  `shadowBurnDecay` 0.85 and the floor 3 s, Rookie's legs run 10, 8.5,
+  7.2, 6.1, 5.2, 4.4, 3.8, 3.2, then 3 s for the rest; Ace's 4-second
+  legs hit the floor by the third burn. The first leg is untouched
+  (3.76's own rule: the opening is a real departure every time); the
+  decay starts on the second. Shorter legs are shorter DISTANCE at the
+  same speed, which is Brian's word ("distance... less with each of
+  its burns"), and the recording already fades at the leg length
+  (3.73's fade rule), so a 3-second leg plays 3 seconds of thruster —
+  no new audio rule. Speed and acceleration are untouched: the shadow
+  still leaves the same way, it just doesn't go as far each time, so
+  the pilot's own closing during the coast starts to net out ahead —
+  "easier to catch the longer it goes on," as a curve rather than a
+  switch.
+- **(b) The floor is the mercy.** No separate "after N seconds"
+  timer: by the time the legs sit at the floor the shadow moves 3 s ×
+  80 ≈ 240 units a burn and the coast gives most of it back, so a
+  pilot who keeps flying toward the last thruster sound closes on it
+  without any further rule. `shadowBurnMinS` is the one number to
+  raise if that turns out too kind.
+- **(c) Blink is allowed in the shadow, and the refusal was wrong
+  twice.** 3.62 refused blink in the shadow ("blinking straight onto
+  a tail would skip the lesson") and 3.76 — Fable's own text — then
+  told Brian that "blink forward already exists (3.68)" as the
+  recovery for a lost shadow. Both are in the spec; the code follows
+  3.62. Brian did exactly what 3.76 told him and was refused, and the
+  refusal reused `weaponsCold()`'s line — "Weapons are cold in open
+  space. C calls a point of interest." — which is wrong on both
+  counts: blink is not a weapon, and the shadow is not open space.
+  Resolution: blink WORKS in the shadow (it costs `blinkRcs` 4 and a
+  3-second cooldown, so it is a rationed recovery, not a free catch —
+  and with (a) it is the second half of "the struggling player
+  doesn't just give up"); it stays refused on the course and in the
+  minefield, where it really does skip the lesson; and that refusal
+  gets its own line, "Blink is off here — fly it.", never the
+  weapons line again. 3.76's claim becomes true instead of being
+  deleted.
+- Numbers: `shadowBurnDecay` 0.85, `shadowBurnMinS` 3 — placeholders
+  for Brian's ear. Every other shadow number unchanged.
+- Test: burn lengths measured across a run at Rookie reading 10, 8.5,
+  7.2, ... down to 3 and holding (via `state().shadow.phaseLen` at
+  each thrust transition); Ace's third burn at the floor; the first
+  leg still 10 at Ace; the recording's fade landing at each shortened
+  leg's own length; Shift+Page Up in the shadow moving the ship
+  `blinkDist` forward with facing and velocity kept and `rcs` down by
+  4; Shift+Page Up on the course and in the minefield refused with the
+  new line, never the weapons line; F1's shadow section and the blink
+  key's description updated.
+
+#### 3.83 The capital ship, second pass: the hatch, the turret deploys, the big laser (ideas19.txt) — DECIDED (Fable concurs, 2026-09-09; defaults flagged in Part C)
+
+- Brian: "I have put a new audio asset in the capital folder in weps,
+  this simulates a metal hatch door opening and the robotic sounds of
+  a turret rotating into place. I want to have 4 different spots on
+  the capital ship for the player to have to target to; once they
+  start hearing the hatch start to open, there will be about 5 seconds
+  where the hatch is still protecting the turret, then about 7 seconds
+  for the turret to get into place and start to fire. This would be a
+  pretty big laser gun so the player, if they don't finish the turret
+  off with their laser on the first shot, will likely have to shield
+  up to take the incoming laser. The capital ship laser will continue
+  to keep firing, although not constant, so that another turret could
+  open up while the first turret is being dealt with, but that should
+  not happen until 2 laser shots from the first turret go off. We can
+  adjust these on higher levels. I'm hoping that the sound will give
+  the player a head start as the targeting guidance should not go
+  live until the hatch is open, and I'm hoping the good player can
+  hear the hatch and get their target cursor over there before the
+  hatch completely opens."
+- **The asset**: `audio/weapons/capital/capital_turret_open1.mp3`,
+  untracked — Sonnet stages the folder explicitly — measures **12.12 s**
+  (`ffprobe`), which is 5 + 7: the clip IS the timeline. Manifest key
+  `capital_turret_open`, preloaded. It plays through the turret's own
+  panner (positioned, so the hatch is the reticle) at natural length
+  and stops the instant that turret dies.
+- **What changes from 3.69 as built.** Today a door "opens" for
+  `capitalDoorOpenS` 4 s (a synthesized creak), the turret fires ONE
+  ordinary 5-second beam (30 damage), the door closes over 2 s, and
+  the next door waits the ordinary 7–12 s attack gap — one door at a
+  time, and the lock tone plays a 'shielded' tremolo on a closed door.
+  All of that is replaced by Brian's sequence; the turrets themselves
+  (four, riding the parent at `capitalTurretSpacing`, ordinary hostile
+  targets) and the parent's orbit/re-aim are untouched.
+- **(a) The hatch (0–5 s, `capitalHatchS` 5).** `capital_turret_open`
+  starts at the turret; `doorUp` stays TRUE — a hit splashes off with
+  "Shielded." exactly as today — and **no guidance**: the selected
+  turret behaves like a dark shadow (3.62's `t.dark` rule, reused —
+  no lock, no tick) while its hatch is closed. The spoken line is one
+  say(): "Hatch opening." The pilot has five seconds of positioned
+  hatch sound and nothing else to find it by; a good ear has the nose
+  on it before the hatch is open. The 'shielded' lock-tone kind
+  retires with this — a closed hatch can't be locked at all now, so
+  there is nothing for it to play on.
+- **(b) The deploy (5–12 s, `capitalDeployS` 7).** At 5 s `doorUp`
+  flips false — the turret is hittable from here — and guidance goes
+  live (lock tone and tick as for any hostile). The clip keeps playing
+  (the rotating-into-place half). The line: "Turret N deploying." A
+  turret killed here never fires; its clip stops with it. This is the
+  window the good player uses: hear the hatch, aim during it, burst
+  the instant the tick lands.
+- **(c) The big laser (12 s on).** The turret fires an ordinary
+  `startEnemyLaser` shot but with its own damage — `capitalLaserTickDmg`
+  8 × 5 ticks = **40 a shot** against a `shieldPool` of 45: a raised
+  shield eats one full shot with 5 to spare and the second shot breaks
+  it, which is the "shield up to take it" Brian describes and lines
+  up with (d) — and it keeps firing: after each shot, `capitalRefireGapS`
+  4 s, then the next, until the turret dies. **The hatch never
+  closes** — 3.69's open-to-close window is gone; once deployed a
+  turret is open, firing, and hittable until it's dead. Brian's "not
+  constant" is the refire gap.
+- **(d) The second hatch.** A second turret's hatch may start opening
+  only once the first has fired `capitalSecondHatchAfterShots` 2
+  shots; from then on the ordinary attack gap picks the next closed
+  turret as today (one hatch sequence in progress at a time — a THIRD
+  hatch waits on the second's own two shots, same rule). Shots are
+  serialized: `threat` stays the singleton it is everywhere, so two
+  deployed turrets take turns firing rather than beaming at once —
+  the pressure is two turrets' worth of shots with no gap between
+  them, not two beams in one ear. Flagged as Fable's reading; if
+  Brian wants genuinely simultaneous beams that is a second threat
+  slot and a bigger change.
+- **Tiers**: `capitalHatchS`/`capitalDeployS`/`capitalRefireGapS`/
+  `capitalSecondHatchAfterShots` are plain CFG and take `TIERS[i].cfg`
+  overlays like everything else — Veteran/Ace shorten the hatch and
+  the gap when Brian has the Rookie numbers by ear; nothing is set for
+  them now.
+- **Kept**: `capitalTurretHp` 60 (a full-aim mining burst at close
+  range kills it in one; a sloppy one doesn't — "if they don't finish
+  the turret off... on the first shot"); `capitalTurretSpacing` 250;
+  the parent's orbit, re-aim, and voice; the `capital` explosion pool
+  on each kill; the last-turret win and the debrief. Retired:
+  `capitalDoorOpenS`/`capitalDoorCloseS`, the synthesized open/close
+  creaks, the closing phase, `lockToneKind` 'shielded'.
+- Test: a hatch sequence measured `doorUp` true through 5.0 s and
+  false from 5.0 s with the clip playing at the turret; Tab onto a
+  hatch-closed turret giving no lock and no tick, both landing the
+  instant the deploy starts; a burst during the hatch splashing
+  "Shielded." with hp untouched, a burst during the deploy landing
+  real damage and, on a kill, the clip stopping and no shot ever
+  fired; a surviving turret's first shot at 12 s doing 40 to bare hull
+  or 40 off a raised shield, a second shot 4 s later breaking that
+  shield; no second hatch before the first turret's second shot, one
+  after it; two deployed turrets alternating shots with no gap
+  between; all four killed still ending with "the capital ship breaks
+  apart"; F1's capital section, `KEY_DESCRIPTIONS`, and README
+  updated.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
@@ -9715,4 +9898,45 @@ retired outright rather than moved to another key; (3) point-to-latch
 applies to EVERY tractor use, the ordinary mining pull included, not
 the haul alone; (4) the tether numbers — 220 length, 180 stretch to
 part, spring 3, damping 1.5 — and a re-measured `haulPar`; (5) a soft
-`tether_taut` twang when the slack line goes taut.
+`tether_taut` twang when the slack line goes taut. (Sonnet measured
+(4) in the build: spring 0.2, damping 0.12, `haulPar` 20 — see 3.81's
+DONE paragraph.)
+
+**Review (Fable, 2026-09-09) of Brian's `ideas19.txt`** — four notes
+from flying Rounds 53–62 and one new recording. Verdict: concur on all
+four; two build items, one already built, one bug.
+- **The shadow's burns (3.82a/b): yes, and what he felt is real.**
+  Every thrust leg is the same length at the same speed, every coast
+  bleeds to the same floor — the shadow gains on each burn and gives it
+  back on each coast, on a cycle that never eases. Legs now shrink
+  15 % a burn to a 3-second floor; the floor is the mercy, no timer.
+- **Shift+Page Up refused (3.82c): a bug, and Fable's own.** 3.62
+  refused blink in the shadow; 3.76 then told Brian blink forward was
+  his recovery. He did what the spec said and was refused — with the
+  WEAPONS line, which is wrong twice over. Blink now works in the
+  shadow (rationed by reaction mass and its cooldown) and the
+  course/minefield refusal gets its own words.
+- **The haul's tension: already built.** He flew 3.60; 3.81 landed
+  the same day and rations W exactly as he asks (a full hold from rest
+  parts in 3.6 s, the creak rises from half stretch). Written under
+  3.81 with the one knob to reach for if it still feels loose after he
+  flies it.
+- **The capital ship (3.83): yes, and the clip is the timeline.** His
+  recording measures 12.12 s = 5 + 7, so the hatch/deploy split falls
+  straight out of it. The one structural reading: shots stay
+  serialized on the `threat` singleton (two deployed turrets alternate
+  with no gap) rather than two beams at once.
+
+**DECIDE (open, from ideas19.txt — Fable's defaults, written into
+3.82/3.83, Brian to overrule)**: (1) burns shrink by LENGTH (distance
+at the same speed), not by speed — 0.85 a burn, floor 3 s, the first
+leg exempt; (2) blink is ALLOWED in the shadow, still refused on the
+course and minefield; (3) the hatch phase gives no lock and no tick at
+all — the positioned hatch sound is the only guidance — and the
+'shielded' lock tone retires; (4) the turret is hittable from the
+moment the hatch is open (5 s), through the whole 7-second deploy;
+(5) the big laser is 8 × 5 = 40 a shot, so one raised shield takes
+one shot and the second breaks it, refiring every 4 s until the turret
+dies; (6) a deployed hatch never closes again; (7) shots are
+serialized — a second deployed turret alternates with the first rather
+than firing at the same time.

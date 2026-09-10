@@ -4523,3 +4523,40 @@ placeholder for Brian's ear. Not yet heard or flown by Brian. Per the
 standing build order, next is quadrant 2 (3.18 → 3.14 → 3.22 → 3.11 →
 onward) — per the standing rule, nothing past what Brian has
 explicitly asked for should be started without further word from him.
+
+**Round 66 (Fable, docs only, 2026-09-09)**: Brian's `ideas19.txt`
+(untracked, like every ideas file) — four notes from flying Rounds
+53–62 plus one new recording — reviewed and written into SPEC.md as
+**3.82** and **3.83**, to build in that order before quadrant 2;
+verdicts and seven defaults in Part C. **3.82 the shadow, fourth
+pass**: (a) burns shrink — every thrust leg today is the same length
+at the same speed, so the shadow gains on each burn and gives it back
+on each coast, a cycle that never eases (what Brian felt was the
+build, not his flying); the Nth leg now runs `tierLen ×
+shadowBurnDecay^(N−1)` (0.85) to a `shadowBurnMinS` floor of 3 s, the
+first leg exempt (3.76's rule), the floor being the mercy with no
+timer; (c) **blink is allowed in the shadow** — a real bug, and
+Fable's own: 3.62 refused blink there, then 3.76 told Brian "blink
+forward already exists" as his recovery; he pressed Shift+Page Up as
+told and got `weaponsCold()`'s line, wrong on both counts. Blink now
+works in the shadow (rationed by `blinkRcs` and its cooldown), stays
+refused on the course/minefield with its own line ("Blink is off here
+— fly it."). **The haul's tension note needs no item**: he flew 3.60,
+and 3.81 landed the same day rationing W exactly as asked (a full
+hold from rest parts in 3.6 s); written under 3.81 with the one knob
+(`haulTetherStretch`) if it still feels loose. **3.83 the capital
+ship, second pass**: `audio/weapons/capital/capital_turret_open1.mp3`
+(untracked — Sonnet stages the folder explicitly) measures 12.12 s =
+5 + 7, so the clip IS the timeline: a 5-second **hatch** phase (still
+invulnerable, and NO lock or tick — the positioned clip is the only
+guidance, 3.62's `t.dark` rule reused; the 'shielded' lock tone
+retires), a 7-second **deploy** (hittable, guidance live, a kill here
+never fires), then a **big laser** (`capitalLaserTickDmg` 8 × 5 = 40 a
+shot — one raised shield takes one, the second breaks it) refiring
+every `capitalRefireGapS` 4 s until the turret dies; **the hatch never
+closes** (3.69's open-to-close window is gone); a second hatch may
+open only after the first turret's second shot; shots stay serialized
+on the `threat` singleton — two deployed turrets alternate rather
+than beam at once (flagged as Fable's reading). Tier overlays via
+`TIERS[i].cfg` as usual, none set yet. 3.69's heading annotated.
+Nothing built. Next: Sonnet builds 3.82 → 3.83.
