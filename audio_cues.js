@@ -200,6 +200,22 @@ SIM.cues = (function () {
                       var out2 = A.worldOut(opts.toPos, 300);
                       if (out2) A.sfxTone({ type: 'sine', f1: 500, f2: 720, dur: 0.15, vol: 0.22, at: 0.03, out: out2 });
                   } },
+                { id: 'flip', name: 'Flip', source: 'spec-3.81',
+                  // SPEC 3.81 (ideas18.txt): Shift+S's instant 180-degree
+                  // turn (velocity untouched) — a short whoosh, cockpit-only
+                  // since it's the ship's own maneuver, not a world event.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxSweep({ type: 'sine', f1: 200, f2: 600, f3: 150, dur: 0.25, vol: 0.2 });
+                  } },
+                { id: 'tether_taut', name: 'Tether Goes Taut', source: 'spec-3.81',
+                  // SPEC 3.81: the haul's tether snapping from slack to
+                  // taut — a soft twang, distinct from the creak (which
+                  // rides stretch continuously) and the part itself.
+                  fn: function () {
+                      var A = SIM.audio;
+                      A.sfxTone({ type: 'triangle', f1: 180, f2: 90, dur: 0.18, vol: 0.16 });
+                  } },
                 { id: 'warp_dry', name: 'Warp Tank Runs Dry', source: 'v12-warp',
                   // The drive gives out short of the target: a sagging sweep
                   // under the usual arrival noise. Placeholder until Brian hears it.

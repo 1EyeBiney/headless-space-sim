@@ -8184,7 +8184,7 @@ Zero console errors. Every level and the crossfade/track-volume number
 is a placeholder for Brian's ear; the default-on-at-medium call and
 the shuffle order are not. Not yet heard by Brian.
 
-#### 3.81 The haul, second pass: the flip, point-to-latch, and a real tether (ideas18.txt) — DECIDED (Fable concurs, 2026-09-09; five defaults flagged in Part C)
+#### 3.81 The haul, second pass: the flip, point-to-latch, and a real tether (ideas18.txt) — DONE (Round 65, Sonnet)
 
 - Brian: "I am considering using Shift S as a 'flip' maneuver rather
   than flying backwards with auto-thrust. As I did the haul mission, it
@@ -8294,6 +8294,69 @@ the shuffle order are not. Not yet heard by Brian.
   motion unchanged; after a part the load's `vel` persists and a flip
   plus W re-closes it, B re-latching only once pointed; the creak rises
   with stretch and is silent slack; the finish and board unchanged.
+- **DONE (Round 65, Sonnet).** Built (a)/(b)/(c) as specced, in
+  `index.html`: `flipKey()` (an instant `yaw += π`, `pitch = −pitch`,
+  velocity untouched, `flip` cue, "Flipped." plus the selected target's
+  fresh `bearingText()`), `toggleAutoThrust()` back to a plain boolean
+  (every `'rev'` branch and `haulReverseStrainPerS` removed), a
+  point-to-latch check in `tractorKey()` ahead of the pull-rate check
+  (`aim(t.pos).err > zoneRad().lockOn` → "Point at it first. Tab
+  selects, the tick guides.", `refusal_wait`) — one rule, confirmed
+  live in BOTH the haul and ordinary mining, not just written once and
+  assumed to apply — and `updateHaulTow()` rewritten around the real
+  spring-on-a-line model in 3.81(c), replacing 3.60's ideal-trailing-
+  point physics outright. Two real numbers needed correction from
+  Fable's own first-draft placeholders, found only by actually flying
+  the mechanic, not by inspection: **(1) a roster-spawn bug**,
+  `makeHaulRoster()`'s rock spawning at exactly the tether's own
+  parting distance (`haulTetherLen` 220 + `haulTetherStretch` 180 =
+  400 — a coincidence with the OLD `haulTowDist` literal it replaced),
+  so the very first B-press at mission start parted the line before
+  the pilot had moved at all; fixed with a new `CFG.haulRockStartDist`
+  (200, comfortably inside `haulTetherLen`) driving both the rock's and
+  the home beacon's spawn off one shared `rockStart`. **(2) the spring
+  constants**: Fable's own `haulTetherK: 3, haulTetherDamping: 1.5`
+  (explicitly flagged in her own text as unmeasured) caught the load up
+  so fast that a full, sustained W-hold from rest — the actual intended
+  play pattern is latch facing the rock, flip to face the drop-off,
+  THEN thrust, not thrust straight at the rock — never parted the line
+  at all; walked down via real `__sim.step()` sequences (not guesses)
+  to `haulTetherK: 0.2, haulTetherDamping: 0.12`, which parts a full
+  sustained hold at ~3.6 seconds while three short bursts to cruise
+  speed hold safely (peak stretch 0.527, matching Brian's own "short
+  bursts... don't" requirement exactly) — confirmed against the actual
+  committed source values, not just the live monkey-patched trial that
+  found them. **`haulPar` also needed re-measurement**, per the spec's
+  own note that the cost curve changes: Fable's placeholder of 55
+  reaction mass was never tested against real physics and turned out
+  wildly loose — four separate full 1600-unit tows, from careful
+  (thrust/coast banded at 0.2–0.3 stretch) to sloppy (0.1–0.85, peaking
+  at 0.933 without parting), all cost 9–11 reaction mass; the true cost
+  is basically the work needed to move the rock's own mass that far,
+  which barely varies with piloting style once the line never parts.
+  Re-tuned to `haulPar: 20` — real headroom above a clean run for
+  actual imprecise flying, heading corrections, or a parted line
+  needing a re-approach, while still meaning something (55 would have
+  called literally every successful tow "under par"). Machine-tested
+  at a local server entirely through real `__sim.step()`/dispatched-
+  keyboard sequences, never mocked: the flip's velocity-preservation
+  and bearing-swap; auto-thrust's plain-boolean on/off with a bare S
+  cancelling it; point-to-latch refusing an off-nose rock and latching
+  once aimed, confirmed separately in the haul AND in ordinary mining
+  (Tab-selected rocks, not the haul's own fixed target); a full
+  sustained W-hold from rest (post-flip, facing the drop-off — the real
+  play pattern, not thrusting into the rock) parting at 3.6s; three
+  short bursts holding at peak stretch 0.527 with rock speed climbing
+  toward the ship's own; a slack→taut `tether_taut` cue transition
+  firing exactly once per crossing; the `haulRockStartDist` fix
+  confirmed (a fresh latch no longer parts instantly); four full clean
+  hauls end to end (latch → flip → tow → arrive → `finishHaul()`'s
+  real debrief), each landing 9–11 reaction mass and reading "Under
+  par." against the corrected `haulPar: 20`, with the board recording
+  real entries each time. Zero console errors throughout, reconfirmed
+  on a fresh tab. Every number besides the two measured corrections
+  above is still Fable's own placeholder for Brian's ear. Not yet heard
+  or flown by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 

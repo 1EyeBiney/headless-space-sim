@@ -1750,9 +1750,9 @@ objective) · `[` music on/off · `]` next track, Shift+`]` previous (SPEC
 real Shift+`]` sends `}`; live everywhere onKeyDown reaches, checked right
 after the describeMode branch and before every overlay's own capture) ·
 X leave · F1 help · F12 explore · Escape opens the mission
-menu (SPEC 1.18 — see below; no separate pause any more). Shift+S auto-reverse (SPEC 3.57 — `autoThrust` is now `false |
-'fwd' | 'rev'`, 'rev' reads as a held S in `simTick`; either chord flips
-the other's direction in one press). Menu: arrows +
+menu (SPEC 1.18 — see below; no separate pause any more). Shift+S is
+the flip (SPEC 3.81, ideas18.txt — `flipKey()`, retiring 3.57's own
+auto-reverse: an instant 180-degree turn, velocity untouched). Menu: arrows +
 Enter (first letters D/S/E/H jump, S cycles Sector, then Sound, then
 Sound Lab; **as of SPEC 3.56 the five drills — Combat training, Mining,
 Flight course, Escort drill, Defend drill — live under one
@@ -4467,3 +4467,59 @@ build speed a full push from rest would snap — and "flip, wait for it
 to catch up" is literally true. Sonnet: `updateHaulTow` is a rewrite,
 `autoThrust` goes back to on/off, `haulPar` gets re-measured. Nothing
 built.
+
+**Round 65, continued (Sonnet, 2026-09-09): built SPEC 3.81, the
+haul's second pass — the flip, point-to-latch, and a real tether.**
+See SPEC.md's own DONE paragraph for the full shape. In brief:
+`flipKey()` (Shift+S, an instant 180° with velocity untouched, one
+`flip` cue, "Flipped." plus the selected target's fresh bearing),
+`toggleAutoThrust()` back to a plain boolean (every `'rev'` branch and
+`haulReverseStrainPerS` gone), a point-to-latch check in `tractorKey()`
+ahead of the pull-rate check ("Point at it first. Tab selects, the
+tick guides.") applying to every tractor use, and `updateHaulTow()`
+rewritten around a real spring-on-a-line tether (slack under
+`haulTetherLen`, a spring pulling the load toward the SHIP once taut,
+stretch itself the strain) replacing 3.60's ideal-trailing-point model
+outright. **Two real numbers needed correction from Fable's own
+first-draft placeholders, found only by flying the mechanic**: (1) a
+roster-spawn bug — `makeHaulRoster()`'s rock spawned at exactly the
+tether's own parting distance (220 + 180 = 400, a coincidence with the
+OLD tow-distance literal it replaced), so the very first B-press
+parted the line before the pilot had moved at all; fixed with a new
+`CFG.haulRockStartDist` (200) driving both the rock's and the home
+beacon's spawn off one shared point. (2) the spring constants —
+Fable's own `haulTetherK: 3, haulTetherDamping: 1.5` (flagged
+unmeasured in her own text) caught the load up so fast that a full
+sustained W-hold from rest never parted the line at all; walked down
+via real `__sim.step()` sequences to `haulTetherK: 0.2, haulTetherDamping:
+0.12`, which parts a full hold at ~3.6s while three short bursts to
+cruise speed hold safely (peak stretch 0.527) — confirmed against the
+actual committed source values in a second pass, not just the live
+monkey-patched trial that found them; the intended play pattern turned
+out to matter here too — latch facing the rock, flip to face the
+drop-off, THEN thrust, not thrust straight at the rock. **`haulPar`
+also needed re-measurement**, per the spec's own note that the cost
+curve changes: Fable's placeholder of 55 reaction mass was untested
+and wildly loose — four full 1600-unit tows, from careful to
+deliberately sloppy, all cost 9–11 reaction mass regardless of
+piloting style once the line never parts (the true cost is basically
+the work needed to move the rock's own mass that far). Re-tuned to
+`haulPar: 20` — real headroom above a clean run, while still meaning
+something. Machine-tested at a local server entirely through real
+`__sim.step()`/dispatched-keyboard sequences, never mocked: the flip's
+velocity-preservation and bearing-swap; auto-thrust's plain on/off
+with a bare S cancelling it; point-to-latch confirmed refusing and
+latching in BOTH the haul and ordinary Tab-selected mining, not
+assumed from one rule written in one place; the full-hold-parts-at-
+3.6s and three-bursts-hold-at-0.527 pair confirmed against the
+committed source; the `tether_taut` cue's slack→taut transition;
+the roster-spawn fix; and four full clean hauls end to end (latch →
+flip → tow → arrive → `finishHaul()`'s real debrief), each landing
+9–11 reaction mass and correctly reading "Under par." against the
+corrected `haulPar: 20`, with real board entries recorded each time.
+Zero console errors throughout, reconfirmed on a fresh tab. Every
+number besides the two measured corrections is still Fable's own
+placeholder for Brian's ear. Not yet heard or flown by Brian. Per the
+standing build order, next is quadrant 2 (3.18 → 3.14 → 3.22 → 3.11 →
+onward) — per the standing rule, nothing past what Brian has
+explicitly asked for should be started without further word from him.

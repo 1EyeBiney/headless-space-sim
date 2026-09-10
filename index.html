@@ -207,32 +207,55 @@ var CFG_DEFAULTS = {
     tractorDamp: 0.5,            // vel *= damp^dt while pulling — a laser's own shove dies out fast
     tractorRcsPerMassUnit: 0.004,   // reaction-mass cost per (rock mass unit x distance closed), before tier costMul
 
-    // SPEC 3.60 (Brian's own tow picture, ideas14.txt): the tractor trails a
-    // MOVING puller — the one place it does (3.55 deliberately avoided
-    // this). The load chases an ideal point behind the ship; how far it
-    // actually lags that point IS the strain, so hard accel or a sharp turn
-    // (the ideal point darting away faster than the tier can correct for)
-    // naturally strains the line with no separate rule needed for either.
-    // Reversing into the load is the one thing that gets its own explicit
-    // rule — Brian: "not allowing someone to auto-thrust backwards or they
-    // lose tether."
-    haulTowDist: 220,             // the load's ideal trailing distance behind the ship
-    haulSpringK: 6, haulDamping: 4,   // how tightly the load's velocity chases the ship's — generous
-    haulMaxAccel: 500,            // safety clamp on the spring — see updateHaulTow's own comment
-    // Strain is three independent, explicit gains (Brian named three
-    // things that should strain the line), not something inferred purely
-    // from how far the load has visibly lagged — gentle flying under all
-    // three stays quiet, on purpose, after an early build snapped almost
-    // instantly under ordinary forward thrust.
-    haulSafeSpeed: 90,            // ship speed below this: thrust alone adds no strain
-    haulSpeedStrainPerS: 0.5,     // strain/second per 100 units/s of speed over haulSafeSpeed
-    haulTurnStrainPerS: 0.5,      // strain/second per 90 deg/s of combined yaw+pitch rate
-    haulReverseStrainPerS: 1.3,   // extra strain/second while S or auto-reverse is held
-    haulStrainDecayPerS: 0.4,     // strain bleeds off this fast when none of the above apply
+    // SPEC 3.60 (Brian's own tow picture, ideas14.txt), second pass SPEC
+    // 3.81 (ideas18.txt): the tractor trails a MOVING puller — the one
+    // place it does (3.55 deliberately avoided this). Brian's own play
+    // found 3.60's model fought him — a tow point fixed behind the NOSE
+    // meant latching while facing the rock left it in front, so the only
+    // way home was backing away (which 3.60 punished on purpose) or
+    // turning, which flung the tow point to the far side of the ship. A
+    // real TETHER replaces it: slack under haulTetherLen, no force at
+    // all; taut past it, a spring pulls the load toward the SHIP itself
+    // (not a point behind the nose) with haulTetherDamping on the
+    // closing rate so it doesn't ring. Stretch past haulTetherLen IS the
+    // strain now — no separate speed/turn/reverse gains; every one of
+    // 3.60's three rules falls out as a consequence (hard accel or a
+    // sharp turn leaves the ship ahead of where the load can follow;
+    // braking into the load slackens the line, which then snaps taut the
+    // other way once the load overtakes).
+    haulTetherLen: 220,           // slack under this — no force, the load coasts on its own momentum
+    haulTetherStretch: 180,       // stretch past haulTetherLen before the line parts (220+180 = 400)
+    // SPEC 3.81, a bug found in testing: the rock's own spawn distance
+    // must sit inside haulTetherLen, or the very first latch parts the
+    // line before the spring has ever run a single frame — 200 is
+    // comfortably inside 220, so pointing and latching at mission start
+    // is genuinely inert until the pilot actually starts flying.
+    haulRockStartDist: 200,
+    // Measured, not guessed: at Fable's own first-draft numbers (k 3,
+    // damping 1.5) the spring caught the load up so fast that even a
+    // full, sustained W-hold from a dead stop never parted the line at
+    // all — the "hard thrust snaps it" half of the design goal had no
+    // teeth. Walked down step by step (real __sim.step() sequences, not
+    // guesses) until a full hold from rest reliably parts around 3.5
+    // seconds while three short bursts to the same cruising speed stay
+    // well clear (peak stretch ~0.5, never above ~0.55) — a weaker
+    // spring lags further behind a sustained burn before it can catch
+    // up, which is exactly the skill gap the mechanic is for.
+    haulTetherK: 0.2, haulTetherDamping: 0.12,   // the spring pulling the load toward the ship once taut
     haulCreakWarnFrac: 0.5,       // the creak becomes audible above this fraction of the snap point
     haulRcsPerMassUnit: 0.01,     // reaction-mass cost per (rock mass x corrective accel x dt), before tier costMul
     haulHomeDist: 1600,           // the home beacon's fixed distance from the load's start
-    haulPar: 40,                  // reaction mass a clean haul should cost, for the end-of-run comparison
+    // Measured against the final tether spring (K 0.2 / damping 0.12), not
+    // guessed: several full 1600-unit tows, from careful (thrust/coast band
+    // 0.2-0.3 stretch) to sloppy (0.1-0.85), all cleared cleanly for 9-11
+    // reaction mass — the cost is basically the work needed to move the
+    // rock's own mass that far, which barely varies with piloting style
+    // once the line never parts. 55 (Fable's own placeholder, never
+    // tested) would have called literally every successful tow "under
+    // par" by a wide margin. 20 gives real headroom above a clean run
+    // (for imperfect real flying, heading corrections, a parted line
+    // needing a re-approach) while still meaning something.
+    haulPar: 20,                  // reaction mass a clean tethered haul should cost, for the end-of-run comparison
 
     // Auto-target (SPEC 3.38, ideas10.txt): Shift+T hands the stabilizers
     // the selected target — steers the nose onto it, then holds through a
@@ -2558,7 +2581,12 @@ var won = false;
 var running = false;     // true after the init button
 var lastLaserAt = 0;
 var radarBusy = false;
-var autoThrust = false;  // Shift+W cruise (SPEC 1.15): false | 'fwd' (held W) | 'rev' (held S, SPEC 3.57) until cancelled
+// Shift+W cruise (SPEC 1.15): true (held W) or false, until cancelled.
+// SPEC 3.57 added a 'rev' direction (Shift+S, held S); SPEC 3.81
+// (ideas18.txt) retires it outright — Shift+S is the flip now (flipKey,
+// below), and a flip plus W already gives the same reverse burn, nose
+// pointed the way you're now going.
+var autoThrust = false;
 var zoneIdx = 0;         // start Wide: a big center for first-time pilots
 // SPEC 3.30 gave Z the tractor beam (a tool used constantly), moving the
 // zone cycle it used to be to Shift+Z (a setting changed rarely) — SPEC
@@ -2818,9 +2846,10 @@ var HELP_SECTIONS = [
     { heading: 'Flying', items: [
         'Left and Right arrows yaw the ship.',
         'Up and Down arrows pitch the nose up and down.',
-        'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it. Shift S is the same in reverse: auto-reverse slows you, stops you, and backs you up at the brake thruster\'s half push; shift W from reverse flips forward in one press, and back.',
+        'W thrusts forward along the nose. Hold it to accelerate. Shift W turns on auto-thrust, which keeps thrusting for you until you press W, S, or shift W again — a warp jump or docking also ends it.',
         'S is a reverse thruster: hold it to actively slow down, roughly half the push of W. Thrust, braking, and the automatic stabilizers all draw on your reaction mass tank — running out drops you to a weaker battery-power fraction of all three, never a full stop, and the ship warns you at 50 and 25 percent as it drains. Landing at a station fills the tank free; mining ice cores and combat kills refill it a little; a hail can buy more.',
         'S brakes to a stop.',
+        'Shift S flips the ship: an instant 180 degree turn with your velocity completely unchanged, so mid-flight it just turns your nose to face back the way you came while you keep sailing the same direction. W then brakes and reverses that motion; S pushes further along it.',
         'Every maneuver has its own little thruster sound, coming from the jet doing the work: turn left and the right-side jets answer, pitch up and the belly jets fire below you.',
         'When you stop thrusting, the automatic stabilizers take over — soft pulsing jets that bleed off your momentum so you never have to counter your own thrust. When they fall silent, you have stopped.',
         'I speaks your speed, the selected target, and how many targets remain.',
@@ -2895,7 +2924,7 @@ var HELP_SECTIONS = [
         'Every laser bite and every blast sheds dust that hangs where it was knocked loose, shimmering softly so you can find it by ear.',
         'Press V to run the vacuum: it filters all the dust near your ship, no aiming needed. Dust is the harvest you keep even when a rock gets away.',
         'Mine a rock down far enough and it collapses into a glowing core. Fly close, center it, and press E to extract the ore — cores hold far more than dust.',
-        function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: a higher tier pulls faster, reaches further, and costs less reaction mass. It needs the target within ' + TRACTOR_TIERS[tractorLevel() - 1].range + '. Firing a laser, the extractor, or the vacuum cuts it off; it refuses while any of those is running.'; },
+        function () { return 'B engages the tractor beam on the selected rock or core, pulling it toward you instead of flying to it — B again releases it. It comes in tiers like the lasers: a higher tier pulls faster, reaches further, and costs less reaction mass. It needs the target within ' + TRACTOR_TIERS[tractorLevel() - 1].range + ' and centered — point at it first, the same way a lock comes on; off-target it refuses and says so. Once latched, facing no longer matters at all. Firing a laser, the extractor, or the vacuum cuts it off; it refuses while any of those is running.'; },
         'Missiles are for the big rocks: huge and large asteroids absorb the blast and crack deep with barely any push.',
         'Fired at a medium or small rock, the blast hurls it out of control — it will usually sail right out of the cloud. Wasteful, unless that is what you want.',
         'Careful: lasering or missiling a finished core shatters it. Most of the ore is lost; only a dust mist remains.',
@@ -2920,8 +2949,10 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'The haul', items: [
         'A rock waits ahead and a home beacon sits out there somewhere — Tab cycles between them, T reports whichever is selected.',
-        'Fly up close and centered on the rock, then B engages the tractor exactly like mining does. From there it tows behind your own ship as you fly — the one place the tractor trails a moving puller instead of pulling something to a stop.',
-        'The tow line has a strain: fly smoothly and it stays quiet. Hard thrust, a sharp turn, and above all braking or backing into the load all strain it — a creak rises to warn you before it parts. A parted line lets the load coast on its own; B re-engages once you catch up to it.',
+        'Point at the rock and centered — Tab selects it, the tick and lock tone guide you on — then B latches the tractor. Off-target, B refuses and tells you to aim first; this rule holds for every tractor use, not just here. Once latched, facing never matters again: flip freely and the tow keeps going, since the line runs to the ship itself, not the nose.',
+        'The tow line is a real tether: slack up close, no pull at all — the load just coasts behind you on whatever speed it already has. Stretch it taut and a spring pulls the load back toward you, creaking louder the further it stretches, until it parts.',
+        'A parted line lets the load coast on its own speed. Flip toward it if needed, close the distance, then point and latch again once it is back in range and centered.',
+        'Towed at a steady speed the rock picks up that same speed and keeps it after a part — short bursts of thrust build speed gently without overstretching the line, where one long full-power burn from a stop will snap it.',
         'Bring the load within reach of the home beacon, still latched, to finish — the run reports the reaction mass it cost against a par.',
         'Weapons still work here the same as any mining trip; there is no reason to fire on the load, but nothing stops you either.'
     ] },
@@ -3058,7 +3089,7 @@ var KEY_DESCRIPTIONS = {
     pageup: function () { return 'Shift Page Up blinks forward, ' + CFG.blinkDist + ' units — facing and speed unchanged, ' + CFG.blinkRcs + ' reaction mass, ' + CFG.blinkCooldownS + ' second cooldown.'; },
     pagedown: 'Shift Page Down blinks backward, the same distance.',
     w: 'Thrust forward along the nose. Hold to accelerate. Shift W toggles auto-thrust, which keeps thrusting until you press W, S, or shift W again.',
-    s: 'Reverse thruster: hold to actively slow down, about half the push of W. Shift S toggles auto-reverse, which keeps backing up until you press W, S, or shift S again; shift W flips it forward. At the mission menu, jumps to the sector, then to the sound settings.',
+    s: 'Reverse thruster: hold to actively slow down, about half the push of W. Shift S flips the ship instantly 180 degrees, velocity unchanged — turns to face the way you came without touching your speed. At the mission menu, jumps to the sector, then to the sound settings.',
     ' ': function () { return mode === 'turret' ? 'Fire the laser in the selected turret zone.' : 'Fire the selected laser. One press runs the whole five-tick burst and cannot be stopped; the slot then recharges. Bites harder up close, each spoken damage tick depends on how centered the target is, and two empty bursts overheat it.'; },
     '1': function () { return 'Select laser slot 1 (the mining family) and speak what is fitted there. Pressing 1 again cycles among owned levels; shift 1 cycles back. Higher levels are bought at the station with credits and alloy, and wear with use — the shipyard repairs them. Switching or cycling takes a moment, longer for the heavier slots.'; },
     '2': 'Select laser slot 2. Shift 1 or shift 2 cycles among owned levels backward.',
@@ -3067,7 +3098,7 @@ var KEY_DESCRIPTIONS = {
     f2: 'Ship status: the full reference, one heading per system — hull, shields, lasers, missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, sensor, repair crew, systems, cargo, modules. Arrows read line by line, H jumps between headings, a letter jumps to one, left and right cycle a laser slot\'s level right there and re-read it with the new numbers, Escape closes it.',
     f3: 'Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it is for. Arrows read it line by line, Escape closes it.',
     f: function () { return mode === 'turret' ? 'Fire a missile in the selected turret zone — a guaranteed clear, no cooldown, from a small shared magazine.' : 'Fire a homing missile. Needs the selected target inside your missile zone, and kept there for the whole flight. You carry ' + CFG.missileMax + '.'; },
-    b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining — tier ' + tractorLevel() + ' owned, pulling, reaching, and costing reaction mass accordingly. Firing a laser, the extractor, or the vacuum cuts it off.'; },
+    b: function () { return 'Engage or release the tractor beam on the selected rock or core while mining — tier ' + tractorLevel() + ' owned, pulling, reaching, and costing reaction mass accordingly. Needs the target centered to latch; once latched, facing no longer matters. Firing a laser, the extractor, or the vacuum cuts it off.'; },
     g: function () { return mode === 'turret' ? 'Toggle the selected turret zone\'s own shield: instant, no spool, no pool — it just catches whatever lands there while up.' : 'Raise or drop the shields. They take a moment to come up, block enemy fire while up until their charge runs out, and keep your weapons offline.'; },
     d: function () { return 'Fire a decoy: a burst that spoofs the missile coming at you, sending it ballistic at once, no shield needed. A moment later you hear it pop clear. Does nothing against a laser. You carry ' + CFG.chaffMax + ', the station restocks, and a press with nothing inbound still spends one. At the mission menu, jumps to the delivery run.'; },
     m: 'Inside the Encounters list, jumps to space mining.',
@@ -6147,6 +6178,16 @@ function tractorKey() {
         say('Too far for the tractor. Distance ' + round10(dist) + ', reach ' + tier.range + '.');
         return;
     }
+    // SPEC 3.81 (ideas18.txt): "using target like we do now for combat" —
+    // one rule for every tractor use (mining, the haul, the derelict): it
+    // only latches while the selected target sits inside the lock-on zone,
+    // the same moment the lock tone itself comes on. Facing never matters
+    // again once latched — this is the one check, at the one moment.
+    if (aim(t.pos).err > zoneRad().lockOn) {
+        SIM.cues.play('refusal_wait');
+        say('Point at it first. Tab selects, the tick guides.');
+        return;
+    }
     if (tractorPullRateFor(t, tier) <= 0) {
         SIM.cues.play('refusal_offline');   // SPEC 3.50: a hard capability mismatch, not a spent resource
         say('Too massive for this tractor.');
@@ -6198,16 +6239,19 @@ function updateTractor(dt) {
     }
 }
 
-// ---- the haul (SPEC 3.60, ideas14.txt — Brian's own tow picture) -----------
-// The one place the tractor trails a MOVING puller. The load chases an
-// ideal point behind the ship; how far it actually falls behind that point
-// IS the strain — hard accel or a sharp turn (the ideal point darting away
-// faster than the tier's own pull rate can correct for) strains the line
-// with no separate rule needed for either, the way a real tow would. The
-// one thing that gets an explicit rule on top: reversing into the load
-// (Brian: "not allowing someone to auto-thrust backwards or they lose
-// tether"). tractor.active/targetIdx/tier (the ordinary rig state) still
-// drive this — only updateTractor's own dispatch and this function are new.
+// ---- the haul (SPEC 3.60, ideas14.txt; second pass SPEC 3.81, ideas18.txt) -
+// The one place the tractor trails a MOVING puller. A real tether: slack
+// under haulTetherLen, no force at all — the load coasts on whatever
+// momentum it already has; taut past it, a spring pulls it toward the
+// SHIP (not a point behind the nose, which is what fought Brian's own
+// flying in 3.60 — latching while facing the rock left it in front, and
+// there was no way home that didn't strain the line on purpose). Stretch
+// past haulTetherLen IS the strain now, read directly off the physics —
+// hard acceleration or a sharp turn leaves the ship ahead of where the
+// load can follow, and braking into the load slackens the line until it
+// snaps taut the other way once the load overtakes. tractor.active/
+// targetIdx/tier (the ordinary rig state) still drive this — only
+// updateTractor's own dispatch and this function are new.
 var haulCreakNodes = null;
 
 function haulCreakVoice() {
@@ -6230,51 +6274,48 @@ function stopHaulCreak() {
 
 function haulHomeTarget() { return haul ? targets[haul.homeIdx] : null; }
 
-// SPEC 3.60: strain is three explicit, independent gains — hard thrust
-// (ship speed over a safe threshold), sharp turning (combined yaw+pitch
-// rate over a threshold), and reversing (an outright rule, not a threshold:
-// any S or auto-reverse pumps it hard). Gentle flying under all three
-// decays back to zero — an early build inferred strain purely from how far
-// the load visibly lagged and snapped almost instantly under ordinary
-// forward thrust, since the tractor's own pull-rate numbers (tuned for the
-// kinematic mining pull, a distance-per-second budget) were the wrong unit
-// entirely for an acceleration cap on matching the ship's cruising speed.
-// The load's actual MOTION is separate from strain on purpose: a generous,
-// forgiving spring-damper toward an ideal trailing point, so it stays
-// visibly/audibly connected under ordinary play regardless of how strained
-// the line is — strain is a warning, not a physical leash length.
+// SPEC 3.81: a real tether, not a spring toward a point behind the nose.
+// Slack (dist <= haulTetherLen): no force at all — the load coasts on
+// whatever momentum it already has, rock friction bleeding it slowly like
+// any other drifting rock. Taut (dist > haulTetherLen): a damped spring
+// pulls the load toward the SHIP along the line — accel = k*stretch +
+// damping*(rate the line is stretching), the classic damped-spring shape,
+// so a load closing in fast doesn't get yanked past the ship and a load
+// falling behind gets pulled back before it can. Stretch itself (as a
+// fraction of haulTetherStretch) IS the strain: no separate speed, turn,
+// or reverse gains — hard acceleration outruns the spring's own pull
+// before it can catch up, a sharp turn swings the ship off the load's own
+// line, and braking into the load slackens the line until the load
+// overtakes and it snaps taut the other way. A flip (SPEC 3.81) changes
+// nothing here — the line runs to the ship, never the nose.
 function updateHaulTow(t, dt) {
     haul.elapsed += dt;   // SPEC 3.71: "also kept", not the headline
     var tier = TRACTOR_TIERS[tractor.tier - 1];
-    var idealPos = sub(ship.pos, scale(shipForward(), CFG.haulTowDist));
-    var toIdeal = sub(idealPos, t.pos);
-    var relVel = sub(t.vel, ship.vel);
-    var accel = add(scale(toIdeal, CFG.haulSpringK), scale(relVel, -CFG.haulDamping));
-    // Safety clamp: continuous flight never displaces idealPos far in one
-    // frame, so this never engages in ordinary play — it exists only to
-    // keep a pathological single-frame jump (an external poke, a stale
-    // reference) from resonating into a runaway explicit-Euler blowup.
-    var accelLen = len(accel);
-    if (accelLen > CFG.haulMaxAccel) accel = scale(accel, CFG.haulMaxAccel / accelLen);
-    t.vel = add(t.vel, scale(accel, dt));
+    var toShip = sub(ship.pos, t.pos);
+    var dist = len(toShip);
+    var stretchAmt = Math.max(0, dist - CFG.haulTetherLen);
+    var accel = v3(0, 0, 0);
+    if (stretchAmt > 0) {
+        var dir = scale(toShip, 1 / dist);
+        var relVel = sub(t.vel, ship.vel);
+        var stretchRate = -dot(dir, relVel);   // d(dist)/dt: positive while the line is stretching further
+        var accelAlongLine = CFG.haulTetherK * stretchAmt + CFG.haulTetherDamping * stretchRate;
+        accel = scale(dir, accelAlongLine);
+        t.vel = add(t.vel, scale(accel, dt));
+    }
     if (t.nodes) SIM.audio.movePanner(t.nodes.panner, t.pos);
 
     var cost = rockMass(t) * len(accel) * dt * CFG.haulRcsPerMassUnit * tier.costMul;
-    spendRcs(cost);
-    haul.rcsSpent += cost;
+    if (cost > 0) { spendRcs(cost); haul.rcsSpent += cost; }
 
-    var speedOver = Math.max(0, len(ship.vel) - CFG.haulSafeSpeed);
-    var yawRate = Math.abs(angleDiff(haul.lastYaw, ship.yaw)) * 180 / Math.PI / dt;
-    var pitchRate = Math.abs(ship.pitch - haul.lastPitch) * 180 / Math.PI / dt;
-    haul.lastYaw = ship.yaw; haul.lastPitch = ship.pitch;
-    var turnRate = yawRate + pitchRate;
-    var gain = (speedOver / 100) * CFG.haulSpeedStrainPerS + (turnRate / 90) * CFG.haulTurnStrainPerS;
-    if (keysDown.s || autoThrust === 'rev') gain += CFG.haulReverseStrainPerS;
-    haul.strain = clamp(haul.strain + gain * dt - CFG.haulStrainDecayPerS * dt, 0, 1.5);
+    var wasTaut = haul.taut;
+    haul.taut = stretchAmt > 0;
+    if (haul.taut && !wasTaut) SIM.cues.play('tether_taut');
 
-    if (haul.strain > CFG.haulCreakWarnFrac) {
+    var stretchFrac = clamp(stretchAmt / CFG.haulTetherStretch, 0, 1.2);
+    if (stretchFrac > CFG.haulCreakWarnFrac) {
         startHaulCreak();
-        var creakFrac = clamp((haul.strain - CFG.haulCreakWarnFrac) / (1 - CFG.haulCreakWarnFrac), 0, 1);
+        var creakFrac = clamp((stretchFrac - CFG.haulCreakWarnFrac) / (1 - CFG.haulCreakWarnFrac), 0, 1);
         if (haulCreakNodes) {
             SIM.audio.ramp(haulCreakNodes.g.gain, 0.05 + creakFrac * 0.35, 0.1);
             haulCreakNodes.o.frequency.setTargetAtTime(60 + creakFrac * 220, SIM.audio.ctx.currentTime, 0.1);
@@ -6283,7 +6324,7 @@ function updateHaulTow(t, dt) {
         stopHaulCreak();
     }
 
-    if (haul.strain >= 1) {
+    if (stretchFrac >= 1) {
         stopHaulCreak();
         haul.parted++;   // SPEC 3.71
         stopTractor('Tow line parted.');
@@ -6325,10 +6366,18 @@ function makeHaulRoster() {
     // fantasy for once tiers are actually earned, flagged here rather than
     // silently built un-completable at the default fit.
     var size = ROCK_SIZES.length - 2;
-    var rock = spawnRock(type, size, v3(0, 0, -400), v3(0, 0, 0));
+    // SPEC 3.81: the rock spawns WELL inside haulTetherLen — a real bug
+    // found in testing, not in the original spec text — so pointing at it
+    // and latching the instant the mission starts is genuinely inert, no
+    // tension at all, until the pilot actually starts flying somewhere.
+    // The old build's own -400 literal sat exactly ON the new tether's own
+    // parting distance (220 + 180), so the very first latch parted the
+    // line every time, before the spring ever got a chance to work.
+    var rockStart = v3(0, 0, -CFG.haulRockStartDist);
+    var rock = spawnRock(type, size, rockStart, v3(0, 0, 0));
     rock.haulable = true;
     var ang = Math.random() * Math.PI * 2;
-    var homePos = v3(Math.cos(ang) * CFG.haulHomeDist, 0, -400 + Math.sin(ang) * CFG.haulHomeDist);
+    var homePos = add(rockStart, v3(Math.cos(ang) * CFG.haulHomeDist, 0, Math.sin(ang) * CFG.haulHomeDist));
     var home = { name: 'Home Beacon', poiType: 'haulHome', kind: 'poi', desc: 'tow it here',
                  pos: homePos, alive: true, resource: false };
     buildPoiVoice(home);
@@ -6337,10 +6386,10 @@ function makeHaulRoster() {
 
 function haulIntro() {
     return 'The haul. A rock waits ahead, and a home beacon sits out there — Tab finds each. ' +
-           'B engages the tractor once you are close and centered; once latched it tows behind you as you fly. ' +
-           'Fly smoothly: hard thrust, sharp turns, and above all backing into it strain the line, and a creak ' +
-           'warns you before it parts — drop back and re-latch if it does. Bring it within reach of the home ' +
-           'beacon, latched, to finish. F1 for help.';
+           'Point at the rock, centered, then B latches the tractor — once latched, facing does not matter, ' +
+           'and shift S flips you freely. The tow line is a real tether: slack up close, taut and pulling ' +
+           'past that, creaking louder as it stretches until it parts. Flip and close the distance to re-latch ' +
+           'if it does. Bring it within reach of the home beacon, latched, to finish. F1 for help.';
 }
 
 function startHaulMission() {
@@ -7163,18 +7212,33 @@ function radarPing() {
 // Shift+W (SPEC 1.15). Ends on Shift+W again, any W or S press, a warp
 // jump, docking, or leaving the mode — the first three speak, the rest
 // fold "Auto-thrust off" into their own line or go quietly with the reset.
-// SPEC 3.57: `dir` is 'fwd' (Shift+W) or 'rev' (Shift+S). Pressing the
-// chord for the direction already running turns it off; the other chord
-// flips direction in one press — a cruise doesn't have to stop to reverse.
-function toggleAutoThrust(dir) {
-    autoThrust = (autoThrust === dir) ? false : dir;
-    SIM.audio.blip(autoThrust ? (dir === 'rev' ? 440 : 520) : 380, 90, 0.14, 0, 'triangle');
-    say(autoThrust === 'rev' ? 'Auto-reverse on. W, S, or shift S ends it.'
-      : autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.'
-      : autoOffText(dir));
+// SPEC 3.57 gave this a 'rev' direction; SPEC 3.81 retires it, so this is
+// back to a plain on/off forward cruise.
+function toggleAutoThrust() {
+    autoThrust = !autoThrust;
+    SIM.audio.blip(autoThrust ? 520 : 380, 90, 0.14, 0, 'triangle');
+    say(autoThrust ? 'Auto-thrust on. W, S, or shift W ends it.' : autoOffText());
 }
-function autoOffText(dir) { return (dir || autoThrust) === 'rev' ? 'Auto-reverse off. ' : 'Auto-thrust off. '; }
-function autoOnText()  { return autoThrust === 'rev' ? 'Auto-reverse on. ' : autoThrust ? 'Auto-thrust on. ' : ''; }
+function autoOffText() { return 'Auto-thrust off. '; }
+function autoOnText()  { return autoThrust ? 'Auto-thrust on. ' : ''; }
+
+// SPEC 3.81 (ideas18.txt): Shift+S is now the flip — an instant 180-degree
+// turn, velocity completely untouched (blink's own rule, SPEC 3.68), so
+// the ship keeps sailing the way it was, now tail-first: W brakes and
+// returns, S pushes onward. Retires 3.57's auto-reverse outright — a flip
+// plus W already gives the identical reverse burn, with the nose (and
+// every forward-only thing on it: lasers, extractor, the tractor's own
+// latch) pointed the way the ship is now going. Ends a running forward
+// cruise the same way a manual W/S press already would, since "forward"
+// just became "backward".
+function flipKey() {
+    if (autoThrust) { autoThrust = false; SIM.audio.blip(380, 90, 0.14, 0, 'triangle'); }
+    ship.yaw += Math.PI;
+    ship.pitch = -ship.pitch;
+    SIM.cues.play('flip');
+    var t = targets[selected];
+    say('Flipped.' + (t && t.alive ? ' ' + bearingText(t) : ''));
+}
 
 // SPEC 3.51 (ideas12.txt): "Y to announce resource totals... hopefully
 // this can be used anywhere, as I was using the station and needed this
@@ -9948,8 +10012,8 @@ function onKeyDown(e) {
         if (tug) { say('A tug is on the way, ' + Math.ceil(tug.remaining) + ' seconds out.'); return; }
         if (mission && over()) { say('X returns to the sector.'); return; }
         if (over()) { say('Enter restarts.'); return; }
-        if (lname === 'w') toggleAutoThrust('fwd');
-        else if (lname === 's') toggleAutoThrust('rev');   // SPEC 3.57
+        if (lname === 'w') toggleAutoThrust();
+        else if (lname === 's') flipKey();   // SPEC 3.81: retires 3.57's auto-reverse
         else if (lname === 'r') radarPing();
         else if (lname === 't') autoTargetKey();
         else cycleTarget(-1);
@@ -10229,8 +10293,7 @@ function simTick(dt) {
     var mass = shipMass();
     // Auto-thrust (SPEC 1.15) reads as a held W to everything below —
     // thrust, the thruster sound, and the stabilizers' "coasting" test.
-    // SPEC 3.57: 'rev' reads as a held S instead (the brake/reverse thruster).
-    var k = autoThrust ? Object.assign({}, keysDown, autoThrust === 'rev' ? { s: true } : { w: true }) : keysDown;
+    var k = autoThrust ? Object.assign({}, keysDown, { w: true }) : keysDown;
     if (keysDown.arrowleft)  ship.yaw   -= CFG.turnRate / mass * dt;
     if (keysDown.arrowright) ship.yaw   += CFG.turnRate / mass * dt;
     if (keysDown.arrowup)    ship.pitch += CFG.turnRate / mass * dt;
@@ -10481,13 +10544,21 @@ window.__sim = {
                 })
             } : null,
             // SPEC 3.60
-            haul: haul ? { latched: tractor.active && tractor.targetIdx === haul.targetIdx,
-                           strain: Math.round(haul.strain * 1000) / 1000,
-                           rcsSpent: Math.round(haul.rcsSpent * 100) / 100,
-                           rockPos: targets[haul.targetIdx] ? targets[haul.targetIdx].pos : null,
-                           homePos: targets[haul.homeIdx] ? targets[haul.homeIdx].pos : null,
-                           homeDist: targets[haul.targetIdx] && targets[haul.homeIdx] ?
-                               Math.round(len(sub(targets[haul.targetIdx].pos, targets[haul.homeIdx].pos))) : null } : null,
+            haul: haul ? (function () {
+                var rock = targets[haul.targetIdx];
+                var dist = rock ? len(sub(ship.pos, rock.pos)) : null;
+                var stretchAmt = dist !== null ? Math.max(0, dist - CFG.haulTetherLen) : null;
+                return { latched: tractor.active && tractor.targetIdx === haul.targetIdx,
+                         taut: haul.taut,
+                         dist: dist !== null ? Math.round(dist) : null,
+                         stretchFrac: stretchAmt !== null ? Math.round(clamp(stretchAmt / CFG.haulTetherStretch, 0, 1.2) * 1000) / 1000 : null,
+                         rcsSpent: Math.round(haul.rcsSpent * 100) / 100,
+                         rockPos: rock ? rock.pos : null,
+                         rockVel: rock ? rock.vel : null,
+                         homePos: targets[haul.homeIdx] ? targets[haul.homeIdx].pos : null,
+                         homeDist: rock && targets[haul.homeIdx] ?
+                             Math.round(len(sub(rock.pos, targets[haul.homeIdx].pos))) : null };
+            })() : null,
             autoTarget: { active: !!autoTarget, holding: autoTarget ? autoTarget.holding : false,
                           holdRemaining: autoTarget ? Math.round(autoTarget.holdRemaining * 10) / 10 : null,
                           charges: autoTargetCharges, tier: autoTargetTier(),
@@ -10808,8 +10879,8 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     // SPEC 3.60: same reasoning as missionSpec above — clearMission() just
     // nulled `haul`, so a fresh one is set AFTER, only when this call is
     // actually starting (or restarting) a haul run.
-    if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, strain: 0, rcsSpent: 0, lastYaw: ship.yaw, lastPitch: ship.pitch,
-                                elapsed: 0, parted: 0 };   // SPEC 3.71
+    if (startHaulRun) haul = { targetIdx: 0, homeIdx: 1, taut: false, rcsSpent: 0,
+                                elapsed: 0, parted: 0 };   // SPEC 3.71/3.81
     // SPEC 3.69: same reasoning again — `capital` set fresh AFTER
     // clearMission() nulled it, only when actually (re)starting this run.
     if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null,
@@ -11005,7 +11076,7 @@ var ENCOUNTER_ITEMS = [
     // SPEC 3.60: Brian's own tow picture — the tractor trails a moving
     // puller, the one place it does. See updateHaulTow() for the shape.
     { label: 'The haul',
-      desc: 'Tractor a rock and tow it home behind your own ship. Fly smoothly — hard thrust, sharp turns, and backing into it strain the tow line, and it can part.',
+      desc: 'Point at a rock to latch the tractor, then tow it home behind your own ship — flip freely once latched. The line is a real tether: slack up close, taut and pulling past that, and it can part if stretched too far.',
       run: function () { startHaulMission(); } },
     // SPEC 3.69: four turrets on a moving capital ship, each behind its
     // own shield door — the door opening is the telegraph.

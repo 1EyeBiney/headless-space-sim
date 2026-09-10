@@ -226,14 +226,23 @@ score, accuracy, timing, best streak, and more.
 
 ## The haul
 
-A rock waits ahead and a home beacon sits somewhere out there. Fly up
-close and B engages the tractor, same as mining — but here it tows behind
-your own ship as you fly instead of pulling the rock to a stop. The tow
-line has a strain: fly smoothly and it's quiet, but hard thrust, sharp
-turns, and above all braking or backing into the load all strain it, with
-a creak warning before it parts. A parted line lets the load coast; catch
-up and re-engage. Bring it home, still latched, and the run reports the
-reaction mass it cost against a par.
+A rock waits ahead and a home beacon sits somewhere out there. Point at
+the rock — Tab selects, the tick guides you onto it — and B latches the
+tractor once it's centered; off-target, B refuses and tells you to aim
+first. Once latched, facing never matters again: flip freely with
+Shift+S and the tow keeps going, since the line runs to the ship itself,
+not your nose.
+
+The line is a real tether: slack up close, no pull at all, so the rock
+just coasts behind you on its own momentum; stretch it taut and a spring
+pulls it back toward you, creaking louder the further it stretches until
+it parts. A parted line lets the load coast on whatever speed it had;
+flip toward it, close the distance, and point-and-latch again once it's
+back in range and centered. Towed at a steady speed the rock picks up
+that same speed and keeps it after a part — short bursts of thrust build
+speed gently without overstretching the line, where one long full-power
+burn from a stop will snap it. Bring the rock home, still latched, and
+the run reports the reaction mass it cost against a par.
 
 ## Minefield
 
@@ -289,7 +298,8 @@ Right hand on the arrows, left hand on everything else.
 | --- | --- |
 | Arrows | Yaw and pitch |
 | Shift+Arrows / Shift+Page Up / Shift+Page Down | Blink: an instant jump, facing and speed completely unchanged. Left/Right sidestep, Up/Down are straight world-vertical, Page Up forward, Page Down back. A short cooldown and a small reaction-mass cost; stops short of a station's or planet's hull instead of landing inside it |
-| W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again. Shift+S is auto-reverse, the same at the brake thruster's half push; either chord flips the other's direction in one press |
+| W / S | Thrust / brake. Shift+W toggles auto-thrust — the ship keeps thrusting until you press W, S, or Shift+W again |
+| Shift+S | Flip: an instant 180 degrees, velocity completely unchanged — turns to face back the way you came without touching your speed |
 | 1-6 | Select a laser slot. Slots 1 and 2 start fitted with mining and rapid-pulse; slots 3-6 start empty until the station's Lasers shop fits one of four more families (rugged mining, fast fighter, rotary cannon, burst plasma) into them. Pressing a fitted slot's key again cycles among the levels you own, Shift+ the key cycles back. Higher levels are bought at the station with credits and alloy, and wear down with use until the shipyard repairs them. Switching or cycling takes a moment — you hear the mechanism work, longer for the heavier slots — and Space waits for it |
 | F2 | Ship status: the full reference, a heading per system — hull, shields, lasers (one block per fitted slot: level, damage, matchups, health — left and right cycle that slot's level within what you own, and the block re-reads with the new numbers), missiles, decoys, warp, reaction mass, thrusters, extractor, vacuum, tractor beam, sensor, repair crew, broken systems, cargo, modules, station access (your comm/transporter/docking ranges). H jumps between headings, a letter jumps to one, arrows read line by line |
 | F3 | Resources: ore, salvage, alloy, reaction mass, warp charge, hydrogen, credits, missiles, and decoys, each with what it's for |
