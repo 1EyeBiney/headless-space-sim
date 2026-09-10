@@ -145,8 +145,25 @@ var CFG_DEFAULTS = {
     capitalTurnRateDeg: 15,      // how fast the parent's own facing re-aims at the player
     capitalTurretSpacing: 250,   // adjacent turrets at least this far apart
     capitalTurretHp: 60,
-    capitalDoorOpenS: 4, capitalDoorCloseS: 2,
-    shieldedLockTremoloHz: 3,    // the 'shielded' lock tone's own slow wobble
+    // SPEC 3.83 (ideas19.txt): Brian's own recording — a hatch opening
+    // into a turret rotating into place — measures 12.12s (ffprobe),
+    // which he split as "about 5 seconds where the hatch is still
+    // protecting the turret, then about 7 seconds for the turret to get
+    // into place" — the clip IS the timeline, not a guess fit to it.
+    // Retires the old open/close door cycle (capitalDoorOpenS/CloseS,
+    // shieldedLockTremoloHz, the 'shielded' lock tone) outright: a
+    // turret's hatch never closes again once it opens, so "invulnerable
+    // while closed" only ever applies during this one hatch phase, not a
+    // recurring one.
+    capitalHatchS: 5,             // doorUp true, t.dark true — no lock, no tick, just the positioned clip
+    capitalDeployS: 7,            // doorUp false, guidance live, clip still playing, not yet firing
+    // "a pretty big laser gun" — 8/tick x 5 ticks = 40 vs a 45-point
+    // shieldPool: one raised shield eats a full shot with 5 to spare,
+    // the second shot breaks it, matching "if they don't finish the
+    // turret off... will likely have to shield up."
+    capitalLaserTickDmg: 8,
+    capitalRefireGapS: 4,         // "not constant" — the gap between one shot ending and the next starting, same turret
+    capitalSecondHatchAfterShots: 2,   // a later turret's hatch can't start opening until this one has fired this many shots
 
     // Death by tug (SPEC 2.16): a lost ship in the sector campaign or the
     // delivery run waits for pickup instead of Enter-restarting in place.
@@ -696,6 +713,16 @@ var CFG_DEFAULTS = {
     // opening leg is a real departure every time.
     shadowSpawnDist: 500,
     shadowOpeningAvoidDeg: 30,
+    // SPEC 3.82 (ideas19.txt): every thrust leg ran the same length at the
+    // same speed, so the shadow gained ground on each burn and gave it back
+    // on each coast forever — a cycle that never eased, which is what Brian
+    // felt as "losing ground, then gaining ground" (the build, not his
+    // flying). The Nth thrust leg (the first is exempt, 3.76's own rule)
+    // now runs tierLen * shadowBurnDecay^(N-1), floored at shadowBurnMinS —
+    // shorter legs are shorter DISTANCE at the same speed, so the coast's
+    // own closing starts to net out ahead the longer the drill runs. The
+    // floor is the mercy: no separate "after N seconds" timer needed.
+    shadowBurnDecay: 0.85, shadowBurnMinS: 3,
 
     // SPEC 3.59 (ideas14.txt): turret defense — three fixed zones, ship
     // stationary, weapons act on whichever zone is selected. First pass is
@@ -1968,7 +1995,15 @@ function updateShadow(dt) {
             // (10s), whatever the live difficulty — a real departure every
             // pilot hears the same way.
             var tierForThisLeg = t.firstThrust ? 0 : tierIdx;
-            t.phaseLen = CFG.shadowThrustTiers[tierForThisLeg];
+            var rawLen = CFG.shadowThrustTiers[tierForThisLeg];
+            // SPEC 3.82: the Nth thrust leg this encounter (1-based) shrinks
+            // by shadowBurnDecay each time, floored at shadowBurnMinS —
+            // decay^0 = 1 at N=1, so the very first leg comes out exactly
+            // rawLen with no special case; the recording still plays at its
+            // own tier length, just faded out early once phaseLen is
+            // shorter than it (startShadowThrust's own fade rule).
+            t.thrustLegNum = (t.thrustLegNum || 0) + 1;
+            t.phaseLen = Math.max(CFG.shadowBurnMinS, rawLen * Math.pow(CFG.shadowBurnDecay, t.thrustLegNum - 1));
             if (t.nodes) SIM.audio.ramp(t.nodes.gain.gain, CFG.shadowGain * CFG.targetGain, 1.5);
             startShadowThrust(t, t.phaseLen, tierForThisLeg);
             t.firstThrust = false;
@@ -2973,16 +3008,18 @@ var HELP_SECTIONS = [
     ] },
     { heading: 'The shadow', items: [
         'One ship flies ahead of you, thrusting in bursts. Tab finds it, T reports it, and the lock tone and tick work on it exactly like any other target — while it is thrusting.',
-        'The moment it appears it thrusts off at an angle, never straight at you and never straight away, for a long first burn — hammering W from the start catches nothing. It never outruns your own top speed, so a straight chase always closes; a blink forward helps if you lose it.',
+        'The moment it appears it thrusts off at an angle, never straight at you and never straight away, for a long first burn — hammering W from the start catches nothing. It never outruns your own top speed, so a straight chase always closes; a blink forward helps if you lose it, and works here unlike the course or the minefield.',
         'The instant its engine cuts, the lock drops and the tick goes silent — no bearing updates at all until it thrusts again. It coasts on whatever heading it already had, but its NOSE turns while dark, so the next thrust can head somewhere new. Fly on the last bearing you had; R still reports range with closing or opening either way.',
+        'Every burn after the first covers less ground than the one before it, down to a short floor — the encounter eases the longer it runs, so losing ground early is not losing the whole thing.',
         function () { return 'Contact time counts whenever you are within ' + CFG.shadowRange + ', lit or dark — staying close through a dark leg by dead reckoning still counts toward the total, it is only the SOUND that goes quiet, not your progress.'; },
         function () { return 'Reach ' + CFG.shadowNeedS + ' total seconds of contact and the run ends with the time — how it took to gather that much, not the total itself. Weapons, shields, and auto-target are all off. The Run log keeps its own separate board.'; }
     ] },
     { heading: 'Capital ship', items: [
-        'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them, T reports which one is selected and whether its own shield door is open.',
-        function () { return 'Each turret is closed and invulnerable by default — a hit on a closed door splashes off with "Shielded." and does nothing. A door opens ' + CFG.capitalDoorOpenS + ' seconds before that turret fires: that countdown is your only warning, so hearing a door open is the moment to bring your own weapon onto it. The door stays open through the shot and for another ' + CFG.capitalDoorCloseS + ' seconds after — that whole stretch is when it can be hit.'; },
-        'The lock tone itself tells you which state a turret is in: a wavering tone means its door is closed, a plain steady tone means it is open. The tone updates the instant the door changes, even if you are already locked on.',
-        'Only one turret\'s door is ever open at a time, so the fight is always in one place at once — find it by ear and you are never guessing.',
+        'A large ship holds this zone, slowly orbiting and turning to face you, carrying four turrets. Tab cycles between them; a hatch-closed turret has no lock and no tick at all, only its own positioned hatch sound to find it by.',
+        function () { return 'A turret\'s hatch opens with a real metal-door recording — ' + CFG.capitalHatchS + ' seconds still closed and invulnerable, hearing it is your only warning, then ' + CFG.capitalDeployS + ' more seconds deploying: hittable now, guidance live, but not yet firing. Bring your own weapon onto it during those two windows and the first shot may be its last.'; },
+        'A hatch never closes again once it opens — a turret that survives its first shot keeps firing every few seconds until it is destroyed, no more invulnerable stretches after the first.',
+        function () { return 'The big turret laser bites hard enough that a raised shield only just survives one shot — the second breaks it, so shielding up after taking one is the usual answer if the turret is still alive.'; },
+        'A second turret\'s hatch can start opening once the first has fired a couple of shots, so more than one can be live at once late in the fight — but only one turret ever fires at a time, taking turns, never two beams together.',
         'The turrets sit spaced well apart on the ship, so bearing alone tells them apart even with more than one nearby.',
         'Clear all four turrets and the whole ship breaks apart.'
     ] },
@@ -3636,9 +3673,10 @@ function stopSolidTone() {
     setTimeout(function () { try { n.o.stop(); if (n.lfo) n.lfo.stop(); n.g.disconnect(); } catch (e) {} }, 120);
 }
 
-// SPEC 3.69: an optional slow tremolo LFO on the gain — the 'shielded'
-// lock tone reuses this exact solid tone, just wavering, rather than
-// inventing a whole second voice.
+// An optional slow tremolo LFO on the gain — no live caller passes
+// tremoloHz any more (3.83 retired the 'shielded' lock tone that used to),
+// left in place since it costs nothing and the next thing that wants a
+// wavering solid tone can reuse it the same way.
 function startSolidTone(vol, tremoloHz) {
     if (!SIM.audio.ctx || tick.solid) return;
     var g = SIM.audio.ctx.createGain(); g.gain.value = 0.0;
@@ -3670,10 +3708,11 @@ function lockToneKind() {
     if (!t) return 'solid';
     if (t.kind === 'rock' || t.kind === 'dust') return 'pulse';
     if (t.kind === 'poi') return 'poi';
-    // SPEC 3.69: a capital turret behind its own closed shield door — the
-    // reticle itself says so, a slow tremolo on the same solid tone
-    // (plain solid the instant the door opens).
-    if (t.doorUp) return 'shielded';
+    // A capital turret's own hatch closes t.dark, which already refuses a
+    // lock entirely (see updateTargeting/tickBeat's own dark checks) —
+    // this function never runs against one until its hatch is open, so
+    // there is no separate 'shielded' kind here any more (SPEC 3.83
+    // retired it; 3.69's own version of this line is gone).
     return 'solid';
 }
 function lockToneUsesPulse() { return lockToneKind() === 'pulse'; }
@@ -3704,7 +3743,6 @@ function startLockTone() {
     var kind = lockToneKind();
     lockToneKindPlaying = kind;
     if (kind === 'pulse') startLockPulse();
-    else if (kind === 'shielded') startSolidTone(CFG.lockToneVol, CFG.shieldedLockTremoloHz);
     else startSolidTone(kind === 'poi' ? CFG.lockTonePoiVol : CFG.lockToneVol);
 }
 function stopLockTone() { lockToneKindPlaying = null; stopLockPulse(); stopSolidTone(); }
@@ -3982,16 +4020,6 @@ function updateTargeting(dt) {
     if (systemState('sensor') === 'off' || t.dark) {
         if (locked) { locked = false; stopLockTone(); SIM.cues.play('lock_lost'); }
         return;
-    }
-    // SPEC 3.69: a capital turret's own door can flip open/closed while
-    // it's ALREADY locked — the tone otherwise only re-evaluates on a
-    // fresh lock acquire, which would leave a stale "shielded" tremolo
-    // playing after the door opens (or vice versa) until the lock happens
-    // to drop and re-land. `t.doorUp !== undefined` is only ever true for
-    // a capital turret, so this is a no-op for every other target kind.
-    if (locked && t.doorUp !== undefined && lockToneKind() !== lockToneKindPlaying) {
-        stopLockTone();
-        startLockTone();
     }
     var a = aim(t.pos);
     var z = zoneRad();
@@ -5119,61 +5147,73 @@ function makeCapitalRoster() {
             voice: { type: 'square', freq: 90 + i * 15, trem: 4 },
             parent: capital, localOffset: off, weapon: weapons[i],
             pos: add(capital.pos, add(scale(pright, off.x), v3(0, off.y, 0))),
-            doorUp: true, alive: true
+            // SPEC 3.83: dark from the moment it's created, not just once its
+            // own hatch sequence happens to start — every turret is
+            // unlockable/tickless for as long as it's closed, including the
+            // stretch before the encounter's own pacing has picked it yet.
+            doorUp: true, dark: true, alive: true, shotsFired: 0, refireIn: 0
         });
     }
     return turrets;
 }
 
 function capitalIntro() {
-    return 'A capital ship holds this zone, four turrets riding it. Tab finds one, T reports whether ' +
-           'its own shield door is open. A closed door refuses every hit — it opens ' + CFG.capitalDoorOpenS +
-           ' seconds before that turret fires and stays open through the shot, that is your window. ' +
+    return 'A capital ship holds this zone, four turrets riding it. Tab finds one — while its hatch is ' +
+           'closed there is no lock and no tick, just the positioned hatch sound to find it by. ' +
+           CFG.capitalHatchS + ' seconds of that, then ' + CFG.capitalDeployS + ' more as it deploys and ' +
+           'guidance comes live, hittable the whole time; once it opens it never closes again, and a ' +
+           'turret that survives its first shot fires again every few seconds until it is destroyed. ' +
            'Clear all four to break the ship apart. F1 for help.';
 }
 
-// The door-opening telegraph — Brian's own metal-door recording lands
-// later (3.69a, unwired here); a synthesized rising creak stands in,
-// replacing that turret's usual three chirps entirely (the door IS the
-// telegraph). Once it finishes, hands off to the EXACT ordinary
-// laser/cannon attack — capitalDoor is gone by the time either of those
-// even starts, so stepThreat/endThreat need no capital-specific branch
-// of their own for the firing itself, only the door timing around it.
-function startCapitalDoorSequence(t) {
-    capitalDoor = { t: t, clock: 0, phase: 'opening' };
-    var out = SIM.audio.worldOut(t.pos, CFG.capitalDoorOpenS * 1000);
-    if (out) {
-        SIM.audio.sfxNoise({ dur: CFG.capitalDoorOpenS * 0.9, vol: 0.3, filter: 'bandpass', freq: 200, q: 3, out: out });
-        SIM.audio.sfxTone({ type: 'sawtooth', f1: 60, f2: 140, dur: CFG.capitalDoorOpenS * 0.9, vol: 0.18, out: out });
+// SPEC 3.83 (ideas19.txt): Brian's own recording — a metal hatch opening
+// into a turret rotating into place — replaces the synthesized creak
+// outright, and its own measured length (12.12s, ffprobe) IS the
+// hatch/deploy split (5 + 7), not a guess fit around it. Plays through
+// the turret's own panner at natural length (stepCombatShips already
+// moves that panner with the turret every frame) and is silenced early,
+// with everything else, if the turret dies mid-sequence — stopVoice's
+// own panner disconnect, no separate stop needed since nothing else is
+// scheduled against this source.
+// doorUp/dark both go true here and BOTH drop for good at capitalHatchS
+// — a hatch never closes again once open, so "closed and invulnerable"
+// only ever describes this one phase in a turret's whole life, never a
+// recurring one the way 3.69's own open/close cycle worked.
+function startCapitalHatchSequence(t) {
+    t.doorUp = true; t.dark = true;
+    capital.gateTurret = t;   // SPEC 3.83: gates the NEXT turret's own hatch, below
+    capitalDoor = { t: t, clock: 0, deploying: false };
+    var buf = SIM.audio.assetBufs['capital_turret_open'];
+    if (buf && t.nodes) {
+        var src = SIM.audio.ctx.createBufferSource(); src.buffer = buf;
+        src.connect(t.nodes.panner); src.start();
+    } else {
+        SIM.audio.load('capital_turret_open');
     }
-    say(t.name + ' door opens.' + shieldCoach());
+    say(t.name + ' hatch opening.');
 }
-function capitalDoorCloseSound(t) {
-    var out = SIM.audio.worldOut(t.pos, CFG.capitalDoorCloseS * 1000);
-    if (out) {
-        SIM.audio.sfxNoise({ dur: CFG.capitalDoorCloseS * 0.9, vol: 0.28, filter: 'bandpass', freq: 200, q: 3, out: out });
-        SIM.audio.sfxTone({ type: 'sawtooth', f1: 140, f2: 60, dur: CFG.capitalDoorCloseS * 0.9, vol: 0.16, out: out });
-    }
-}
-function updateCapitalDoor(dt) {
+function updateCapitalHatch(dt) {
     var t = capitalDoor.t;
     if (!t.alive) { capitalDoor = null; scheduleNextThreat(); return; }
     capitalDoor.clock += dt;
-    if (capitalDoor.phase === 'opening') {
-        if (capitalDoor.clock >= CFG.capitalDoorOpenS) {
-            t.doorUp = false;
-            capitalDoor = null;
-            if (t.weapon === 'cannon') startEnemyCannon(t); else startEnemyLaser(t);
-        }
-        return;
+    if (!capitalDoor.deploying && capitalDoor.clock >= CFG.capitalHatchS) {
+        capitalDoor.deploying = true;
+        t.doorUp = false; t.dark = false;
+        say(t.name + ' deploying.');
     }
-    // closing — doorUp stays false (still vulnerable) through this whole
-    // phase too: "that open-to-close window is the fight."
-    if (capitalDoor.clock >= CFG.capitalDoorCloseS) {
-        t.doorUp = true;
+    if (capitalDoor.clock >= CFG.capitalHatchS + CFG.capitalDeployS) {
         capitalDoor = null;
-        scheduleNextThreat();
+        fireCapitalTurret(t);
     }
+}
+// Dispatches the turret's own weapon type exactly as the ordinary combat
+// dispatch below always has — startEnemyLaser's own stepThreat tick
+// reads CFG.capitalLaserTickDmg instead of the ordinary tick damage
+// whenever t.parent is set (Brian's own numbers here were specifically
+// "a pretty big laser gun"); the cannon path is untouched.
+function fireCapitalTurret(t) {
+    t.shotsFired = (t.shotsFired || 0) + 1;
+    if (t.weapon === 'cannon') startEnemyCannon(t); else startEnemyLaser(t);
 }
 
 function startCapitalMission() {
@@ -5199,11 +5239,27 @@ function updateEnemies(dt) {
     if (mode !== 'combat') return;
     updateCapital(dt);   // SPEC 3.69: the parent moves before its turrets sync to it, below
     stepCombatShips(dt);
-    // SPEC 3.69: a door opening or closing is its own single in-progress
-    // "attack", same rule as `threat` — nothing else in the candidate
-    // pool gets picked while one is running.
-    if (capitalDoor) { updateCapitalDoor(dt); return; }
+    // SPEC 3.69/3.83: a hatch opening/deploying is its own single
+    // in-progress "attack", same rule as `threat` — nothing else in the
+    // candidate pool gets picked while one is running.
+    if (capitalDoor) { updateCapitalHatch(dt); return; }
     if (threat) { stepThreat(dt); return; }
+    // SPEC 3.83: an already-deployed turret refires on its OWN schedule
+    // (capitalRefireGapS after its own last shot ended), ahead of the
+    // general attack-gap dispatch below — it is never a candidate in
+    // that pool at all any more (see the filter's own turret branch).
+    // `refireIn` only ever ticks down in a frame that reaches this far
+    // (no capitalDoor, no threat busy), which is what naturally
+    // serializes two deployed turrets taking turns rather than both
+    // firing at once: while one is mid-shot or a new hatch is mid-
+    // sequence, every OTHER turret's own countdown simply doesn't
+    // advance that frame.
+    if (capital) {
+        var waiting = aliveTargets().filter(function (t) { return t.parent && !t.doorUp; });
+        for (var i = 0; i < waiting.length; i++) waiting[i].refireIn -= dt;
+        var ready = waiting.filter(function (t) { return t.refireIn <= 0; });
+        if (ready.length) { fireCapitalTurret(ready[0]); return; }
+    }
     threatIn -= dt;
     if (threatIn > 0) return;
     // SPEC 2.17: in a mission every raider is already `hostile` from the
@@ -5211,6 +5267,22 @@ function updateEnemies(dt) {
     // to key off `provoked` instead — only a raider the player has actually
     // hit joins the normal player-vs-enemy fight modeled below.
     var cands = aliveTargets().filter(function (t) {
+        // SPEC 3.83: a capital turret is ALWAYS an eligible hatch
+        // candidate while its own hatch is still closed — never gated
+        // on hostile/provoked the way an ordinary ship is. This is also
+        // a real bug fix: a closed door's hit never reaches
+        // damageTarget/provoke (it splashes off as "Shielded." first),
+        // so at Rookie (alwaysHostile false) a turret's `hostile` flag
+        // could never actually flip and no hatch would ever have
+        // opened on its own under the old model. Gated instead by
+        // 3.83's own sequential rule: the SECOND and later hatches wait
+        // on the previous one's own turret firing
+        // capitalSecondHatchAfterShots shots.
+        if (t.parent) {
+            return t.doorUp &&
+                   (!capital.gateTurret || (capital.gateTurret.shotsFired || 0) >= CFG.capitalSecondHatchAfterShots) &&
+                   len(sub(t.pos, ship.pos)) <= (t.weapon === 'cannon' ? CFG.enemyCannonRange : CFG.enemyLaserRange);
+        }
         return !t.kind && (mission ? t.provoked : t.hostile) && len(sub(t.pos, ship.pos)) <= CFG.enemyMissileRange;
     });
     if (!cands.length) { threatIn = 2; return; }
@@ -5218,13 +5290,8 @@ function updateEnemies(dt) {
     var pool = alert.length ? alert : cands;
     var t = pool[Math.floor(Math.random() * pool.length)];
     t.alert = false;
-    // SPEC 3.69: a capital turret's own beam/cannon attack is wrapped in
-    // its door sequence — everything else (range gates, missile fallback)
-    // is exactly the ordinary dispatch below, just deferred behind the
-    // door opening first.
-    if (t.parent && !t.missileOnly &&
-        len(sub(t.pos, ship.pos)) <= (t.weapon === 'cannon' ? CFG.enemyCannonRange : CFG.enemyLaserRange)) {
-        startCapitalDoorSequence(t);
+    if (t.parent) {
+        startCapitalHatchSequence(t);
         return;
     }
     // SPEC 3.58: a `weapon: 'cannon'` ship (Raider, Scout) uses the cannon
@@ -5397,15 +5464,15 @@ function endThreat() {
             }, 200);
         } catch (e) {}
     }
-    // SPEC 3.69: a capital turret's own attack ending starts its door
-    // CLOSING, in place of the ordinary attack-gap timer — a real event
-    // boundary, so the closing sound is a single clean say/cue here, not
-    // folded awkwardly into whatever the attack's own last line said. A
-    // turret that died mid-attack (destroyTarget already set `alive`
-    // false before calling this) skips straight to the normal gap.
+    // SPEC 3.83: a capital turret's hatch never closes again once open —
+    // its attack ending just starts the refire gap (checked in
+    // updateEnemies, ahead of the general attack-gap dispatch) instead
+    // of 3.69's own door-closing sequence. A turret that died mid-attack
+    // (destroyTarget already set `alive` false before calling this)
+    // needs nothing further — the general gap picks up cleanly with one
+    // fewer target, same as any other kill.
     if (th.t && th.t.parent && th.t.alive) {
-        capitalDoorCloseSound(th.t);
-        capitalDoor = { t: th.t, clock: 0, phase: 'closing' };
+        th.t.refireIn = CFG.capitalRefireGapS;
         return;
     }
     if (th.followUp) threatIn = CFG.enemyChaffFollowUpS;   // (SPEC 1.8, Veteran/Ace)
@@ -5432,8 +5499,12 @@ function stepThreat(dt) {
             say(t.name + ' loses the beam. Out of range.');
             return;
         }
-        if (shield.up) { th.absorbed++; absorbShield(CFG.enemyLaserTickDmg); }
-        else hullHit(CFG.enemyLaserTickDmg, t.name);
+        // SPEC 3.83: a capital turret's own laser bites for capitalLaserTickDmg
+        // (8x5=40 vs a 45-point shieldPool) instead of the ordinary 6 — "a
+        // pretty big laser gun."
+        var tickDmg = t.parent ? CFG.capitalLaserTickDmg : CFG.enemyLaserTickDmg;
+        if (shield.up) { th.absorbed++; absorbShield(tickDmg); }
+        else hullHit(tickDmg, t.name);
         if (lost) return;
         if (th.ticks >= CFG.enemyLaserTicks) {
             var abs = th.absorbed;
@@ -5541,7 +5612,7 @@ function hullHit(dmg, source, isMissile, prefix) {
     // SPEC 3.37 (ideas10.txt): an optional lead-in, folded into this same
     // say() (never a second call) — used today only for a spoofed missile
     // that still clipped the hull.
-    say((prefix ? prefix + ' ' : '') + 'Your hull ' + hull + '.' + spillText + knockText);
+    say((prefix ? prefix + ' ' : '') + 'Your hull ' + Math.round(hull) + '.' + spillText + knockText);
 }
 
 function shipDestroyed(source) {
@@ -7130,7 +7201,7 @@ function turretKey(lname) {
         return true;
     }
     if (lname === 'i') {
-        var line = 'Your hull ' + hull + '. ' + name.charAt(0).toUpperCase() + name.slice(1) + ' selected, ' +
+        var line = 'Your hull ' + Math.round(hull) + '. ' + name.charAt(0).toUpperCase() + name.slice(1) + ' selected, ' +
             (z.incoming ? Math.ceil(z.incoming.timeLeft) + ' seconds out' + (z.incoming.kind === 'volley' ? ', shield only.' : '.') : 'clear.') +
             (z.shieldUp ? ' Shield up.' : '') +
             ' ' + Math.max(0, Math.ceil(CFG.turretDrillS - turretState.elapsed)) + ' seconds left. ' +
@@ -7287,7 +7358,7 @@ function statusReport() {
                 'Clock ' + fmtTime(courseState.elapsed) + '. ';
     } else if (mode === 'minefield') {
         var minesLeft = targets.filter(function (x) { return x.kind === 'mine' && x.alive; }).length;
-        line += 'Your hull ' + hull + ' percent. ' + minesLeft + (minesLeft === 1 ? ' mine' : ' mines') +
+        line += 'Your hull ' + Math.round(hull) + ' percent. ' + minesLeft + (minesLeft === 1 ? ' mine' : ' mines') +
                 ' remain. Speed ' + Math.round(len(ship.vel)) + ', safe under ' + CFG.mineSafeSpeed +
                 '. Beacon ' + minefieldState.beaconsTaken + ' of ' + minefieldState.beaconsNeeded +
                 '. Clock ' + fmtTime(minefieldState.elapsed) + '. ';
@@ -7303,7 +7374,7 @@ function statusReport() {
               : aliveTargets().length + ' targets remain. ';
     }
     if (mode !== 'mining' && mode !== 'course' && mode !== 'minefield' && mode !== 'shadow') {
-        line += 'Your hull ' + hull + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
+        line += 'Your hull ' + Math.round(hull) + ' percent. ' + missiles + (missiles === 1 ? ' missile. ' : ' missiles. ') +
                 chaff + (chaff === 1 ? ' decoy. ' : ' decoys. ');
     }
     if (mode === 'combat' || mode === 'mining') line += laserStatusText();
@@ -7377,7 +7448,7 @@ function zStatusAllWhole() {
 }
 function zStatusLine(id) {
     if (id === 'hull') {
-        return 'Hull ' + hull + ' percent.' + (zStatusAllWhole() ? ' All systems whole.' : '');
+        return 'Hull ' + Math.round(hull) + ' percent.' + (zStatusAllWhole() ? ' All systems whole.' : '');
     }
     if (id === 'shields') {
         return 'Shields ' + (shield.up ? 'up' : 'down') + ', ' + Math.round(shield.pool) + ' of ' +
@@ -7628,7 +7699,7 @@ function buildShipLines() {
     function line(text, slot) { lines.push({ text: text, heading: false, slot: slot }); }
 
     heading('Hull');
-    line('Hull ' + hull + ' percent.' + (activeRepairId === 'hull' ? ' Damage control on it.' : ''));
+    line('Hull ' + Math.round(hull) + ' percent.' + (activeRepairId === 'hull' ? ' Damage control on it.' : ''));
     if (repairRcsSpentSortie > 0) {
         line('Repairs have spent ' + repairRcsSpentSortie.toFixed(1) + ' reaction mass this sortie.');
     }
@@ -9482,12 +9553,18 @@ function blinkKey(dir) {
     // own earlier gates already returned or turret's own zone-switch
     // claimed the chord first), so the course is the one case that needs
     // an explicit check here.
-    // SPEC 3.61/3.62: the minefield and the shadow both refuse it too —
-    // blinking past a mine cluster, or straight onto a tail, would skip
-    // the lesson each one exists to teach.
-    if (mode === 'course' || mode === 'minefield' || mode === 'shadow') {
+    // SPEC 3.61: the minefield refuses it too — blinking past a mine
+    // cluster would skip the whole lesson. SPEC 3.82 (ideas19.txt): the
+    // shadow does NOT refuse any more — 3.76 itself named blink forward
+    // as "the recovery" for a lost shadow, but this refusal (still 3.62's
+    // own, reusing weaponsCold()'s line) silently overruled that and told
+    // Brian weapons were cold in open space when he tried exactly what the
+    // spec told him to. Blink now works here, rationed by blinkRcs/the
+    // cooldown same as anywhere else; course/minefield get their own line
+    // instead of the weapons one, since blink isn't a weapon.
+    if (mode === 'course' || mode === 'minefield') {
         SIM.cues.play('refusal_offline');
-        say('Weapons are cold in open space. C calls a point of interest.');   // reuses weaponsCold()'s own line
+        say('Blink is off here — fly it.');
         return;
     }
     if (Date.now() < blinkReadyAt) {
@@ -10538,9 +10615,13 @@ window.__sim = {
             // SPEC 3.69
             capital: capital ? {
                 pos: capital.pos,
-                door: capitalDoor ? { turret: capitalDoor.t.name, phase: capitalDoor.phase, clock: Math.round(capitalDoor.clock * 10) / 10 } : null,
+                gateTurret: capital.gateTurret ? capital.gateTurret.name : null,   // SPEC 3.83
+                door: capitalDoor ? { turret: capitalDoor.t.name, deploying: capitalDoor.deploying,
+                                       clock: Math.round(capitalDoor.clock * 10) / 10 } : null,
                 turrets: targets.filter(function (t) { return t.parent === capital; }).map(function (t) {
-                    return { name: t.name, alive: t.alive, hp: t.hp, doorUp: t.doorUp, weapon: t.weapon, pos: t.pos };
+                    return { name: t.name, alive: t.alive, hp: t.hp, doorUp: t.doorUp, dark: !!t.dark,
+                             weapon: t.weapon, shotsFired: t.shotsFired || 0,
+                             refireIn: Math.round((t.refireIn || 0) * 10) / 10, pos: t.pos };
                 })
             } : null,
             // SPEC 3.60
@@ -10580,6 +10661,7 @@ window.__sim = {
                          phase: t ? t.phase : null, dark: t ? t.dark : null,
                          phaseElapsed: t ? Math.round(t.phaseElapsed * 100) / 100 : null,
                          phaseLen: t ? Math.round(t.phaseLen * 100) / 100 : null,
+                         thrustLegNum: t ? (t.thrustLegNum || 0) : null,   // SPEC 3.82
                          facingDeg: t ? Math.round(deg(t.facing) * 10) / 10 : null,
                          speed: t ? Math.round(len(t.vel) * 10) / 10 : null,
                          pos: t ? t.pos : null,
@@ -10884,7 +10966,7 @@ function newGame(m, missionSpec, startHaulRun, startCapitalRun, startDistressPoi
     // SPEC 3.69: same reasoning again — `capital` set fresh AFTER
     // clearMission() nulled it, only when actually (re)starting this run.
     if (startCapitalRun) capital = { pos: v3(CFG.capitalOrbitRadius, CFG.capitalOrbitY, 0), facing: Math.PI, orbitAngle: 0, nodes: null,
-                                      elapsed: 0, refused: 0 };   // SPEC 3.71
+                                      elapsed: 0, refused: 0, gateTurret: null };   // SPEC 3.71/3.83
     // SPEC 3.55: same reasoning again — a fresh `distress` set AFTER
     // clearMission() nulled it (or left a recovered one alone, see
     // clearMission itself), only when actually accepting the call.
@@ -11081,7 +11163,7 @@ var ENCOUNTER_ITEMS = [
     // SPEC 3.69: four turrets on a moving capital ship, each behind its
     // own shield door — the door opening is the telegraph.
     { label: 'Capital ship',
-      desc: function () { return 'A moving capital ship with four turrets, each behind its own shield door — closed doors refuse every hit. A door opens ' + CFG.capitalDoorOpenS + ' seconds before that turret fires. Clear all four.'; },
+      desc: function () { return 'A moving capital ship with four turrets. A hatch opens (' + CFG.capitalHatchS + 's closed, ' + CFG.capitalDeployS + 's deploying) then never closes again, firing every few seconds until destroyed. Clear all four.'; },
       run: function () { startCapitalMission(); } }
 ];
 var encounterIdx = 0;

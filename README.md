@@ -272,22 +272,27 @@ normally; the instant its engine cuts, the lock drops and the tick
 goes silent, no bearing updates until it thrusts again. It coasts on
 its old heading while dark, but its nose turns, so the next burst can
 head somewhere new — fly on the last bearing you had; R still reports
-range with closing or opening either way. Contact time counts
-whenever you're close enough, lit or dark — staying with it through a
-dark leg by dead reckoning still counts. Reach the total needed and
-the run reports how long it took. Weapons, shields, and auto-target
-are all off.
+range with closing or opening either way. Every burn after the first
+covers less ground than the one before it, down to a short floor, so
+the chase eases the longer it runs. Contact time counts whenever
+you're close enough, lit or dark — staying with it through a dark leg
+by dead reckoning still counts. Reach the total needed and the run
+reports how long it took. Weapons, shields, and auto-target are all
+off; blink still works here.
 
 ## Capital ship
 
 A large ship slowly orbits and turns to face you, carrying four turrets.
-Tab cycles between them; each is closed and invulnerable by default — a
-hit on a closed door just splashes off. A door opens a few seconds before
-its turret fires and stays open through the shot and a beat after — that
-whole stretch is the only time it can be hit. The lock tone itself says
-which state a turret is in: wavering means closed, steady means open, and
-it updates the instant the door changes even if you're already locked on.
-Only one door is ever open at a time. Clear all four and the ship breaks
+Tab cycles between them; a hatch-closed turret has no lock and no tick at
+all, just its own positioned hatch sound to find it by. A real metal-door
+recording plays as it opens — a few seconds still closed and
+invulnerable, hearing it is your only warning, then more seconds
+deploying: hittable, guidance live, not yet firing. Once a hatch opens it
+never closes again, so a turret that survives its first shot keeps firing
+every few seconds until it's destroyed. The big turret laser hits hard
+enough that a raised shield only just survives one shot; a second turret's
+hatch can start opening once the first has fired a couple of shots, but
+only one turret ever fires at a time. Clear all four and the ship breaks
 apart.
 
 ## Keys

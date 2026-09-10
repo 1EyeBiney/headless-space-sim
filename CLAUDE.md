@@ -4560,3 +4560,50 @@ on the `threat` singleton — two deployed turrets alternate rather
 than beam at once (flagged as Fable's reading). Tier overlays via
 `TIERS[i].cfg` as usual, none set yet. 3.69's heading annotated.
 Nothing built. Next: Sonnet builds 3.82 → 3.83.
+
+**Round 67 (Sonnet, 2026-09-09): built SPEC 3.82 and 3.83, closing
+ideas19.txt in full.** **3.82** (the shadow's fourth pass): every
+thrust leg after the first now shrinks by `shadowBurnDecay` (0.85),
+floored at `shadowBurnMinS` (3s) — measured live at Rookie reading
+10, 8.5, 7.23, 6.14, 5.22, 4.44, 3.77, 3.21, then 3 and holding,
+matching the spec's own worked example to two decimals; at Ace the
+floor lands by the third burn, exactly as predicted. Blink no longer
+refuses in the shadow (a real bug: 3.62 refused it, then 3.76 told
+Brian it was his own recovery, and he got the weapons-cold line for
+trying); course/minefield keep their own refusal, now worded "Blink
+is off here — fly it." instead of reusing that line. **3.83** (the
+capital ship, second pass): Brian's own recording
+(`capital_turret_open1.mp3`, 12.12s measured) plays through each
+turret's own panner for a 5-second hatch (still closed, and now
+genuinely `dark` — no lock, no tick) then a 7-second deploy
+(hittable, guidance live), firing immediately at the 12-second mark
+and every 4 seconds after until dead, at 8 damage a tick (40 a shot)
+instead of the ordinary 6; a second turret's hatch waits on the
+first's second shot. Two real bugs found only by testing it live, not
+by reading the code: (1) a turret whose hatch hadn't started YET was
+still fully lockable, since `dark` was only ever set inside the hatch-
+start function rather than at creation — fixed by making every closed
+turret dark from the moment it exists; (2) a genuinely serious
+pre-existing gap this round's own rewrite exposed rather than caused —
+at Rookie, a turret's `hostile` flag can never flip true (a closed-
+door hit splashes off before ever reaching `provoke()`), so under the
+OLD candidate filter no hatch could ever have opened on its own at
+Rookie at all; confirmed directly (a fresh Rookie drill's first hatch
+opened right on the 8-second grace, zero shots fired) and fixed by
+giving capital turrets their own filter branch that never reads
+hostile/provoked. See SPEC.md's own DONE paragraphs for the full
+test detail on both items, including the hatch/deploy timing measured
+exactly 5.0s/7.0s and the refire gap exactly 4.0s, all via real
+`__sim.step()` sequences inside single unbroken scripts — a multi-
+call test mid-round produced a nonsensical 50-second gap that turned
+out to be the live tab's own rAF advancing between tool calls, not a
+bug, re-confirmed once redone in one script. Also fixed in passing,
+caught by Brian directly from this round's own test output: six
+spoken hull lines (`hullHit()`, turret/minefield/general `I`, Z's
+hull line) read the raw fractional `hull` value instead of rounding
+it ("Your hull 68.27777777777759.") — all six now match the file's
+own existing `Math.round(hull)` convention. Zero console errors
+throughout, reconfirmed on a fresh tab after every fix. Not yet heard
+or flown by Brian. This closes ideas19.txt in full — per the standing
+build order, next is the quadrant-2 track (3.18 → 3.14 → 3.22 → 3.11
+→ onward), which waits for Brian's own go-ahead per the standing rule.

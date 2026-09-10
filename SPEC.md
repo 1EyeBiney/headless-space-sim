@@ -2112,7 +2112,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, NEXT → 3.83 the capital ship's hatch sequence and big laser** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, DONE → 3.83 the capital ship's hatch sequence and big laser, DONE — ideas19.txt complete** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -8375,7 +8375,7 @@ the shuffle order are not. Not yet heard by Brian.
   parts sooner at the same spring) before touching `haulTetherK`. No
   new item.
 
-#### 3.82 The shadow, fourth pass: burns that shrink, and blink is allowed (ideas19.txt) — DECIDED (Fable concurs, 2026-09-09; defaults flagged in Part C)
+#### 3.82 The shadow, fourth pass: burns that shrink, and blink is allowed (ideas19.txt) — DONE (Round 67, Sonnet)
 
 - Brian: "we should make the distance that the ship moves in The
   Shadow encounter less with each of its burns as a mean of allowing
@@ -8442,8 +8442,43 @@ the shuffle order are not. Not yet heard by Brian.
   4; Shift+Page Up on the course and in the minefield refused with the
   new line, never the weapons line; F1's shadow section and the blink
   key's description updated.
+- **DONE (Round 67, Sonnet).** Built exactly as specced: `shadowBurnDecay`
+  (0.85) and `shadowBurnMinS` (3) in CFG; `t.thrustLegNum`, a plain
+  per-encounter counter incremented at the top of every real thrust-leg
+  start (including the first), replaces the flat `t.phaseLen =
+  CFG.shadowThrustTiers[tierForThisLeg]` assignment with `Math.max(
+  shadowBurnMinS, rawLen * shadowBurnDecay^(thrustLegNum - 1))` — since
+  `decay^0 = 1`, leg 1 comes out exactly `rawLen` with no separate
+  exemption branch needed, matching 3.76's own "first leg is a real
+  departure every time" for free. `startShadowThrust`'s existing fade
+  rule (fade at `durS - shadowThrustFadeS`, hard-stop just after) needed
+  no change — it was already keyed off whatever length it's handed, so
+  a shortened leg simply fades the recording early. `blinkKey()`'s mode
+  check dropped `'shadow'` from the refusal list entirely (comment
+  rewritten to explain why) and the remaining `course`/`minefield`
+  refusal now speaks its own line, "Blink is off here — fly it.",
+  never `weaponsCold()`'s wording. Added `thrustLegNum` to
+  `state().shadow` for testability, and one more F1 line under "The
+  shadow" naming the shrinking burns; README's own shadow section got
+  the same two additions (shrinking burns, blink works here).
+  Machine-tested at a local server via `__sim.step()`, dispatched
+  keyboard events, and real menu navigation (Difficulty cycled to Ace
+  through the actual menu, not poked) — never mocked: a full Rookie
+  run's first nine thrust-leg lengths measured 10, 8.5, 7.23, 6.14,
+  5.22, 4.44, 3.77, 3.21, 3, 3 — matching the spec's own worked example
+  to two decimal places; an Ace run's second leg measured 3.4 and its
+  third measured 3 (the floor, "by the third burn" confirmed exactly);
+  the first leg measured 10 at both tiers. Shift+Page Up inside a live
+  shadow encounter moved the ship forward exactly `blinkDist` (300)
+  with `rcs` dropping from 100 to 96 and "Blink forward, 300." spoken
+  — no refusal; the identical chord on the flight course and in the
+  minefield both refused with "Blink is off here — fly it.", confirmed
+  distinct from the old weapons line. Zero console errors throughout,
+  reconfirmed on a fresh tab. Both numbers (`shadowBurnDecay`,
+  `shadowBurnMinS`) are placeholders for Brian's ear; every other
+  shadow number is untouched. Not yet heard or flown by Brian.
 
-#### 3.83 The capital ship, second pass: the hatch, the turret deploys, the big laser (ideas19.txt) — DECIDED (Fable concurs, 2026-09-09; defaults flagged in Part C)
+#### 3.83 The capital ship, second pass: the hatch, the turret deploys, the big laser (ideas19.txt) — DONE (Round 67, Sonnet)
 
 - Brian: "I have put a new audio asset in the capital folder in weps,
   this simulates a metal hatch door opening and the robotic sounds of
@@ -8540,6 +8575,86 @@ the shuffle order are not. Not yet heard by Brian.
   between; all four killed still ending with "the capital ship breaks
   apart"; F1's capital section, `KEY_DESCRIPTIONS`, and README
   updated.
+- **DONE (Round 67, Sonnet).** Built (a)-(d) as specced: `startCapitalHatchSequence(t)`
+  plays the real recording through the turret's own panner (which
+  `stepCombatShips` already moves every frame — no new tracking code)
+  and sets `doorUp`/`dark` both true; `updateCapitalHatch(dt)` flips
+  both false at `capitalHatchS` (5s, saying "Turret N deploying.") and
+  fires the turret's own weapon dispatch — `fireCapitalTurret(t)`,
+  unchanged laser-or-cannon-by-row — the instant `capitalHatchS +
+  capitalDeployS` (12s) is reached; `stepThreat`'s laser branch reads
+  `CFG.capitalLaserTickDmg` (8) instead of the ordinary 6 whenever
+  `t.parent` is set (the cannon path is untouched — Brian's own numbers
+  were specifically for the laser); `endThreat`'s capital branch sets
+  `t.refireIn = capitalRefireGapS` (4) instead of starting 3.69's own
+  door-closing sequence, since a hatch never closes again. **One real
+  design gap found only by testing it live, not by reading the code**:
+  a turret whose hatch sequence hadn't started YET (the other three
+  while the first one's hatch is opening, or any of them before the
+  first ever opens) was still fully lockable/tickable — `dark` was
+  only ever set true INSIDE `startCapitalHatchSequence`, so a turret
+  that simply hadn't been picked as a hatch candidate yet had `dark`
+  at its default `undefined`/false, giving it away for free. Fixed by
+  setting `dark: true` at turret CREATION (alongside `doorUp: true`)
+  instead of only when its own sequence begins — every closed turret
+  is unlockable from the moment the encounter starts, not just the one
+  whose hatch happens to be actively running. **A second, more serious
+  bug found the same way**: at Rookie (`TIERS[0].alwaysHostile ===
+  false`), a turret's `hostile` flag is never set until `provoke()`
+  runs, and `provoke()` is only ever reached through `damageTarget` —
+  which a closed-door hit never calls (it splashes off as "Shielded."
+  first, before `damageTarget`). Under the OLD `cands` filter
+  (`!t.kind && (mission ? t.provoked : t.hostile)`), this meant NO
+  hatch could ever have opened on its own at Rookie — a turret's
+  `hostile` could never flip true. Confirmed directly: a fresh Rookie
+  capital-ship drill's first hatch opened on schedule at the 8-second
+  grace with zero shots fired by the player. Fixed by giving capital
+  turrets their own branch in the candidate filter that never reads
+  `hostile`/`provoked` at all — eligibility is `t.doorUp` (still
+  closed) plus 3.83(d)'s own sequential shot-count gate, independent
+  of difficulty. The refire dispatch (a new block in `updateEnemies`,
+  ahead of the general attack-gap pool) decrements `refireIn` only for
+  turrets found in a frame that reaches that far — which is exactly
+  what serializes two deployed turrets without any extra bookkeeping:
+  a frame busy with `capitalDoor` or `threat` never reaches the refire
+  loop at all, so every OTHER turret's own countdown simply doesn't
+  advance until the shared slot frees up. Machine-tested at a local
+  server entirely through real `__sim.step()` sequences inside single
+  unbroken script executions (this project's own standing lesson about
+  real time elapsing between separate tool calls — confirmed the hard
+  way again mid-round when a multi-call test produced a nonsensical
+  50-second gap between "hatch opening" and "deploying" that turned out
+  to be rAF quietly advancing the live tab between calls, not a bug):
+  a full hatch-to-deploy-to-first-shot sequence measured EXACTLY 5.0s
+  then EXACTLY 7.0s (0.65→5.65→12.65 in one continuous run); the first
+  laser tick read "Your hull 92." then "Your hull 84." (two ticks of
+  exactly 8); the refire gap measured exactly 4.0s from a shot's own
+  end to the next "locking on!"; a second turret's hatch opened only
+  once the first had started its second shot, and only after that
+  shot's own beam fully finished (proving serialization, not just the
+  shot-count gate); a Tab-selected still-closed turret read `locked:
+  false` and a full laser burst against it left hp completely
+  untouched; a real player death produced the shared debrief ("The
+  capital ship escapes... Ship lost, hit by Turret N... 4 turrets
+  still up.") — closing SPEC 3.70's own flagged coverage gap for the
+  capital ship's loss path. **Not independently re-verified live this
+  round**: the win path (all four turrets destroyed → "the capital
+  ship breaks apart") and a kill landed exactly mid-deploy (before a
+  turret's first shot) — both rest on code review plus the identical,
+  already-tested `destroyTarget`/`updateCapitalHatch`'s own `!t.alive`
+  branch from Round 50, neither of which this round's edits touched.
+  Zero console errors throughout, reconfirmed on a fresh tab after
+  both fixes. Every hatch/deploy/refire/damage number is a placeholder
+  for Brian's ear; the two bugs above are corrections, not tuning.
+  **Also fixed in passing, unrelated to this spec item**: Brian caught
+  a spoken-hull decimal ("Your hull 68.27777777777759.") live in this
+  round's own test output — six `say()`/status-line sites across
+  `hullHit()`, turret-mode `I`, the minefield/general `I` status line,
+  and Z's hull line all read the raw fractional `hull` value (which
+  has carried fractions since the repair crew's own per-tick healing,
+  SPEC 3.27/3.36) instead of rounding it; all six now read
+  `Math.round(hull)`, matching every other hull line in the file that
+  already did. Not yet heard or flown by Brian.
 
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 

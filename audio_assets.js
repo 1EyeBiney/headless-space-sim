@@ -170,6 +170,15 @@ window.AUDIO_MANIFEST = {
   tractor_beam_3: 'audio/weapons/tractor_beams/tractor_beam8.mp3',
   tractor_beam_4: 'audio/weapons/tractor_beams/tractor_beam9.mp3',
 
+  // Capital ship turret hatch (SPEC 3.83, ideas19.txt, Brian's own
+  // recording): a metal hatch opening into a turret rotating into place,
+  // measured at 12.12s (ffprobe) — 5s hatch + 7s deploy is the clip's own
+  // length, not a guess. Plays through the turret's own panner at natural
+  // length, no fade; silenced early (with everything else) if the turret
+  // dies before the clip ends, via the existing stopVoice() panner
+  // disconnect.
+  capital_turret_open: 'audio/weapons/capital/capital_turret_open1.mp3',
+
   // Warp (SPEC 1.17/2.10). Engine 1's three phases only; engines 2-6 are
   // on disk under audio/ships/warp/ but not in the manifest yet — no
   // drive module exists to select another engine.
