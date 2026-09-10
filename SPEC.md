@@ -364,6 +364,102 @@ stations. Every income source feeds credits or a resource.
   supersedes "one hydrogen fare per edge" above. Not yet built — lands
   with 3.22/quadrant 2, alongside the gate work itself.
 
+  **The cube, third pass — every cell is a quadrant (Brian, ideas_hold3,
+  2026-09-10; Fable's geometry and defaults, Part C).** Brian: "to me a
+  Quadrant is any place on the cube that a player can go to, the
+  controllable corners of the cube to me are the 8 strategic points but
+  everything to me is a quadrant because it will have POIs and planets
+  and such even if those points between corners are not part of the
+  game's control system." So the vocabulary settles as: **26
+  quadrants** (the whole shell), of three kinds — **8 corners**, the
+  strategic points, the only controllable ones, each with a flavor;
+  **12 edge midpoints**, open quadrants — POIs, fields, a station or
+  two, encounters, prices — no control, travelled by everyone, human
+  and CPU; **6 face centres**, the **homes**: the player's is the near
+  face's centre, "1 behind" — **Q1**, protected, entered by the player
+  alone ("only the human could go back to his home quadrant... it is
+  protected and not really controllable anyway"); the other five are
+  the rivals' homes, as many as the difficulty setting seats (an
+  unseated one is simply another open quadrant). **The Core (0,0,0) is
+  the base site, not a quadrant** — never a destination until Phase 5.
+  This supersedes three earlier lines: "Q1 IS a corner" (2026-09-05),
+  "the near face's centre is the harbour, reachable from Q2 only" (home
+  IS that protected place now — the harbour idea folds into home), and
+  "the faces and centre are unreachable." **Q2 is "1 right, 1 behind"**,
+  the near face's right midpoint — the economy quadrant (ideas10), a
+  full live quadrant: ports, prices, wants, planets as ports, the planet
+  grid, trade goods, contracts — everything but control. **Q3 is "1
+  below, 1 right, 1 behind"**, the first corner, military, where control
+  begins (ideas10's Q3 role, unchanged). Nothing built changes: today's
+  home quadrant (3.10's Meridian, Station Two, the planets, the Jump
+  Gate) simply sits in the cell "1 behind" instead of a corner, and
+  the Jump Gate becomes Q1's gate to Q2, on the right.
+  **Routes.** Adjacency is one step along one axis, so a corner has 3
+  neighbours (all midpoints), a midpoint 4 (two corners, one cell in
+  the next slab, one face centre), and a face centre 4 (its face's
+  midpoints) — a home's four doors admit its owner only. Gates follow:
+  3 at a corner, 4 at a midpoint, 4 at a home, each fixed on the outer
+  ring in its edge's direction as before (a gate "below" is an elevated
+  POI under the star's plane). Q2's off-axis fourth gate is withdrawn —
+  its gate to home is an ordinary edge now. Travel stays manhattan, one
+  hydrogen a cell: home to any near-face corner is 2. Phase 3 builds
+  one door: Q1's right gate to Q2; Q2's three onward gates (below to
+  Q3, above to Q9, ahead to Q11) stay sealed until Phase 4, the way
+  today's second gate is.
+  **Numbering — one rule for all 27 (Brian: "it will probably take me a
+  while to remember all the quadrant numbers and names... the face of
+  the cube towards the viewer gets Q1 through Q9, Q10 is 1 below, 1
+  left... and I'm sure I messed that up but that is the general idea").**
+  Each slab's **centre first, then clockwise from the right**: right,
+  below-right, below, below-left, left, above-left, above, above-right.
+  The near face is Q1–Q9, the middle slab Q10–Q18, the far face
+  Q19–Q27. So **Q1** home "1 behind"; **Q2** "1 right, 1 behind"; **Q3**
+  the below-right corner; **Q4** "1 below, 1 behind"; **Q5** the
+  below-left corner; **Q6** "1 left, 1 behind"; **Q7** the above-left
+  corner; **Q8** "1 above, 1 behind"; **Q9** the above-right corner;
+  **Q10** the Core (never a destination); **Q11** "1 right" — the right
+  face's centre, a rival's home when seated; Q12 "1 below, 1 right"; Q13
+  "1 below" (the bottom face's centre, a home); Q14 "1 below, 1 left";
+  Q15 "1 left" (a home); Q16 "1 above, 1 left"; Q17 "1 above" (a home);
+  Q18 "1 above, 1 right"; **Q19** "1 ahead" — the far centre, the last
+  home; Q20–Q27 its ring the same way (Q21 below-right corner, Q23
+  below-left, Q25 above-left, Q27 above-right). Brian's own Q1–Q5
+  examples already follow this rule (his "Q4 TBD (1 below, 1 behind)"
+  and "Q5 economic" land exactly); his middle-slab list didn't, and he
+  said so — one rule beats two. The number is the address and is
+  spoken **first**, then the kind or flavor, then the coordinates, then
+  the name: "Q3, military, 1 below, 1 right, 1 behind — Bastion." "Q2,
+  open, 1 right, 1 behind." "Q1, home." The galactic cursor and every
+  map line use it; the coordinate words stay, since a number alone
+  teaches no geometry.
+  **Four flavors on the eight corners — the antipodal pairs.** With
+  four flavors, put each on two OPPOSITE corners (the four body
+  diagonals). Then a theorem does the rest: **every face shows all four
+  flavors, one per corner, and every corner's three neighbours are the
+  three other flavors** — the same from every side, which no
+  three-flavor pattern could be (three flavors were forced to break on
+  two faces). From the front face Brian fixed: **Q3** (below right)
+  military, **Q5** (below left) economy, **Q9** (above right) industry,
+  **Q7** (above left) science; their antipodes on the far face: **Q25**
+  military, **Q27** economy, **Q23** industry, **Q21** science. A
+  corner's lean is its POI mix, hand-authored (A.10's typed fields, the
+  star's heat, the zone's threat, its planets, its anomaly): a military
+  corner has iron fields, a hot zone, and a shipyard; industry a hot
+  star and rich ore; economy two planets and trade ports; science an
+  anomaly and the exotics. Because a corner touches the other three
+  flavors, every corner **wants** what its neighbours make — the haul
+  routes are the edges.
+  **Names**, placeholders by flavor, Brian's to replace, spoken last:
+  military **Bastion** (Q3) / **Redoubt** (Q25); economy **Lantern** (Q5)
+  / **Harrow** (Q27); industry **Foundry** (Q9) / **Kiln** (Q23); science
+  **Lens** (Q7) / **Halo** (Q21). Home is home; a rival's home carries
+  the rival's own name. Each corner also gets a signature recording
+  (the pulsar / space_loop set) — its sound is its name to the ear.
+  **What this leaves open (Part C)**: the numbering rule itself; whether
+  the five other face centres really are rival homes; the science
+  doctrine's pair; the placeholder names; how many rivals the
+  difficulty setting seats.
+
 ### A.14 The sound lab as the HRTF laboratory (ideas_crazy_7, 2026-09-05)
 
 The lab stops being only a list of every sound and becomes the place
@@ -396,6 +492,31 @@ widgets the mission menu, quadrant map, and run log already are.
   with a base as its sink.
 - Winning = a base that outlasts the others. Everything before that is
   gathering the five resources and the influence to build and defend it.
+- **Four doctrines, chosen at setup (ideas_hold / hold2 / hold3, 2026-09-10).**
+  At profile creation the pilot picks **military, industry, economy, or
+  science** — fixed for the whole game (Brian: "doctrine in setup, no
+  change during gameplay... if a player wants to try a different path
+  they can start over"), with its own perks from the first minute, its
+  own cutscenes later (Phase 3b territory, direction only), and it
+  decides which base is built at the end: military the fortress (the
+  Death Star), industry the hollowed rogue moon, economy the mined-out
+  asteroid become a market, science **the Array** — an observatory
+  strung across the Core. Every base needs all five stockable
+  resources; the doctrine's pair (A.9's table) is the bulk of its bill.
+  **Science is the hybrid Brian asked for** ("we might be able to make
+  this use a hybrid of resources somehow"): its pair is the two exotic
+  trade goods, relics and isotopes, and its bill takes a little of
+  every raw resource rather than a lot of two. Perks, first-draft
+  placeholders: military — salvage ×1.25 a kill, laser levels 25 % off;
+  industry — alloy and hydrogen yields ×1.25 (cores, dust, the corona
+  scoop), modules 25 % off; economy — favor gains ×1.25, the buy/sell
+  spread 1.25 → 1.15; science — lock zones +25 %, anomaly readings pay
+  favor from the first visit, F4's last-seen prices carry a forecast
+  word. `profile.doctrine` (a `PROFILE_VERSION` bump when built; a
+  Difficulty-style setup line), Phase 4's first item. Why four: the
+  cube has eight corners in four opposite pairs, and four flavors on
+  those pairs is the one arrangement that looks the same from every
+  side (A.13, the third pass).
 
 ### A.9 The resources (ideas5)
 
@@ -424,6 +545,42 @@ hours is a strategic choice:
   friendly station (influence past the threshold), costs mined resources
   to accept, and is rate-limited per station, so nobody farms it.
 - Every resource is a line on the F3 resources screen (A.12).
+- **The doctrine pairs (2026-09-10)**: military **alloy + salvage**;
+  industry **ore + hydrogen**; economy **biomass + credits**; science
+  **relics + isotopes** (the two exotics below). Reaction mass is never
+  a base input — spent, not stocked. Six base resources stay six
+  (Brian, ideas_hold2: "those are ok").
+- **A second source for every base resource — traces in the dust
+  (3.84).** Brian: "make them be able to be part of asteroid mining,
+  likely have them be vacuumed up as a component of the dust clouds."
+  Each rock type sheds a trace of its own special into its dust: ice →
+  **hydrogen** (ice is water; this replaces 3.18's hydrogen-extractor
+  module idea), iron → **alloy** flakes, stone → nothing extra (the
+  plain rock, its identity). The vacuum's existing reaction-mass
+  trickle is the model; all rates placeholders. Buildable any time.
+- **Tier two — trade goods (Brian, ideas_hold2: "just having 6 is
+  going to be dull for traders").** Six to start, names placeholders:
+  **medicine** (agriculture + industry tiles; perishable; stations want
+  it; favor bonus), **spirits** (agriculture luxury; high value, low
+  weight), **weave** (agriculture → the economic tile), **circuitry**
+  (industry tile; alloy in), **relics** (anomalies and derelicts only;
+  rare), **isotopes** (the corona scoop past the heat line). Rules:
+  never a base input except the two exotics for science; made only by
+  the planet grid (3.23b), anomalies, and the corona — no rock sheds a
+  trade good; priced through 3.11/3.12's own bias and saturation PLUS a
+  **volatility class** LOW / MED / HIGH (a daily random walk on the game
+  clock — lifted from Talking Farm's market model); cargo weight per
+  good (3.14); medicine and spirits **perish** (a hold or bay left
+  `spoilAfterH` play-hours loses a fraction); a luxury a station
+  *wants* pays favor ×2; and at a corner quadrant a station's unions
+  take **tribute in the luxury it wants** — control bought with goods,
+  the trader's own road to control (Phase 4). **Shortages**: per
+  quadrant, every `shortageEveryMin` one port's want doubles for
+  `shortageLastMin`, spoken at the hail and on the map — the first
+  thing the local news model (A.6) will have to say. Where: quadrant 2
+  has all of it (Brian, ideas_hold3: "by Q2, which is a full live
+  quadrant, we need everything running by then even if that quadrant
+  does not have control elements in yet").
 
 ### A.10 The quadrant is a solar system (ideas5)
 
@@ -478,7 +635,10 @@ hours is a strategic choice:
 Function keys, the way F1 is help: **F2 ship** (attributes, slots with
 each laser's matchups in words, modules, mass), **F3 resources** (one
 line per resource and what it's for), **F4 trading** (prices at the
-station you're hailing, and what it wants). All browse line by line like
+station you're hailing, and what it wants), and — ideas_hold, 2026-09-10
+— **F7 holdings** (every tile, share, and holding bay the pilot owns,
+what's ready to collect first; F5/F6/F11 belong to the browser, so F7
+is the next free key — Brian: "yes"). All browse line by line like
 the run log, Escape closes, F12 describes them. The ship's six
 attributes — hull, shield pool, reaction mass, warp charge, cargo, mass —
 are what every module and laser adjusts; battery mode is a flat fraction,
@@ -2112,7 +2272,7 @@ Shift+S 3.57 DONE → 3.58 the facing cone and cannon DONE → 3.59 turret
 defense (3-zone) DONE → **3.65 the turret's second pass, DONE** →
 **3.60 the haul, DONE** → **ideas15.txt (2026-09-08): 3.67 the deep
 space bed DONE → 3.66 Z reads the ship + field repair caps DONE →
-3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, DONE → 3.83 the capital ship's hatch sequence and big laser, DONE — ideas19.txt complete** → the quadrant-2 track (3.18 → 3.14 → 3.22) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
+3.68 blink DONE → 3.69 the capital ship DONE → 3.55 the distress tow DONE → 3.61 the minefield DONE → 3.62 the shadow DONE → 3.63 nebula transit DONE → 3.64 the gate run DONE, Phase 3E complete** → **ideas16.txt (2026-09-09): 3.70 the debrief everywhere DONE → 3.72 turret third pass DONE → 3.73 the shadow thrusts DONE → 3.71 scoring boards DONE → 3.74 the star's corona DONE, ideas16.txt complete** → **ideas17.txt (2026-09-09): 3.80 music on the brackets, built FIRST (Brian), DONE → 3.78 yank the nebula, DONE → 3.79 yank the gate run, lock the gates, DONE → 3.76 the shadow third pass, DONE → 3.75 the minefield second pass, DONE → 3.77 reaction mass as the economy, DONE — ideas17.txt complete** → **ideas18.txt (2026-09-09): 3.81 the haul second pass — Shift+S flips, point to latch, a real tether (retires 3.57's auto-reverse), DONE** → **ideas19.txt (2026-09-09): 3.82 the shadow's shrinking burns + blink allowed, DONE → 3.83 the capital ship's hatch sequence and big laser, DONE — ideas19.txt complete** → **ideas_hold / hold2 / hold3 (2026-09-10, docs): the third-pass cube (26 quadrants, Q1 home at the near face's centre, Q2 the right midpoint), four doctrines, trade goods, the planet grid — 3.84 dust traces buildable any time** → the quadrant-2 track (3.18 → 3.14 → 3.22 → 3.11 → 3.19 → 3.12 → 3.20 → 3.20b contracts → 3.23b the planet grid + F7; the doctrine pick and the shuttle line are Phase 4's first items) → 3.59b (numpad 3×3, optional) / 3.42 escort in formation, parked →
 3.62 the shadow → 3.63 nebula transit → 3.64 the gate run → 3.59b
 (numpad 3×3) — with lettered audio sub-stages injected as Brian's
 recordings arrive) →
@@ -8656,6 +8816,25 @@ the shuffle order are not. Not yet heard by Brian.
   `Math.round(hull)`, matching every other hull line in the file that
   already did. Not yet heard or flown by Brian.
 
+#### 3.84 Traces in the dust (ideas_hold, 2026-09-10) — buildable any time
+
+- Brian: "make them be able to be part of asteroid mining, likely have
+  them be vacuumed up as a component of the dust clouds that get
+  spawned now during mining." `ROCK_TYPES[i].dustTrace` — ice
+  `{ hydrogen: 0.0005 }`, iron `{ alloy: 0.0003 }`, stone nothing — and
+  `dustTick` adds `amount × trace` to `profile.resources` the way it
+  already adds the reaction-mass trickle (3.32): silent, fractions at
+  a time, read on F3, never spoken per tick. A field's dust carries
+  the trace of the rock it came from (`addDebris` already knows the
+  rock). Ice dust yielding hydrogen supersedes 3.18's "hydrogen-
+  extractor module" — mining is a real route to the gate fare now.
+  Placeholders: a full ice cloud (~2,000 dust) should yield about one
+  hydrogen, an iron cloud about half an alloy — a trickle, not a mine.
+- Test: vacuuming an ice field's dust for a stepped minute raises
+  `resources.hydrogen` by the expected fraction and nothing else;
+  iron raises alloy; stone raises neither; F3 reads the fractions
+  rounded; the reaction-mass trickle is unchanged.
+
 #### 3.48 F2 lasers: the equipped laser per slot, switchable there (ideas12.txt) — DONE
 
 - Brian: "F2 should show the currently equipped laser in that slot and
@@ -8976,6 +9155,26 @@ Brian.
   Meridian pays credits and favor; saturation from a big sale is audible
   on the next Sell line; the hold cap holds.
 
+#### 3.20b Contracts with collateral (ideas_hold2, 2026-09-10 — Brian: "yes")
+
+- A port's comms menu gains **Contracts** (beside Missions): "Deliver
+  40 medicine by 2 hours 10, pays 1.5 times today's price. Collateral
+  required." Accepting names the collateral — one fitted module from
+  `profile.upgrades` (never a laser slot, never a test fit) — and
+  starts a deadline on the game clock. Delivery is a Sell of the
+  contracted good at that port before the deadline: pays `contractMult`
+  1.5 × the price at acceptance (the market's later moves don't touch
+  it — Talking Farm's futures), plus favor as a wanted sale. **Failure
+  strips the module** (repossession, D-027's shape: `profile.upgrades`
+  loses it, `applyTier()` rebuilds CFG, F2 stops listing it) and costs
+  `favorFail`; the module is bought again at the shipyard like any
+  other. One open contract per port; F4 lists open contracts with time
+  left; the tug (2.16) does not pause a deadline. Quadrant 2 onward.
+- Test: accept with a module named; deliver on time and get 1.5×;
+  accept, let the clock pass, and lose exactly that module with CFG
+  rebuilt and F2 updated; a second contract at the same port refused
+  while one is open.
+
 #### 3.23b Control — investment, levels, production (A.6 second pass; direction, not yet a build spec)
 
 Deferred out of 3.23 (it needed 3.11's wants), then rethought by Brian
@@ -9054,6 +9253,104 @@ build once the questions in Part C are answered:
   by interaction, not by clock" rule holds — the pilot is present by
   proxy. Every number here is direction, not spec, until Part C is
   answered.
+
+**The planet grid — 3.23b made buildable (ideas_hold / hold2 / hold3,
+2026-09-10; Fable's shape, drawn from Talking Farm's brief, Part C).**
+Brian: "landing on a planet, the player would be on some sort of grid
+where they could move the cursor around and hear info on the tiles
+which would be economic/agriculture/industry buildings that need game
+resources to level up and thus produce the amounts of goods needed for
+end game. I do not envision a player controlling a lot of planets but
+just being able to invest in certain buildings on planets, and then we
+have a screen accessible via Fn button that brings up all their
+holdings." Built in **quadrant 2**, on its planets, with 3.19's
+landing. This IS control's concrete form (3.23b above): a pilot's
+control at a corner planet, later, is their share of its tiles.
+
+- **(a) The grid.** Landing (3.19, Trusted) opens a **3×3** grid,
+  `PLANETS[name].tiles[9]`, row 1 nearest the port. The cursor is
+  L.1c's cube cursor flattened: arrows move one tile, Home/End the row
+  ends, and every move speaks one rich line — "Row 2, column 3.
+  Agriculture, level 2, yours. Producing biomass, bay half. Level 3
+  needs 4,000 ore and 2 alloy." An empty tile: "Row 1, column 1.
+  Empty. Build agriculture, industry, or economic." Talking Farm's
+  disembodied cursor (no avatar, instant moves, the rich summary on
+  every landing) is the model; its Shift-snap and waypoints aren't
+  needed on nine tiles.
+- **(b) Three tile kinds.** **Agriculture** makes biomass (and, at
+  higher levels, medicine, spirits, weave); **industry** is a
+  **refinery** (Brian: "yes for now") — ore in, alloy out, and at
+  higher levels alloy in, circuitry out — the reason to haul raw ore to
+  your own planet; **economic** makes credits on a timer and raises the
+  planet's own prices and wants (it is what makes a planet a better
+  port). A science-doctrine pilot's research needs are the exotics,
+  which no tile makes — anomalies and the corona do (A.9), on purpose.
+- **(c) Ownership, two ways (Brian: "both").** An **NPC-built tile**
+  can be bought into: pays `share × output`, the share bought in steps
+  of `shareStep` 10 % up to `shareCap` 50 %, cheap and immediate —
+  "better returns early." An **empty tile built by the pilot** is theirs
+  outright: pays `output × levelMult^(level−1)` (`levelMult` 1.6), slow
+  to start, no ceiling — "tiles built from the ground up can produce
+  more at higher levels." Level 1..`tileLevelMax` 5.
+- **(d) Levelling takes time.** A level-up costs resources by kind
+  (`tileLevelCost[kind][level]` — agriculture ore + biomass, industry
+  ore + alloy, economic credits + weave; placeholders) and then a
+  **build timer** of `tileBuildMin[level]` play-minutes (Talking
+  Farm's D-028/D-066c): invest, fly away, it is done when you're back;
+  F7 says "levelling, done in 40 minutes." No micromanagement by
+  construction.
+- **(e) Adjacency, 4-way per edge** (Talking Farm's D-010/D-015,
+  category pairs): agriculture beside industry feeds it (+15 % industry
+  output), economic beside agriculture prices it (+15 % agriculture
+  value), industry beside economic supplies it (+15 % credits) — a
+  data table, per-edge, so placement on nine tiles means something
+  without weeds or weather. Two of a kind side by side: nothing.
+- **(f) The holding bay is the silo** (3.23b's own model, kept): each
+  tile produces `produceRate[kind][level]` per play-hour into the
+  planet's bay, capped at `bayCap[planetLevel]` — it fills and stops.
+  **A full, unvisited bay spoils** for perishables (biomass, medicine,
+  spirits) on a rising curve past `spoilAfterH` (Talking Farm's D-018
+  over-ripe window) — the reason to come back, spoken as a word on F7
+  ("bay full, spoiling"), never a nag. Alloy, circuitry, weave, and
+  credits just wait. Collected within transporter range ("Holding bay:
+  40 biomass, 12 alloy. Collect?"), into the hold at 3.14's weights.
+- **(g) Shipping.** On a `shipEveryMin` timer an invested planet ships
+  its bay to the station that serves it — favor by proxy at
+  `favorPerWantUnit`, a real `touchPort` (ideas11 (5), already
+  decided). Phase 4 adds the **shuttle line**, Talking Farm's Hauling
+  Service: a passive sweep of every bay the pilot owns to the nearest
+  port for a `shuttleFee` 10 % cut, prioritised by price — surplus,
+  not the main loop; the pilot's own visits always pay full.
+- **(h) The tile menu.** Enter on a tile opens the same captured-input
+  shell the station menu uses: **Invest** (an NPC tile), **Build**
+  (an empty one, pick the kind), **Level up**, **Collect** (the whole
+  bay), **Sell share** (at `shareSellback` 0.6 of what was paid),
+  **Close**. Escape closes the grid back to the landed menu; **Launch**
+  lives there as before.
+- **(i) F7 holdings** (A.12): F2's shape — a first line of what is
+  ready to collect anywhere ("Ready: two bays, one spoiling — Planet
+  B, Q2"), then a heading per quadrant, a line per planet, a line per
+  tile, and a total line per resource per play-hour; H/Shift+H jump
+  headings, a repeated letter cycles. Reachable everywhere F2 is; F12
+  describes it.
+- **(j) Not taken from the farm brief**, on purpose: NPK soil, weather,
+  the winter wipe, the no-numbers rule (this game speaks numbers on
+  demand), zones and bulk actions. Taken: the cursor and its rich line,
+  category adjacency, the bay-as-silo with spoilage, build timers, the
+  hauling service, and contracts with collateral (3.20b).
+- **Test**: land on Planet B in Q2; nine tiles read correctly with two
+  NPC-built and seven empty; buying 10 % of an NPC agriculture tile
+  pays exactly `0.1 × output` into the bay over a stepped play-hour;
+  building an industry tile from empty, feeding it 1,000 ore, and
+  waiting its timer produces alloy at the level-1 rate; a level-up
+  refuses without the alloy, names it, then completes exactly at the
+  timer; an agriculture tile beside an industry tile measures +15 % on
+  the industry tile and nothing on a second agriculture tile; a bay
+  left `spoilAfterH` past full loses the spoil fraction of biomass and
+  nothing else; the shipping timer pays favor at the serving station
+  with the pilot elsewhere; F7 reads every line with no undefined, its
+  first line naming the spoiling bay; Escape from the grid lands on
+  the landed menu with Launch working.
 
 #### 3.21 Threat escalation, and its decay (Brian)
 
@@ -9183,6 +9480,23 @@ Q2's frame), leading to the one reachable non-corner cell — a protected
 place with a single gate back to Q2 (A.13). Its opening condition is a
 DECIDE (favor at Q2's station, or a quest). Not yet scheduled — this is
 the shape 3.22 takes when it builds.
+
+**Second addendum — the third-pass cube (ideas_hold3, 2026-09-10).**
+Home is the near face's centre (Q1, "1 behind"), not a corner; **Q2 is
+the right midpoint "1 right, 1 behind"** — so today's Jump Gate is Q1's
+**right** gate, and arrival is at Q2's **left** gate, Q2's star ahead.
+Q2 is a midpoint quadrant with four gates: left (to Q1 — a home's door
+admits its owner only, so a rival arriving at Q2 finds it sealed),
+below (to Q3, the military corner), above (to Q9, industry), ahead (to
+Q11, a rival's home if seated). Phase 3 opens Q1's right gate only;
+Q2's three onward gates are sealed ("Transit lane uncharted.") until
+Phase 4 — the same treatment the old "second gate onward" had. Q2 is a
+full live quadrant (A.9's trade goods, 3.11/3.19/3.12/3.20, the planet
+grid 3.23b, contracts 3.20b) with no control; Q3 is where control
+starts. Q2's off-axis fourth gate (the harbour spur) is withdrawn —
+home is the protected place now. The home quadrant's other three doors
+(below to Q4, left to Q6, above to Q8) exist in the data from the start
+but are sealed in Phase 3 too.
 
 #### 3.15 Lazy-load audio — superseded by 2.19
 
@@ -10055,3 +10369,62 @@ one shot and the second breaks it, refiring every 4 s until the turret
 dies; (6) a deployed hatch never closes again; (7) shots are
 serialized — a second deployed turret alternates with the first rather
 than firing at the same time.
+
+**Review (Fable, 2026-09-10) of Brian's `ideas_hold.txt`, `ideas_hold2.txt`,
+`ideas_hold3.txt`** — a three-round brainstorm on the later game: base
+flavors, the resource list, planet building, the holdings screen, the
+cube's naming, trade goods, and Talking Farm's brief
+(`c:\nbs\talking_farm\project_brief_tfarm.md`, a 92-decision design,
+no code) as a source for the planet grid. Written into A.8 (four
+doctrines at setup), A.9 (the pairs, dust traces, tier-two trade
+goods), A.12 (F7), A.13 (the third-pass cube), 3.22's second addendum,
+3.23b (the planet grid, buildable), 3.20b (contracts), 3.84 (dust
+traces).
+- **The cube — a real change, on Brian's own vocabulary.** "A quadrant
+  is any place on the cube a player can go to." So the shell's 26 cells
+  are all quadrants: 8 corners controllable (the flavors), 12 midpoints
+  open, 6 face centres the homes — the player's at "1 behind" (Q1),
+  five for rivals. Supersedes "Q1 is a corner" and the harbour spur;
+  keeps manhattan travel and the fixed gates.
+- **Four flavors was the right count for the geometry.** Three could
+  never tile the cube evenly (a theorem: two faces must break); four
+  on the antipodal pairs is perfectly even — every face shows all four,
+  every corner touches the other three. Brian's own front face fixes
+  the whole assignment. The fourth is **science** (relics + isotopes,
+  the hybrid he asked for).
+- **Numbering**: one rule — each slab's centre, then clockwise from
+  the right — because Brian's own Q1–Q5 already followed it.
+- **Trade goods**: six, tier two, made only on planets and at
+  anomalies; volatility, perishables, tribute for control.
+- **Talking Farm**: took the cursor and its rich line, category
+  adjacency, the bay-as-silo with spoilage, build timers, the hauling
+  service, contracts with collateral; left NPK soil, weather, the
+  winter wipe, the no-numbers rule, bulk actions.
+- **No subagent** (ideas_hold asked): the survey it would do is A.9,
+  3.12, 3.23b; what was missing was decisions, now made.
+- **Noted, not scheduled**: Brian is "leaning towards doing more
+  tutorial work before Q1" — when he says so, Phase 3b's 3.17 moves
+  ahead of the quadrant-2 track.
+
+**ANSWERED (Brian, 2026-09-10, ideas_hold2 / hold3)**: the three pairs
+"are ok"; doctrine at setup, fixed, cutscenes per doctrine, restart to
+try another; industry tiles as refineries "yes for now"; both
+ownership kinds, NPC shares better early, built tiles more at height;
+F7 "yes"; contracts with collateral "yes"; economy AND planet building
+both land in Q2, everything running there even without control.
+
+**DECIDE (open, from ideas_hold3 — Fable's defaults, written into
+A.8/A.9/A.13/3.23b, Brian to overrule)**: (1) the 26-quadrant shell
+with the Core as the base site and the five other face centres as
+rival homes (seated by the difficulty setting); (2) the numbering rule
+— centre first, then clockwise from the right, per slab; (3) science
+as the fourth doctrine with relics + isotopes, its base the Array;
+(4) the antipodal placement from Brian's front face — Q3 military, Q5
+economy, Q7 science, Q9 industry, antipodes on the far face; (5) the
+placeholder names (Bastion/Redoubt, Lantern/Harrow, Foundry/Kiln,
+Lens/Halo); (6) the six trade goods, and luxuries as tribute for
+control at corners; (7) home has four doors in the data, one built in
+Phase 3; (8) the planet grid at 3×3 with three tile kinds, the share
+cap at 50 %, `levelMult` 1.6, five levels; (9) collateral is one fitted
+module, never a laser slot or a test fit; (10) the doctrine perk
+numbers.

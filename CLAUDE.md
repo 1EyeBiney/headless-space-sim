@@ -4607,3 +4607,44 @@ throughout, reconfirmed on a fresh tab after every fix. Not yet heard
 or flown by Brian. This closes ideas19.txt in full — per the standing
 build order, next is the quadrant-2 track (3.18 → 3.14 → 3.22 → 3.11
 → onward), which waits for Brian's own go-ahead per the standing rule.
+
+**Round 68 (Fable, docs only, 2026-09-10)**: a three-round brainstorm
+on the later game — Brian's `ideas_hold.txt`, `ideas_hold2.txt`,
+`ideas_hold3.txt` (untracked, like every ideas file) — written into
+SPEC.md as direction and three buildable items. **The cube changed
+shape again, on Brian's own vocabulary**: "a quadrant is any place on
+the cube a player can go to," so all **26 shell cells are quadrants**
+— 8 corners controllable (the flavors), 12 edge midpoints open (POIs,
+no control), 6 face centres the **homes** (the player's is the near
+face's centre "1 behind" = **Q1**, entered by the player alone; the
+other five are rivals'), the Core the base site. Supersedes "Q1 is a
+corner" and the harbour spur; today's built home quadrant simply sits
+in the cell "1 behind", its Jump Gate now Q1's right gate to **Q2 = "1
+right, 1 behind"**, the economy quadrant (a midpoint, four gates, one
+open in Phase 3). **Four doctrines** chosen at setup and fixed
+(military / industry / economy / **science** — the fourth Brian asked
+for, the hybrid: its pair is the two exotic trade goods), each with
+perks and its own base — four because it's the one count that tiles
+the cube evenly: on the antipodal pairs, every face shows all four and
+every corner touches the other three (three flavors provably break on
+two faces). **Numbering**: one rule for all 27, each slab's centre
+then clockwise from the right — Brian's own Q1–Q5 examples already
+followed it. **Trade goods**: a second tier of six (medicine, spirits,
+weave, circuitry, relics, isotopes), planet- and anomaly-made only,
+with volatility classes, perishables, and luxuries as tribute for
+control. **The planet grid** (3.23b, now buildable in Q2): a 3×3 of
+agriculture / industry (a refinery) / economic tiles, NPC shares vs
+built-from-empty ownership, build timers, 4-way category adjacency,
+the holding bay as silo with spoilage, shipping to the serving station,
+**F7 holdings** — drawn from Brian's own Talking Farm brief
+(`c:\nbs\talking_farm\project_brief_tfarm.md`, design only, no code):
+took the cursor and its rich line, category adjacency, bay spoilage,
+build timers, the hauling service (Phase 4's shuttle line), contracts
+with module collateral (**3.20b**); left NPK soil, weather, the winter
+wipe, the no-numbers rule. **3.84** dust traces (ice → hydrogen, iron
+→ alloy, a trickle like the reaction-mass one) is buildable any time.
+Ten defaults flagged in Part C. Brian is "leaning towards more tutorial
+work before Q1" — noted, not scheduled. Nothing built. Next: Brian's
+overrules on the ten defaults; then 3.84 whenever, and the quadrant-2
+track (3.18 → 3.14 → 3.22 → 3.11 → 3.19 → 3.12 → 3.20 → 3.20b → 3.23b)
+on his go-ahead.
